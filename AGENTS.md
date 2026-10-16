@@ -48,9 +48,18 @@ Tether implements the architectural principles from *"LLM-Native Applications as
   [obs_3 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_3` to expand]
   ```
 
-### Rule 6: Zero Framework Bloat
-- **Do NOT add heavy dependencies** like `langchain`, `llamaindex`, `crewai`, `litellm`, or vendor SDKs (`openai`, `anthropic`).
-- Use Python standard library (`asyncio`, `sqlite3`, `shlex`, `inspect`, `dataclasses`, `typing`, `argparse`, `subprocess`) + ultra-lightweight essentials (`httpx`, `pyyaml`).
+### Rule 6: Deterministic Security Envelope (Never Trust the LLM for Safety)
+- Safety boundaries around `bash` and `edit` are enforced **deterministically by `sandbox.py` and the OS kernel**, never by system prompt instructions.
+- Default profile is `workspace-write`:
+  - All `edit` and `bash` paths are canonicalized (`Path.resolve()`) and confined to `workspace_root`.
+  - Sensitive files/directories (`.env*`, `.git/config`, `.git/hooks`, `~/.ssh`, `.tether/`) are deterministically protected from mutation or read exfiltration.
+  - Secret environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `AWS_*`, etc.) are scrubbed from all `bash` subprocesses.
+  - On Linux, `bash` automatically uses **`bwrap` (Bubblewrap) / `unshare`** when available (read-only `/`, hidden `$HOME` tmpfs, read-write bind on `workspace_root`, `PR_SET_NO_NEW_PRIVS`), falling back to a strict deterministic command allowlist/denylist (`rm -rf /`, `sudo`, `dd`, `mkfs`, `chmod 777`, etc. blocked).
+  - Sub-agents spawned via `agent spawn` strictly inherit or narrow their parent session's `SandboxPolicy` (no privilege escalation).
+
+### Rule 7: Zero Framework Bloat
+- **Do NOT add heavy dependencies** like `langchain`, `llamaindex`, `crewai`, `litellm`, `chromadb`, or vendor SDKs (`openai`, `anthropic`).
+- Use Python standard library (`asyncio`, `sqlite3` with FTS5, `shlex`, `inspect`, `dataclasses`, `typing`, `argparse`, `subprocess`) + ultra-lightweight essentials (`httpx`, `pyyaml`).
 
 ---
 
@@ -58,10 +67,11 @@ Tether implements the architectural principles from *"LLM-Native Applications as
 
 ```text
 src/tether/
-├── __init__.py          # Public SDK exports: Harness, Session, Skill, tool
+├── __init__.py          # Public SDK exports: Harness, Session, Skill, SandboxPolicy, tool
 ├── cli.py               # Headless-capable CLI: `tether run|status|read|send|list|wait`
 ├── harness.py           # Control Plane: bounded agent loop, SQLite inbox polling, worker spawn
-├── store.py             # SQLite WAL persistence (.tether/tether.db): sessions, turns, inbox, obs
+├── store.py             # SQLite WAL + FTS5 RAG (.tether/tether.db): sessions, turns, inbox, obs, chunks_fts
+├── sandbox.py           # Security Plane: workspace-write jail, env scrubbing, Linux bwrap/unshare
 ├── multiplexer.py       # Action Plane: `act(cmd, stdin)` parser, command registry, JIT --help
 ├── decorator.py         # `@tool` introspection: converts Python type hints + docstrings to CLI specs
 ├── context.py           # State Plane: ContextAssembler, EphemeralFolder, token estimator
@@ -73,21 +83,22 @@ src/tether/
 │   └── anthropic.py     # Native Anthropic `/v1/messages` httpx adapter (Claude)
 └── tools/
     ├── done.py          # Mandatory explicit completion command (`done`)
-    ├── bash.py          # Workspace-bounded, timeout-guarded shell execution
+    ├── bash.py          # Kernel-sandboxed, env-scrubbed, workspace-bounded shell execution
     ├── web.py           # Zero-config DuckDuckGo Lite httpx search (+ Brave/Tavily/SearXNG env override) & reader
-    ├── edit.py          # Token-efficient file viewing (`view`) & stdin patching (`write`, `replace`)
-    ├── mem.py           # Working scratchpad (`pin`/`unpin`) & folded observation retrieval (`recall`)
-    └── agent.py         # Async multi-agent orchestration (`spawn`, `status`, `wait`, `read`, `send`)
+    ├── edit.py          # Workspace-jailed file viewing (`view`) & stdin patching (`write`, `replace`)
+    ├── mem.py           # Working scratchpad (`pin`/`unpin`), FTS5 search (`search`), & recall (`recall`)
+    └── agent.py         # Async multi-agent orchestration (`spawn`, `status`, `wait`, `query`, `read`, `send`)
 ```
 
 ### Key Subsystem Contracts
 
-#### A. SQLite WAL State Store (`store.py`) & Headless Execution (`cli.py` / `harness.py`)
+#### A. SQLite WAL State + FTS5 RAG Store (`store.py`) & Headless Execution (`cli.py` / `harness.py`)
 - Default DB path: `.tether/tether.db` (configurable via `TETHER_DB` or `Harness(db_path=...)`) with `PRAGMA journal_mode=WAL;`.
 - Tables:
-  - `sessions`: `id`, `parent_id`, `status` (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`), `model`, `skill`, `tools_json`, `goal`, `result`, `step_count`, `max_steps`, `peak_tokens`, `pid`, `created_at`, `updated_at`.
+  - `sessions`: `id`, `parent_id`, `status` (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`), `model`, `skill`, `tools_json`, `sandbox_json`, `goal`, `result`, `step_count`, `max_steps`, `peak_tokens`, `pid`, `created_at`, `updated_at`.
   - `turns`: `id`, `session_id`, `step`, `role`, `content`, `tool_cmd`, `tool_stdin`, `obs_id`, `created_at`.
   - `observations`: `id`, `session_id`, `step`, `cmd`, `raw_output`, `summary`, `char_len`.
+  - `chunks_fts` *(SQLite FTS5 Virtual Table)*: `session_id`, `source_type` (`result` | `observation` | `pin`), `source_id`, `chunk_index`, `content` — automatically indexes ~150-token paragraph/heading chunks of all observations and final `done` deliverables for sub-millisecond BM25 RAG.
   - `pins`: `session_id`, `key`, `value`.
   - `inbox`: `id`, `session_id`, `message`, `consumed` (`0` or `1`), `created_at`.
 - **Headless Worker & Live `send` Contract:**
@@ -95,12 +106,13 @@ src/tether/
   - Before each step, the running worker queries `inbox WHERE session_id = ? AND consumed = 0` and injects any new user/parent messages into the conversation.
   - If `tether send <session_id> "msg"` (or `agent send`) is called when the session is `COMPLETED` or `FAILED`, it inserts the message into `inbox`, sets status back to `RUNNING`, and spawns/resumes the worker from the persisted SQLite state.
 
-#### B. Always-Async Sub-Agent Tool (`tools/agent.py`)
+#### B. Always-Async Sub-Agent Tool & BM25 RAG (`tools/agent.py`)
 - Sub-agents share the same `.tether/tether.db` with `parent_id` set to the caller's `session_id`:
   - `agent spawn [--skill <name>] [--model <m>] [--tools <t1,t2>] <goal>` $\rightarrow$ spawns a detached headless session and immediately returns `ses_<id>`.
   - `agent status <id>` $\rightarrow$ returns 1-line status, step count, and last command.
-  - `agent wait <id1> [id2 ...]` $\rightarrow$ asynchronously polls SQLite until the specified child session(s) finish and returns their final `result`.
-  - `agent read <id>` $\rightarrow$ reads the child session's final `result` (or recent steps if still running).
+  - `agent wait <id1> [id2 ...]` $\rightarrow$ asynchronously polls SQLite until the specified child session(s) finish and returns a **compact ~50-token digest** (status, total chars/chunks, 2-line preview) so the parent's context window is never flooded.
+  - `agent query <id|--all> <query> [--top 3]` $\rightarrow$ queries `chunks_fts` (BM25 ranking) across the sub-agent's final deliverable and raw observations, returning only the top-K relevant chunks (~200–300 tokens).
+  - `agent read <id> [--full]` $\rightarrow$ reads the child session's digest or full `result`.
   - `agent send <id> <message>` $\rightarrow$ queues a message into the child session's inbox (or resumes it if completed).
 
 #### C. Skills System (`skills.py`)

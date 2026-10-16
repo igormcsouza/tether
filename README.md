@@ -46,14 +46,15 @@ flowchart LR
         Headless["tether run --headless\ntether send / status / read"]
     end
 
-    subgraph DB["SQLite State Store (.tether/tether.db WAL)"]
-        Sessions["sessions | inbox | turns | observations"]
+    subgraph DB["SQLite State & FTS5 RAG Store (.tether/tether.db WAL)"]
+        Sessions["sessions | inbox | turns | observations | chunks_fts (BM25)"]
     end
 
     subgraph Worker["Detached Session Worker"]
         Loop["Bounded Agent Loop"]
         Mux["Virtual CLI Multiplexer\nact(cmd, stdin?)"]
-        Folder["Ephemeral Output Folder\n(folds raw output after K turns)"]
+        Sandbox["Deterministic Sandbox\n(bwrap/unshare + workspace jail)"]
+        Folder["Ephemeral Output Folder\n& FTS5 Chunk Indexer"]
     end
 
     subgraph Tools["Opt-In Capabilities"]
@@ -64,10 +65,12 @@ flowchart LR
     Headless <--> DB
     DB <--> Loop
     Loop --> Mux
-    Mux --> Builtins
-    Mux --> Custom
+    Mux --> Sandbox
+    Sandbox --> Builtins
+    Sandbox --> Custom
     Builtins --> Folder
     Custom --> Folder
+    Folder --> DB
     Folder --> Loop
 ```
 
@@ -91,13 +94,21 @@ fetch key articles with `web fetch`, pin verified facts with `mem pin`,
 and conclude with `act("done", stdin="<markdown report>")`.
 ```
 
-### 4. Async Multi-Agent Orchestration (`agent spawn`)
-Because every Tether session is headless-capable, a parent agent can delegate context-heavy subtasks to child agents with isolated context windows:
+### 4. Async Multi-Agent Orchestration & Zero-Bloat SQLite FTS5 RAG
+Because every Tether session is headless-capable, a parent agent can delegate context-heavy subtasks to child agents with isolated context windows—**without drowning when reading their results back**:
 - `agent spawn --skill researcher "Summarize AI news"` $\rightarrow$ immediately returns `ses_9a2f1c` (non-blocking).
-- `agent wait ses_9a2f1c ses_4b8e0d` $\rightarrow$ waits for one or more child sessions to complete and returns their `done` reports.
-- `agent read ses_9a2f1c` / `agent send ses_9a2f1c "Dig deeper into open-weight models"` $\rightarrow$ inspect or steer child agents.
+- `agent wait ses_9a2f1c ses_4b8e0d` $\rightarrow$ returns a **compact ~50-token digest** (status, chunk count, preview) rather than dumping thousands of tokens into the parent's prompt.
+- `agent query ses_9a2f1c "open-weight benchmarks" --top 3` $\rightarrow$ uses **SQLite FTS5 (BM25 ranking)** over the sub-agent's chunked final deliverable *and* raw scraped observations to retrieve only the top-K relevant snippets (~250 tokens). Pass `--all` to search across all child sessions at once!
+- `mem search "rate limits"` $\rightarrow$ uses the same FTS5 index inside a single session to pull specific chunks from folded observations without recalling the entire raw output.
 
-### 5. Multi-Model, Zero-Bloat Adapters
+### 5. Deterministic Security Sandbox (Never Relying on the LLM)
+In line with Maia et al. (2026), safety boundaries are enforced **deterministically by the harness and OS kernel**, never by prompting the model to "be careful":
+- **Default `workspace-write` Jail:** Every `edit` and `bash` path is canonicalized (`realpath`) and confined to the workspace root. Sensitive paths (`.env*`, `.git/config`, `.git/hooks`, `~/.ssh`, `.tether/`) are deterministically blocked from mutation or exfiltration.
+- **OS-Level Kernel Sandbox for `bash`:** On Linux, Tether automatically wraps shell commands in **`bwrap` (Bubblewrap) / `unshare`** when available—mounting `/` read-only, hiding `$HOME` with an empty tmpfs, binding only the workspace directory, and setting `PR_SET_NO_NEW_PRIVS`. When kernel sandboxing is unavailable, Tether enforces a strict deterministic binary allowlist/denylist.
+- **Secret Environment Scrubbing & Resource Caps:** Subprocesses run with a scrubbed environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `AWS_*` stripped), hard process-group timeouts (`SIGKILL`), and output byte caps.
+- **Privilege Attenuation:** Child sub-agents spawned via `agent spawn` strictly inherit (or narrow) their parent session's sandbox profile and can never escalate permissions.
+
+### 6. Multi-Model, Zero-Bloat Adapters
 Tether supports any local or cloud model through **3 ultra-thin `httpx` adapters** (<200 LOC total, zero heavy SDK dependencies):
 - **`ollama/<model>`** — Native Ollama `/api/chat` adapter with `num_ctx` and `keep_alive` control (e.g., `ollama/qwen3.5:9b`).
 - **`openai/<model>`** — OpenAI-compatible `/v1/chat/completions` adapter (OpenAI, OpenRouter, vLLM, llama.cpp, Groq, DeepSeek).
@@ -114,7 +125,7 @@ Tether supports any local or cloud model through **3 ultra-thin `httpx` adapters
 $ tether run --headless --skill researcher "What are the latest news about AI?"
 ses_8f92a1
 
-# 2.Or start with explicit opt-in tools and any model
+# 2. Or start with explicit opt-in tools and any model
 $ tether run --headless --model ollama/qwen3.5:9b --tools web,mem "Compare vLLM vs Ollama"
 ses_3c71b9
 
@@ -164,13 +175,13 @@ if __name__ == "__main__":
 
 | Namespace | Subcommands | Description |
 | :--- | :--- | :--- |
-| **`done`** *(always on)* | `done [summary]` *(or via `stdin`)* | Explicitly complete the current task and record the final deliverable |
+| **`done`** *(always on)* | `done [summary]` *(or via `stdin`)* | Explicitly complete the current task and record + FTS5-index the final deliverable |
 | **`web`** | `web search <query>` \| `web fetch <url>` | Zero-config DuckDuckGo Lite search (auto-upgrades to Brave/Tavily/SearXNG) + clean reader |
-| **`bash`** | `bash <command>` *(or script via `stdin`)* | Workspace-bounded, timeout-guarded shell execution |
-| **`edit`** | `edit view <path>` \| `edit write <path>` \| `edit replace <path>` | Line-numbered file viewing and `stdin`-based creation/replacement |
-| **`mem`** | `mem pin <key> <val>` \| `mem unpin <key>` \| `mem recall <obs_id>` | Pinned working memory & retrieval of folded ephemeral observations |
+| **`bash`** | `bash <command>` *(or script via `stdin`)* | Kernel-sandboxed (`bwrap`/`unshare`), env-scrubbed, workspace-bounded shell execution |
+| **`edit`** | `edit view <path>` \| `edit write <path>` \| `edit replace <path>` | Workspace-jailed, line-numbered file viewing and `stdin`-based creation/replacement |
+| **`mem`** | `mem pin <k> <v>` \| `mem search <query>` \| `mem recall <obs_id>` | Pinned working memory + BM25 RAG search & retrieval over folded observations |
 | **`skill`** | `skill list` \| `skill load <name>` | Progressive discovery and JIT loading of skill instructions & tools |
-| **`agent`** | `agent spawn` \| `agent status` \| `agent wait` \| `agent read` \| `agent send` | Asynchronous sub-agent spawning and coordination over SQLite |
+| **`agent`** | `agent spawn` \| `agent wait` \| `agent query` \| `agent read` \| `agent send` | Async sub-agent spawning, compact wait digests, and BM25 RAG queries over child sessions |
 
 ---
 
@@ -184,10 +195,11 @@ tether/
 ├── skills/                    # Built-in & workspace progressive skills
 ├── src/
 │   └── tether/
-│       ├── __init__.py        # SDK exports: Harness, Session, Skill, tool
+│       ├── __init__.py        # SDK exports: Harness, Session, Skill, SandboxPolicy, tool
 │       ├── cli.py             # `tether` CLI entrypoint (run, status, read, send, list)
 │       ├── harness.py         # Control Plane: bounded agent loop, inbox polling, worker spawn
-│       ├── store.py           # State Persistence: SQLite WAL store (.tether/tether.db)
+│       ├── store.py           # State & RAG Plane: SQLite WAL + FTS5 BM25 chunk store
+│       ├── sandbox.py         # Security Plane: bwrap/unshare kernel sandbox & workspace jail
 │       ├── multiplexer.py     # Action Plane: `act(cmd, stdin)` parser, router & JIT --help
 │       ├── decorator.py       # `@tool` introspection -> POSIX CLI parser & compact usage
 │       ├── context.py         # State Plane: ContextAssembler & Ephemeral Observation Folder
