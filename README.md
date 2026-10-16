@@ -1,163 +1,176 @@
 # 🪢 Tether
 
-**A general-purpose, LLM-Native micro-harness engineered for small context windows and high-signal business logic.**
+**A general-purpose, headless-first LLM-Native micro-harness engineered for small context windows and high-signal business logic.**
 
 [![Architecture Paradigm](https://img.shields.io/badge/Paradigm-LLM--Native%20(Maia%20et%20al.%2C%202026)-6366f1)](#theoretical-foundation)
-[![Target Models](https://img.shields.io/badge/Optimized%20For-SLMs%20(qwen3.5%3A9b)-10b981)](#why-tether)
-[![Python](https://img.shields.io/badge/Python-3.12%2B%20%7C%20uv-3b82f6)](#quickstart-preview)
+[![Target Models](https://img.shields.io/badge/Models-Ollama%20(qwen3.5%3A9b)%20%7C%20Claude%20%7C%20GPT-10b981)](#multi-model-zero-bloat-adapters)
+[![Python](https://img.shields.io/badge/Python-3.12%2B%20%7C%20uv%20%7C%20SQLite%20WAL-3b82f6)](#quickstart)
 
 ---
 
 ## Why Tether?
 
-Modern agent frameworks treat context windows as infinite dumping grounds. Before your application even processes a single line of business logic, typical harnesses inject **3,000–8,000+ tokens** of verbose JSON tool schemas, sprawling system prompts, and unpruned execution traces.
+Modern agent frameworks treat context windows as infinite dumping grounds. Before your application processes a single line of business logic, typical harnesses inject **3,000–8,000+ tokens** of verbose JSON tool schemas, sprawling system prompts, and unpruned execution traces.
 
-On frontier cloud models, that waste is merely expensive. On local and edge models like **`qwen3.5:9b`**, it is fatal:
-1. **Attention Dilution:** Flooding the prompt with dozens of JSON schemas degrades reasoning accuracy on the actual domain task.
+On frontier cloud models, that waste is expensive. On local and small models like **`qwen3.5:9b`**, it is fatal:
+1. **Attention Dilution:** Flooding the prompt with dozens of unused tool schemas degrades reasoning accuracy on the actual domain task.
 2. **Structured-Output Fragility:** Small models frequently hallucinate escaping or nested JSON structures when forced to choose among 20+ complex function-calling schemas.
 3. **KV-Cache Thrashing:** Dynamically mutating the `tools` array between turns invalidates prefix caches in local inference servers (`Ollama`, `llama.cpp`, `vLLM`), tanking latency.
 
-**Tether** keeps your LLM, tools, and business logic tied together with minimal overhead—reserving **>90% of the active context window** for your domain problem.
+**Tether** keeps your LLM, tools, skills, and sub-agents tied together with near-zero overhead—starting with **zero tools loaded by default** and reserving **>90% of the active context window** for your domain problem.
 
 ---
 
 ## Theoretical Foundation
 
-Tether's architecture is grounded in the paradigm defined by **Maia et al. (2026)**, *"LLM-Native Applications as a Paradigm for AI-Driven Software Architecture"*:
+Tether's architecture is grounded in **Maia et al. (2026)**, *"LLM-Native Applications as a Paradigm for AI-Driven Software Architecture"*:
 
-- **LLM as the Core Reasoning Engine:** Rather than bolting an LLM onto rigid deterministic workflows or letting an unguarded prompt loop run wild, Tether structures the application around a **probabilistic reasoning kernel** bounded by **deterministic architectural envelopes**.
-- **Explicit Context & State Governance:** Context is treated as a scarce, managed L1 cache—not an append-only chat log.
-- **First-Class AI Quality Attributes:** Tether prioritizes **Context Economy**, **KV-Cache Stability**, **Probabilistic Reliability** (self-healing tool invocations), and **Semantic Observability**.
+- **Probabilistic Core, Deterministic Envelope:** The LLM serves as the central reasoning kernel, while tool routing, CLI parsing, context eviction, SQLite state persistence, and completion gates remain strictly deterministic.
+- **Explicit Context & State Governance:** Context is managed as a scarce L1 working memory backed by an ACID SQLite store (`.tether/tether.db` in WAL mode)—never an unbounded append-only chat transcript.
+- **First-Class AI Quality Attributes:** Every subsystem optimizes for **Token Economy**, **KV-Cache Prefix Immutability**, **Self-Healing Execution**, and **Observability**.
 
 ---
 
-## Core Innovation: Virtual CLI Multiplexer + Progressive `--help`
+## Core Pillars of Tether `v0`
 
-Instead of registering dozens of JSON schemas with the model provider, Tether exposes a **single static action primitive** and multiplexes all built-in tools (`bash`, `web`, `edit`, `mem`) and custom Python business functions through a virtual POSIX-style command bus.
+### 1. Virtual CLI Multiplexer + Progressive `--help`
+Instead of registering dozens of JSON schemas with the model provider, Tether exposes **only one static JSON tool** (`act(cmd: str, stdin: str | None = None)`) and routes all capabilities through a virtual POSIX-style command bus:
+- **Zero Tools by Default:** Start completely bare (`done` only), or opt-in to specific tools via CLI (`--tools web,bash` or `--tools all`), Python SDK (`tools=["web"]`), or Skill frontmatter.
+- **1-Line Toolbox Index:** Active tools appear as a compact 1-line summary in the static prompt prefix (~10 tokens per tool).
+- **JIT Schema Disclosure (`--help`):** Full flags and docstrings are disclosed only when the model runs `<cmd> --help` or makes an argument error (self-healing usage hint).
+- **Explicit Termination (`act("done", stdin="...")`):** Small models often think out loud mid-task. Rather than prematurely ending the session on an un-tooled text reply, Tether requires an explicit `act("done", stdin="final report")` call to lock in the final deliverable.
 
 ```mermaid
 flowchart LR
-    subgraph LLM["Reasoning Kernel (e.g., qwen3.5:9b)"]
-        Prompt["Static System Prefix\n+ 1-Line Tool Index (~50 tokens)\n+ Business Logic State"]
+    subgraph Client["CLI or Python SDK"]
+        Headless["tether run --headless\ntether send / status / read"]
     end
 
-    subgraph Multiplexer["Virtual CLI Multiplexer"]
-        Act["Single Tool Primitive:\nact(cmd, stdin?)"]
-        Router["Command Parser & Dispatcher"]
-        Help["Progressive --help Generator\n(JIT Signature Inspection)"]
+    subgraph DB["SQLite State Store (.tether/tether.db WAL)"]
+        Sessions["sessions | inbox | turns | observations"]
     end
 
-    subgraph Tools["Action Plane (Tools & Domain Logic)"]
-        Builtin["Built-ins:\nbash | web | edit | mem"]
-        Domain["@tether.tool\nBusiness Logic Functions"]
+    subgraph Worker["Detached Session Worker"]
+        Loop["Bounded Agent Loop"]
+        Mux["Virtual CLI Multiplexer\nact(cmd, stdin?)"]
+        Folder["Ephemeral Output Folder\n(folds raw output after K turns)"]
     end
 
-    subgraph Memory["Context Assembler & GC"]
-        Fold["Ephemeral Output Folding\n& Sliding Turn Eviction"]
+    subgraph Tools["Opt-In Capabilities"]
+        Builtins["bash | web | edit | mem | skill | agent | done"]
+        Custom["@tether.tool\nSDK & Skill Python Tools"]
     end
 
-    LLM -->|"act('order refund --id 42')"| Act
-    Act --> Router
-    Router -->|"Valid Args"| Domain
-    Router -->|"Valid Args"| Builtin
-    Router -->|"--help or Invalid Args"| Help
-    Domain --> Fold
-    Builtin --> Fold
-    Help -->|"Compact 3-line usage"| Fold
-    Fold -->|"Pruned Observation"| LLM
+    Headless <--> DB
+    DB <--> Loop
+    Loop --> Mux
+    Mux --> Builtins
+    Mux --> Custom
+    Builtins --> Folder
+    Custom --> Folder
+    Folder --> Loop
 ```
 
-### How It Saves Context & Boosts 9B Reliability
+### 2. Headless-First Sessions & Live SQLite Inbox
+Every Tether execution is a stateful session persisted in `.tether/tether.db` (SQLite WAL mode). You can run sessions inline or spawn detached background workers (`--headless`):
+- **Live Inbox & Auto-Resume:** Calling `tether send <session_id> "new instruction"` checks the session state in SQLite:
+  - If **`RUNNING`**: queues the message into the session's SQLite inbox, which the worker injects before the next reasoning step.
+  - If **`COMPLETED` / `IDLE`**: appends the message and automatically spawns a worker to resume the session with its pinned memory and folded context intact.
 
-| Mechanism | Traditional Harnesses | Tether Micro-Harness |
-| :--- | :--- | :--- |
-| **Tool Definitions in Prompt** | 15–30 full JSON Schemas (~4,000 tokens) | **1 primitive (`act`) + 1-line index (~60 tokens)** |
-| **KV-Cache Behavior** | Invalidated whenever tools are added/filtered | **100% Prefix-Cache Hit** (static system + tool header) |
-| **Schema Discovery** | Everything upfront (whether needed or not) | **Progressive `--help`** (loaded JIT on demand or syntax error) |
-| **Multiline Code / Payloads** | Deeply escaped JSON strings (high failure rate on 9B) | **Clean `stdin` block** (`act(cmd, stdin=...)`) |
-| **Noisy Tool Outputs** | Raw bash/HTML stays in history forever | **Ephemeral Output Folding** (collapsed after $N$ turns) |
-
-### 1. The Single Action Primitive (`act`)
-The model only ever sees one tool definition:
-```json
-{
-  "name": "act",
-  "description": "Execute a virtual CLI command from the Tether toolbox.",
-  "parameters": {
-    "cmd": "Command string, e.g. 'web search \"query\"' or '<tool> --help'",
-    "stdin": "Optional multiline payload (file content, patch, JSON body, or script)"
-  }
-}
+### 3. Progressive Skills (`skills/`)
+Skills are portable capability bundles stored in `./skills/<name>/SKILL.md` (or `./skills/<name>.md`) with YAML frontmatter and an optional sibling `tools.py`:
+```markdown
+---
+name: researcher
+description: Deep web research and synthesis specialist
+model: ollama/qwen3.5:9b
+tools: [web, mem, done]
+---
+You are a focused research agent. Search multiple sources via `web search`,
+fetch key articles with `web fetch`, pin verified facts with `mem pin`,
+and conclude with `act("done", stdin="<markdown report>")`.
 ```
-Because `stdin` is separated from `cmd`, small models never struggle with shell-escaping multiline file edits or payloads.
 
-### 2. Progressive `--help` (Just-In-Time Disclosure)
-The system prompt contains only a compact 1-line-per-tool directory:
-```text
-[TETHER TOOLBOX] Run `<cmd> --help` for arguments.
-- bash      : Execute sandboxed shell commands
-- web       : Search the web or fetch clean markdown from a URL
-- edit      : View, create, or patch files via stdin
-- invoice   : [Domain] Query, issue, or refund customer invoices
-```
-When the model needs `invoice`, or if it calls `invoice` with missing arguments, Tether intercepts the call and returns a concise, auto-generated usage spec derived from your Python type hints and docstring—**without a Python traceback**.
+### 4. Async Multi-Agent Orchestration (`agent spawn`)
+Because every Tether session is headless-capable, a parent agent can delegate context-heavy subtasks to child agents with isolated context windows:
+- `agent spawn --skill researcher "Summarize AI news"` $\rightarrow$ immediately returns `ses_9a2f1c` (non-blocking).
+- `agent wait ses_9a2f1c ses_4b8e0d` $\rightarrow$ waits for one or more child sessions to complete and returns their `done` reports.
+- `agent read ses_9a2f1c` / `agent send ses_9a2f1c "Dig deeper into open-weight models"` $\rightarrow$ inspect or steer child agents.
 
-### 3. Ephemeral Output Folding (Context Garbage Collection)
-Tool inspections (`--help`), verbose `bash` logs, and `web` scrapes are tagged as **ephemeral observations**. Tether's Context Assembler keeps their full content for the immediate reasoning step, then automatically folds them into a 1-line summary (e.g., `[Folded: bash output (142 lines, exit 0)]`) on subsequent turns.
+### 5. Multi-Model, Zero-Bloat Adapters
+Tether supports any local or cloud model through **3 ultra-thin `httpx` adapters** (<200 LOC total, zero heavy SDK dependencies):
+- **`ollama/<model>`** — Native Ollama `/api/chat` adapter with `num_ctx` and `keep_alive` control (e.g., `ollama/qwen3.5:9b`).
+- **`openai/<model>`** — OpenAI-compatible `/v1/chat/completions` adapter (OpenAI, OpenRouter, vLLM, llama.cpp, Groq, DeepSeek).
+- **`anthropic/<model>`** — Native Anthropic `/v1/messages` adapter for Claude models.
 
 ---
 
-## Architectural Layers (Maia et al., 2026 Alignment)
+## Quickstart
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ 1. Application & Domain Layer                                   │
-│    Business goals, domain rules, @tether.tool functions         │
-├─────────────────────────────────────────────────────────────────┤
-│ 2. Orchestration & Reasoning Layer (Control Plane)              │
-│    Bounded ReAct loop, step budgets, guardrails, loop detection │
-├─────────────────────────────────────────────────────────────────┤
-│ 3. Memory & Context Layer (State Plane)                         │
-│    Context Assembler, Ephemeral Output Folder, Working Memory   │
-├─────────────────────────────────────────────────────────────────┤
-│ 4. Tooling & Multiplexer Layer (Action Plane)                   │
-│    Virtual CLI Parser, JIT --help Inspector, bash/web/edit      │
-├─────────────────────────────────────────────────────────────────┤
-│ 5. Model Gateway Layer (Execution Plane)                        │
-│    Zero-bloat async client (Ollama, OpenAI-compatible, vLLM)    │
-└─────────────────────────────────────────────────────────────────┘
+### Headless CLI Usage
+
+```bash
+# 1. Start a headless background session with the 'researcher' skill
+$ tether run --headless --skill researcher "What are the latest news about AI?"
+ses_8f92a1
+
+# 2.Or start with explicit opt-in tools and any model
+$ tether run --headless --model ollama/qwen3.5:9b --tools web,mem "Compare vLLM vs Ollama"
+ses_3c71b9
+
+# 3. Check live session status, step count, and token budget
+$ tether status ses_8f92a1
+ID          STATUS     MODEL              STEP   CTX_TOKENS   LAST_CMD
+ses_8f92a1  RUNNING    ollama/qwen3.5:9b  3/15   580/8192     web search "AI news 2026"
+
+# 4. Read the final report (or --steps to inspect the work log)
+$ tether read ses_8f92a1
+
+# 5. Send a follow-up (queues into live inbox if RUNNING, or auto-resumes if COMPLETED)
+$ tether send ses_8f92a1 --headless "Now spawn a sub-agent to fact-check the top 2 announcements."
 ```
 
----
-
-## Quickstart Preview
+### Python SDK Usage
 
 ```python
 import asyncio
 from tether import Harness, tool
 
-harness = Harness(
-    model="ollama/qwen3.5:9b",
-    max_context_tokens=8192,
-    fold_observations_after=2,  # Collapse verbose tool outputs after 2 turns
-)
-
-@tool(namespace="crm", description="Look up or update customer subscription tiers")
-async def manage_subscription(customer_id: int, tier: str = "pro") -> str:
+@tool(name="crm", description="Query or update customer subscription tiers")
+async def crm(customer_id: int, tier: str = "pro") -> str:
     """Update customer tier. Allowed tiers: free, pro, enterprise."""
     return f"Customer #{customer_id} updated to {tier}."
 
 async def main():
-    harness.register(manage_subscription)
-    result = await harness.run(
-        "Upgrade customer 1042 to enterprise and summarize the change."
+    # Minimal by default: only loads `done` + explicitly requested tools
+    harness = Harness(
+        model="ollama/qwen3.5:9b",
+        tools=["mem", crm],
+        fold_observations_after=2,
     )
-    print(result.output)
-    print(f"Peak Context Used: {result.stats.peak_tokens} tokens")
+
+    session = await harness.run(
+        "Upgrade customer 1042 to enterprise, pin the audit note, and finish."
+    )
+    print(f"Session {session.id} [{session.status}]:\n{session.result}")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+---
+
+## Built-In Virtual CLI Toolbox (Opt-In)
+
+| Namespace | Subcommands | Description |
+| :--- | :--- | :--- |
+| **`done`** *(always on)* | `done [summary]` *(or via `stdin`)* | Explicitly complete the current task and record the final deliverable |
+| **`web`** | `web search <query>` \| `web fetch <url>` | Zero-config DuckDuckGo Lite search (auto-upgrades to Brave/Tavily/SearXNG) + clean reader |
+| **`bash`** | `bash <command>` *(or script via `stdin`)* | Workspace-bounded, timeout-guarded shell execution |
+| **`edit`** | `edit view <path>` \| `edit write <path>` \| `edit replace <path>` | Line-numbered file viewing and `stdin`-based creation/replacement |
+| **`mem`** | `mem pin <key> <val>` \| `mem unpin <key>` \| `mem recall <obs_id>` | Pinned working memory & retrieval of folded ephemeral observations |
+| **`skill`** | `skill list` \| `skill load <name>` | Progressive discovery and JIT loading of skill instructions & tools |
+| **`agent`** | `agent spawn` \| `agent status` \| `agent wait` \| `agent read` \| `agent send` | Asynchronous sub-agent spawning and coordination over SQLite |
 
 ---
 
@@ -166,34 +179,26 @@ if __name__ == "__main__":
 ```text
 tether/
 ├── README.md
-├── AGENTS.md                  # Architectural & engineering guide for coding agents
-├── pyproject.toml             # Managed with uv (minimal dependencies)
+├── AGENTS.md                  # Authoritative blueprint for coding agents & contributors
+├── pyproject.toml             # Managed with uv (httpx, pyyaml, standard library)
+├── skills/                    # Built-in & workspace progressive skills
 ├── src/
 │   └── tether/
-│       ├── __init__.py
-│       ├── harness.py         # Main orchestration loop & lifecycle
-│       ├── multiplexer.py     # Virtual CLI parser, router & JIT --help generator
-│       ├── context.py         # Token budgeting, output folding & state assembly
-│       ├── providers/         # Lightweight async adapters (Ollama, OpenAI-compat)
-│       ├── tools/             # Built-in micro-tools (bash, web, edit, mem)
-│       └── telemetry.py       # Token accounting, trace hooks & KV-cache metrics
+│       ├── __init__.py        # SDK exports: Harness, Session, Skill, tool
+│       ├── cli.py             # `tether` CLI entrypoint (run, status, read, send, list)
+│       ├── harness.py         # Control Plane: bounded agent loop, inbox polling, worker spawn
+│       ├── store.py           # State Persistence: SQLite WAL store (.tether/tether.db)
+│       ├── multiplexer.py     # Action Plane: `act(cmd, stdin)` parser, router & JIT --help
+│       ├── decorator.py       # `@tool` introspection -> POSIX CLI parser & compact usage
+│       ├── context.py         # State Plane: ContextAssembler & Ephemeral Observation Folder
+│       ├── skills.py          # Markdown + YAML frontmatter + companion `tools.py` loader
+│       ├── providers/         # Thin httpx adapters: ollama.py, openai.py, anthropic.py
+│       └── tools/             # Opt-in built-ins: bash.py, web.py, edit.py, mem.py, agent.py
 └── tests/
 ```
-
----
-
-## Roadmap
-
-- [x] Architecture specification & LLM-Native blueprint (`README.md`, `AGENTS.md`)
-- [ ] Core `@tool` decorator with automatic CLI parser & compact `--help` synthesis
-- [ ] Virtual CLI Multiplexer (`act(cmd, stdin)`) with POSIX shlex routing
-- [ ] Ephemeral Context Assembler & turn-based observation folding
-- [ ] Built-in micro-tools: `bash`, `web`, `edit`, and `mem` (key-value scratchpad)
-- [ ] Benchmark suite on `qwen3.5:9b` measuring token overhead vs. task completion rate
 
 ---
 
 ## References
 
 - Maia, P. H. M., et al. (2026). *LLM-Native Applications as a Paradigm for AI-Driven Software Architecture*.
-- Unix Philosophy & CLI-Multiplexed Agent Harnesses for Small Language Models.
