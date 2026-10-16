@@ -311,7 +311,18 @@ class Harness:
                 est_tokens = estimate_messages_tokens(messages, [ACT_TOOL_SCHEMA])
                 resp = await provider.generate(messages, [ACT_TOOL_SCHEMA])
                 actual_tokens = max(est_tokens, resp.prompt_tokens)
-                self.store.update_session(session_id, step_count=step, peak_tokens=actual_tokens)
+                resolved_model = (
+                    f"ollama/{provider.model_name}"
+                    if rec.model.startswith("ollama/")
+                    and not rec.model.endswith(provider.model_name)
+                    else None
+                )
+                self.store.update_session(
+                    session_id,
+                    model=resolved_model,
+                    step_count=step,
+                    peak_tokens=actual_tokens,
+                )
 
                 # 3. If the model emitted plain text without calling `act`, nudge it (Rule 3)
                 if resp.action is None:

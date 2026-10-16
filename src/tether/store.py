@@ -304,6 +304,7 @@ class SQLiteStore:
         session_id: str,
         *,
         status: str | None = None,
+        model: str | None = None,
         result: str | None = None,
         step_count: int | None = None,
         peak_tokens: int | None = None,
@@ -315,6 +316,9 @@ class SQLiteStore:
         if status is not None:
             updates.append("status = ?")
             params.append(status)
+        if model is not None:
+            updates.append("model = ?")
+            params.append(model)
         if result is not None:
             updates.append("result = ?")
             params.append(result)
