@@ -401,3 +401,9 @@ def test_fallback_9b_action_extractor() -> None:
     assert call2 is not None
     assert call2.cmd == "done"
     assert call2.stdin == "Final report ready"
+
+    multiline_text = 'act("done", stdin="# Summary\n\n- Item 1 (with parens)\n- Item 2")'
+    call3 = extract_fallback_action(multiline_text)
+    assert call3 is not None
+    assert call3.cmd == "done"
+    assert call3.stdin == "# Summary\n\n- Item 1 (with parens)\n- Item 2"

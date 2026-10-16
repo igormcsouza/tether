@@ -33,8 +33,12 @@ class ModelProvider(Protocol):
 
 
 _ACT_CALL_RE = re.compile(
-    r"act\(\s*(?P<args>.*?)\s*\)",
+    r"act\(\s*(?P<args>.*)\s*\)",
     re.DOTALL,
+)
+_MULTILINE_ACT_RE = re.compile(
+    r"act\(\s*(?:(?:cmd|command)\s*=\s*)?(?P<q1>\"\"\"|'''|\"|')(?P<cmd>.*?)(?P=q1)"
+    r"(?:\s*,\s*(?:stdin\s*=\s*)?(?P<q2>\"\"\"|'''|\"|')(?P<stdin>[\s\S]*)(?P=q2))?\s*\)",
 )
 _TOOL_XML_RE = re.compile(
     r"<tool_call>\s*(?P<body>.*?)\s*</tool_call>",
@@ -98,7 +102,15 @@ def extract_fallback_action(text: str) -> ActionCall | None:
             if call:
                 return call
 
-    # 3. Check Python-style `act("...", stdin="...")` call in text
+    # 3. Check multiline-tolerant `act("...", stdin="...")` call in text
+    ml_match = _MULTILINE_ACT_RE.search(text)
+    if ml_match:
+        cmd_str = ml_match.group("cmd").strip()
+        stdin_str = ml_match.group("stdin")
+        if cmd_str:
+            return ActionCall(cmd=cmd_str, stdin=stdin_str)
+
+    # 4. Fallback to AST parse for single-line Python-style `act(...)`
     act_match = _ACT_CALL_RE.search(text)
     if act_match:
         expr = f"f({act_match.group('args')})"
