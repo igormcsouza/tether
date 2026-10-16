@@ -1,0 +1,101 @@
+"""Native Anthropic `/v1/messages` httpx adapter (Claude)."""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import httpx
+
+from tether.providers.base import (
+    ActionCall,
+    ModelResponse,
+    extract_fallback_action,
+    parse_tool_arguments,
+)
+
+
+class AnthropicProvider:
+    """Thin async adapter for Anthropic `/v1/messages`."""
+
+    def __init__(
+        self,
+        model_name: str = "claude-3-7-sonnet-latest",
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+        max_tokens: int = 2048,
+        timeout: float = 120.0,
+    ) -> None:
+        self.model_name = model_name
+        self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY") or ""
+        self.base_url = (
+            base_url or os.environ.get("ANTHROPIC_BASE_URL") or "https://api.anthropic.com"
+        ).rstrip("/")
+        self.max_tokens = max_tokens
+        self.timeout = timeout
+
+    async def generate(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]],
+    ) -> ModelResponse:
+        system_text = ""
+        chat_msgs: list[dict[str, Any]] = []
+        for m in messages:
+            if m.get("role") == "system":
+                system_text = str(m.get("content") or "")
+            else:
+                role = "assistant" if m.get("role") == "assistant" else "user"
+                chat_msgs.append({"role": role, "content": str(m.get("content") or "")})
+
+        anthropic_tools: list[dict[str, Any]] = []
+        for t in tools:
+            fn = t.get("function") or {}
+            anthropic_tools.append(
+                {
+                    "name": fn.get("name", "act"),
+                    "description": fn.get("description", ""),
+                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                }
+            )
+
+        headers = {
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        }
+        payload: dict[str, Any] = {
+            "model": self.model_name,
+            "max_tokens": self.max_tokens,
+            "messages": chat_msgs,
+            "tools": anthropic_tools,
+        }
+        if system_text:
+            payload["system"] = system_text
+
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            resp = await client.post(
+                f"{self.base_url}/v1/messages",
+                headers=headers,
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        text_parts: list[str] = []
+        action: ActionCall | None = None
+        for block in data.get("content") or []:
+            btype = block.get("type")
+            if btype == "text":
+                text_parts.append(str(block.get("text") or ""))
+            elif btype == "tool_use" and action is None:
+                action = parse_tool_arguments(block.get("input") or {})
+
+        content = "\n".join(text_parts).strip()
+        if action is None and content:
+            action = extract_fallback_action(content)
+
+        usage = data.get("usage") or {}
+        prompt_tokens = int(usage.get("input_tokens") or 0)
+        return ModelResponse(content=content, action=action, prompt_tokens=prompt_tokens)

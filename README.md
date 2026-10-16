@@ -147,10 +147,12 @@ $ tether send ses_8f92a1 --headless "Now spawn a sub-agent to fact-check the top
 import asyncio
 from tether import Harness, tool
 
+
 @tool(name="crm", description="Query or update customer subscription tiers")
 async def crm(customer_id: int, tier: str = "pro") -> str:
     """Update customer tier. Allowed tiers: free, pro, enterprise."""
     return f"Customer #{customer_id} updated to {tier}."
+
 
 async def main():
     # Minimal by default: only loads `done` + explicitly requested tools
@@ -164,6 +166,7 @@ async def main():
         "Upgrade customer 1042 to enterprise, pin the audit note, and finish."
     )
     print(f"Session {session.id} [{session.status}]:\n{session.result}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
