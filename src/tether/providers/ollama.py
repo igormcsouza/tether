@@ -33,6 +33,23 @@ class OllamaProvider:
         self.keep_alive = keep_alive
         self.timeout = timeout
 
+    async def _resolve_installed_model(self, client: httpx.AsyncClient) -> str | None:
+        """Query Ollama `/api/tags` to find an installed Qwen (or fallback) model if 404."""
+        try:
+            resp = await client.get(f"{self.host}/api/tags")
+            resp.raise_for_status()
+            models = [str(m.get("name") or "") for m in (resp.json().get("models") or [])]
+            models = [m for m in models if m]
+            if not models:
+                return None
+            # Prefer any installed Qwen model first
+            for m in models:
+                if "qwen" in m.lower():
+                    return m
+            return models[0]
+        except Exception:
+            return None
+
     async def generate(
         self,
         messages: list[dict[str, Any]],
@@ -48,6 +65,12 @@ class OllamaProvider:
         }
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(f"{self.host}/api/chat", json=payload)
+            if resp.status_code == 404:
+                fallback = await self._resolve_installed_model(client)
+                if fallback and fallback != self.model_name:
+                    self.model_name = fallback
+                    payload["model"] = fallback
+                    resp = await client.post(f"{self.host}/api/chat", json=payload)
             resp.raise_for_status()
             data = resp.json()
 
