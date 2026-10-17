@@ -68,3 +68,37 @@ act(cmd="agent status ses_8f3a91c02b1e")
 act(cmd="agent read ses_8f3a91c02b1e --full")
 act(cmd='agent send ses_8f3a91c02b1e "Now check memory overhead at 10M vectors"')
 ```
+
+## Deterministic Multi-Stage Pipelines (`tether pipeline`)
+
+For repeatable engineering workflows (e.g., **Spec $\rightarrow$ Implement $\rightarrow$ Security Audit**), you can declare a deterministic pipeline in YAML instead of relying on an LLM orchestrator to dynamically spawn stages:
+
+```yaml
+name: secure-feature-pipeline
+stages:
+  - id: spec
+    skill: architect
+    model: anthropic/claude-3-7-sonnet-latest
+    tools: [edit, mem]
+    goal: "Write a concise technical spec for: {{goal}}"
+
+  - id: implement
+    skill: coder
+    model: ollama/qwen3.5:9b
+    tools: [bash, edit]
+    verify: ["pytest -q"]
+    goal: "Implement the feature according to the spec from stage `spec`."
+
+  - id: security_audit
+    skill: security-reviewer
+    model: openai/gpt-4o-mini
+    sandbox: read-only
+    tools: [edit, bash]
+    goal: "Audit workspace changes against the spec and report any vulnerabilities."
+```
+
+Run via CLI (inline or `--headless`) or Python SDK (`await harness.run_pipeline("pipeline.yaml", "Build X")`):
+
+```bash
+tether pipeline pipeline.yaml --headless "Add HMAC signature verification"
+```

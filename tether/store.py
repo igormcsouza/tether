@@ -429,7 +429,8 @@ class SQLiteStore:
         with self._connect() as conn:
             if parent_id is not None:
                 rows = conn.execute(
-                    "SELECT * FROM sessions WHERE parent_id = ? ORDER BY created_at DESC LIMIT ?",
+                    "SELECT * FROM sessions WHERE parent_id = ? "
+                    "ORDER BY created_at ASC, rowid ASC LIMIT ?",
                     (parent_id, limit),
                 ).fetchall()
             else:

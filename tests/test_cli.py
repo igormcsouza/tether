@@ -46,6 +46,26 @@ async def test_cli_subcommands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
         == 0
     )
 
+    pipe_file = tmp_path / "cli_pipe.yaml"
+    pipe_file.write_text(
+        "name: cli-pipe\nstages:\n  - id: s1\n    model: cli-test/qwen\n    goal: '{{goal}}'\n",
+        encoding="utf-8",
+    )
+    assert await _async_main(["pipeline", str(pipe_file), "--db", db_arg, "Run CLI pipeline"]) == 0
+    assert (
+        await _async_main(
+            [
+                "pipeline",
+                str(pipe_file),
+                "--headless",
+                "--db",
+                db_arg,
+                "Run headless CLI pipeline",
+            ]
+        )
+        == 0
+    )
+
     assert await _async_main(["status", "ses_nope", "--db", db_arg]) == 1
     assert await _async_main(["status", s_done.id, "--db", db_arg]) == 0
 

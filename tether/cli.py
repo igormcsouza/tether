@@ -1,4 +1,4 @@
-"""Headless-capable CLI entrypoint (`tether run|status|read|query|send|wait|list|stats`)."""
+"""Headless CLI (`tether run|pipeline|status|read|query|send|wait|list|stats`)."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from tether.store import SQLiteStore
 
 _KNOWN_SUBCOMMANDS = {
     "run",
+    "pipeline",
     "status",
     "read",
     "query",
@@ -63,6 +64,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--db", type=str, default=None, help="SQLite DB path (default .tether/tether.db)"
     )
     p_run.add_argument("goal", nargs="+", help="Task goal or instruction")
+
+    # `tether pipeline`
+    p_pipe = sub.add_parser(
+        "pipeline",
+        help="Execute a declarative multi-stage YAML workflow inline or headless",
+    )
+    p_pipe.add_argument("pipeline_file", help="Path to declarative pipeline YAML manifest")
+    p_pipe.add_argument(
+        "--headless", action="store_true", help="Run detached in background and print session ID"
+    )
+    p_pipe.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="Default fallback model when a stage omits `model`",
+    )
+    p_pipe.add_argument(
+        "--sandbox",
+        type=str,
+        default="workspace-write",
+        choices=["workspace-write", "read-only"],
+        help="Root deterministic sandbox profile (stages can only narrow)",
+    )
+    p_pipe.add_argument(
+        "--max-steps", type=int, default=15, help="Default max reasoning steps per stage"
+    )
+    p_pipe.add_argument(
+        "--db", type=str, default=None, help="SQLite DB path (default .tether/tether.db)"
+    )
+    p_pipe.add_argument("goal", nargs="+", help="Root task goal or instruction")
 
     # `tether status`
     p_status = sub.add_parser("status", help="Show live session status and token metrics")
@@ -163,6 +194,24 @@ async def _async_main(argv: list[str]) -> int:
             print(sid)
             return 0
         rec = await harness.run(goal)
+        if rec.result:
+            print(rec.result)
+        return 0 if rec.status in ("COMPLETED", "WAITING_INPUT") else 1
+
+    if cmd == "pipeline":
+        goal = " ".join(ns.goal).strip()
+        sandbox = SandboxPolicy(profile=ns.sandbox, workspace_root=Path.cwd())
+        harness = Harness(
+            model=ns.model,
+            sandbox=sandbox,
+            db_path=ns.db,
+            max_steps=ns.max_steps,
+        )
+        if ns.headless:
+            sid = harness.spawn_pipeline(Path(ns.pipeline_file), goal)
+            print(sid)
+            return 0
+        rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
         if rec.result:
             print(rec.result)
         return 0 if rec.status in ("COMPLETED", "WAITING_INPUT") else 1

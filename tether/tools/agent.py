@@ -138,6 +138,14 @@ def make_agent_tool(
 
             if target == "--all":
                 children = store.list_sessions(parent_id=parent_session_id)
+                if not children:
+                    cur_rec = store.get_session(parent_session_id)
+                    if cur_rec and cur_rec.parent_id:
+                        children = [
+                            c
+                            for c in store.list_sessions(parent_id=cur_rec.parent_id)
+                            if c.id != parent_session_id
+                        ]
                 session_ids = [c.id for c in children]
                 if not session_ids:
                     return "No child sub-agent sessions found."
