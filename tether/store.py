@@ -33,6 +33,8 @@ class SessionRecord:
     pid: int | None
     created_at: float
     updated_at: float
+    total_prompt_tokens: int = 0
+    total_completion_tokens: int = 0
 
 
 @dataclass(slots=True)
@@ -46,6 +48,10 @@ class TurnRecord:
     tool_stdin: str | None
     obs_id: str | None
     created_at: float
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    duration_ms: int = 0
+    event_type: str = "ok"
 
 
 @dataclass(slots=True)
@@ -67,6 +73,70 @@ class ChunkHit:
     chunk_index: int
     content: str
     score: float
+
+
+@dataclass(slots=True)
+class ModelStats:
+    model: str
+    runs: int
+    completed_runs: int
+    pass_rate: float
+    avg_steps: float
+    avg_peak_tokens: int
+    max_peak_tokens: int
+    total_prompt_tokens: int
+    total_completion_tokens: int
+    total_tokens: int
+    avg_total_tokens: int
+    avg_duration_ms: int
+    nudges: int
+    loop_stalls: int
+    syntax_errors: int
+    tool_errors: int
+    gate_fails: int
+    avg_nudges: float
+    avg_loop_stalls: float
+    avg_syntax_errors: float
+
+
+@dataclass(slots=True)
+class ToolOffender:
+    command: str
+    syntax_errors: int
+    loop_stalls: int
+    tool_errors: int
+    total_friction: int
+
+
+@dataclass(slots=True)
+class StatsReport:
+    models: list[ModelStats]
+    offenders: list[ToolOffender]
+
+
+_SUBCOMMAND_TOOLS: dict[str, set[str]] = {
+    "edit": {"view", "write", "replace"},
+    "web": {"search", "fetch"},
+    "mem": {"pin", "unpin", "list", "search", "recall"},
+    "agent": {"spawn", "status", "wait", "query", "read", "send"},
+    "skill": {"list", "load"},
+}
+
+
+def canonical_tool_command(raw_cmd: str | None) -> str:
+    """Normalize a raw tool command into its canonical `<tool>` or `<tool> <subcommand>` key."""
+    if not raw_cmd:
+        return "unknown"
+    cleaned = raw_cmd.strip().strip("`").lstrip("$>").strip()
+    if cleaned.startswith("tether "):
+        cleaned = cleaned[len("tether ") :].strip()
+    tokens = [tok.strip("\"'") for tok in cleaned.split() if tok.strip("\"'")]
+    if not tokens:
+        return "unknown"
+    head = tokens[0]
+    if head in _SUBCOMMAND_TOOLS and len(tokens) >= 2 and tokens[1] in _SUBCOMMAND_TOOLS[head]:
+        return f"{head} {tokens[1]}"
+    return head
 
 
 def chunk_text(text: str, max_chars: int = 600) -> list[str]:
@@ -180,6 +250,8 @@ class SQLiteStore:
                     step_count INTEGER NOT NULL DEFAULT 0,
                     max_steps INTEGER NOT NULL DEFAULT 15,
                     peak_tokens INTEGER NOT NULL DEFAULT 0,
+                    total_prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                    total_completion_tokens INTEGER NOT NULL DEFAULT 0,
                     pid INTEGER,
                     created_at REAL NOT NULL,
                     updated_at REAL NOT NULL
@@ -194,6 +266,10 @@ class SQLiteStore:
                     tool_cmd TEXT,
                     tool_stdin TEXT,
                     obs_id TEXT,
+                    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+                    completion_tokens INTEGER NOT NULL DEFAULT 0,
+                    duration_ms INTEGER NOT NULL DEFAULT 0,
+                    event_type TEXT NOT NULL DEFAULT 'ok',
                     created_at REAL NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, step);
@@ -235,6 +311,35 @@ class SQLiteStore:
                 );
                 """
             )
+            self._ensure_columns(
+                conn,
+                "sessions",
+                {
+                    "total_prompt_tokens": "INTEGER NOT NULL DEFAULT 0",
+                    "total_completion_tokens": "INTEGER NOT NULL DEFAULT 0",
+                },
+            )
+            self._ensure_columns(
+                conn,
+                "turns",
+                {
+                    "prompt_tokens": "INTEGER NOT NULL DEFAULT 0",
+                    "completion_tokens": "INTEGER NOT NULL DEFAULT 0",
+                    "duration_ms": "INTEGER NOT NULL DEFAULT 0",
+                    "event_type": "TEXT NOT NULL DEFAULT 'ok'",
+                },
+            )
+
+    @staticmethod
+    def _ensure_columns(
+        conn: sqlite3.Connection,
+        table: str,
+        columns: dict[str, str],
+    ) -> None:
+        existing = {str(r["name"]) for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        for col_name, col_def in columns.items():
+            if col_name not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
 
     def create_session(
         self,
@@ -293,6 +398,26 @@ class SQLiteStore:
             pid=int(row["pid"]) if row["pid"] is not None else None,
             created_at=float(row["created_at"]),
             updated_at=float(row["updated_at"]),
+            total_prompt_tokens=int(row["total_prompt_tokens"]),
+            total_completion_tokens=int(row["total_completion_tokens"]),
+        )
+
+    @staticmethod
+    def _row_to_turn(row: sqlite3.Row) -> TurnRecord:
+        return TurnRecord(
+            id=int(row["id"]),
+            session_id=str(row["session_id"]),
+            step=int(row["step"]),
+            role=str(row["role"]),
+            content=str(row["content"]),
+            tool_cmd=row["tool_cmd"],
+            tool_stdin=row["tool_stdin"],
+            obs_id=row["obs_id"],
+            created_at=float(row["created_at"]),
+            prompt_tokens=int(row["prompt_tokens"]),
+            completion_tokens=int(row["completion_tokens"]),
+            duration_ms=int(row["duration_ms"]),
+            event_type=str(row["event_type"]),
         )
 
     def get_session(self, session_id: str) -> SessionRecord | None:
@@ -322,6 +447,8 @@ class SQLiteStore:
         result: str | None = None,
         step_count: int | None = None,
         peak_tokens: int | None = None,
+        add_prompt_tokens: int | None = None,
+        add_completion_tokens: int | None = None,
         pid: int | None = None,
         tools: list[str] | None = None,
     ) -> None:
@@ -342,6 +469,12 @@ class SQLiteStore:
         if peak_tokens is not None:
             updates.append("peak_tokens = MAX(peak_tokens, ?)")
             params.append(peak_tokens)
+        if add_prompt_tokens is not None:
+            updates.append("total_prompt_tokens = total_prompt_tokens + ?")
+            params.append(add_prompt_tokens)
+        if add_completion_tokens is not None:
+            updates.append("total_completion_tokens = total_completion_tokens + ?")
+            params.append(add_completion_tokens)
         if pid is not None:
             updates.append("pid = ?")
             params.append(pid)
@@ -367,38 +500,68 @@ class SQLiteStore:
         tool_cmd: str | None = None,
         tool_stdin: str | None = None,
         obs_id: str | None = None,
+        *,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
+        duration_ms: int = 0,
+        event_type: str = "ok",
     ) -> int:
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO turns (
-                    session_id, step, role, content, tool_cmd, tool_stdin, obs_id, created_at
+                    session_id, step, role, content, tool_cmd, tool_stdin, obs_id,
+                    prompt_tokens, completion_tokens, duration_ms, event_type, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (session_id, step, role, content, tool_cmd, tool_stdin, obs_id, time.time()),
+                (
+                    session_id,
+                    step,
+                    role,
+                    content,
+                    tool_cmd,
+                    tool_stdin,
+                    obs_id,
+                    prompt_tokens,
+                    completion_tokens,
+                    duration_ms,
+                    event_type,
+                    time.time(),
+                ),
             )
             return int(cur.lastrowid or 0)
+
+    def update_turn_telemetry(
+        self,
+        turn_id: int,
+        *,
+        event_type: str | None = None,
+        duration_ms: int | None = None,
+    ) -> None:
+        updates: list[str] = []
+        params: list[Any] = []
+        if event_type is not None:
+            updates.append("event_type = ?")
+            params.append(event_type)
+        if duration_ms is not None:
+            updates.append("duration_ms = ?")
+            params.append(duration_ms)
+        if not updates:
+            return
+        params.append(turn_id)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE turns SET {', '.join(updates)} WHERE id = ?",
+                tuple(params),
+            )
 
     def get_turns(self, session_id: str) -> list[TurnRecord]:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT * FROM turns WHERE session_id = ? ORDER BY id ASC", (session_id,)
             ).fetchall()
-            return [
-                TurnRecord(
-                    id=int(r["id"]),
-                    session_id=str(r["session_id"]),
-                    step=int(r["step"]),
-                    role=str(r["role"]),
-                    content=str(r["content"]),
-                    tool_cmd=r["tool_cmd"],
-                    tool_stdin=r["tool_stdin"],
-                    obs_id=r["obs_id"],
-                    created_at=float(r["created_at"]),
-                )
-                for r in rows
-            ]
+            return [self._row_to_turn(r) for r in rows]
 
     def add_observation(
         self,
@@ -690,4 +853,162 @@ class SQLiteStore:
                 f'Hint: run `agent query {session.id} "<keywords>"` for BM25 RAG snippets, '
                 f"or `agent read {session.id} --full`."
             )
+        return "\n".join(lines)
+
+    def get_stats(
+        self,
+        *,
+        model: str | None = None,
+        skill: str | None = None,
+        limit: int = 100,
+    ) -> StatsReport:
+        """Aggregate per-model telemetry, token cost, and ACI friction offenders."""
+        where_clauses = ["id != ?"]
+        params: list[Any] = [GLOBAL_SESSION_ID]
+        if model:
+            where_clauses.append("model = ?")
+            params.append(model)
+        if skill:
+            where_clauses.append("skill = ?")
+            params.append(skill)
+        params.append(limit)
+
+        where_sql = " AND ".join(where_clauses)
+        with self._connect() as conn:
+            session_rows = conn.execute(
+                f"SELECT * FROM sessions WHERE {where_sql} ORDER BY created_at DESC LIMIT ?",
+                tuple(params),
+            ).fetchall()
+            if not session_rows:
+                return StatsReport(models=[], offenders=[])
+
+            sessions = [self._row_to_session(r) for r in session_rows]
+            session_ids = [s.id for s in sessions]
+            placeholders = ",".join("?" for _ in session_ids)
+            turn_rows = conn.execute(
+                f"SELECT * FROM turns WHERE session_id IN ({placeholders}) ORDER BY id ASC",
+                tuple(session_ids),
+            ).fetchall()
+            turns = [self._row_to_turn(r) for r in turn_rows]
+
+        turns_by_session: dict[str, list[TurnRecord]] = {sid: [] for sid in session_ids}
+        for t in turns:
+            turns_by_session[t.session_id].append(t)
+
+        sessions_by_model: dict[str, list[SessionRecord]] = {}
+        for s in sessions:
+            sessions_by_model.setdefault(s.model, []).append(s)
+
+        model_stats: list[ModelStats] = []
+        for model_name, msessions in sessions_by_model.items():
+            runs = len(msessions)
+            completed_runs = sum(1 for s in msessions if s.status == "COMPLETED")
+            pass_rate = (completed_runs / runs) * 100.0
+            avg_steps = sum(s.step_count for s in msessions) / runs
+            avg_peak = int(round(sum(s.peak_tokens for s in msessions) / runs))
+            max_peak = max(s.peak_tokens for s in msessions)
+            tot_prompt = sum(s.total_prompt_tokens for s in msessions)
+            tot_comp = sum(s.total_completion_tokens for s in msessions)
+            tot_tok = tot_prompt + tot_comp
+            avg_tot_tok = int(round(tot_tok / runs))
+
+            mturns = [t for s in msessions for t in turns_by_session[s.id]]
+            tot_dur = sum(t.duration_ms for t in mturns)
+            avg_dur = int(round(tot_dur / runs))
+            nudges = sum(1 for t in mturns if t.event_type == "nudge")
+            loops = sum(1 for t in mturns if t.event_type == "loop_stall")
+            syn_err = sum(1 for t in mturns if t.event_type == "syntax_error")
+            tool_err = sum(1 for t in mturns if t.event_type == "tool_error")
+            gate_fail = sum(1 for t in mturns if t.event_type == "gate_fail")
+
+            model_stats.append(
+                ModelStats(
+                    model=model_name,
+                    runs=runs,
+                    completed_runs=completed_runs,
+                    pass_rate=pass_rate,
+                    avg_steps=avg_steps,
+                    avg_peak_tokens=avg_peak,
+                    max_peak_tokens=max_peak,
+                    total_prompt_tokens=tot_prompt,
+                    total_completion_tokens=tot_comp,
+                    total_tokens=tot_tok,
+                    avg_total_tokens=avg_tot_tok,
+                    avg_duration_ms=avg_dur,
+                    nudges=nudges,
+                    loop_stalls=loops,
+                    syntax_errors=syn_err,
+                    tool_errors=tool_err,
+                    gate_fails=gate_fail,
+                    avg_nudges=nudges / runs,
+                    avg_loop_stalls=loops / runs,
+                    avg_syntax_errors=syn_err / runs,
+                )
+            )
+
+        model_stats.sort(key=lambda m: (-m.runs, m.model))
+
+        offenders_by_cmd: dict[str, ToolOffender] = {}
+        for t in turns:
+            if t.event_type in ("syntax_error", "loop_stall", "tool_error"):
+                cmd_key = canonical_tool_command(t.tool_cmd)
+                off = offenders_by_cmd.get(cmd_key)
+                if off is None:
+                    off = ToolOffender(
+                        command=cmd_key,
+                        syntax_errors=0,
+                        loop_stalls=0,
+                        tool_errors=0,
+                        total_friction=0,
+                    )
+                    offenders_by_cmd[cmd_key] = off
+                if t.event_type == "syntax_error":
+                    off.syntax_errors += 1
+                elif t.event_type == "loop_stall":
+                    off.loop_stalls += 1
+                else:
+                    off.tool_errors += 1
+                off.total_friction += 1
+
+        offenders = sorted(
+            offenders_by_cmd.values(),
+            key=lambda o: (-o.total_friction, -o.syntax_errors, -o.loop_stalls, o.command),
+        )
+        return StatsReport(models=model_stats, offenders=offenders)
+
+    def format_stats_report(
+        self,
+        *,
+        model: str | None = None,
+        skill: str | None = None,
+        limit: int = 100,
+    ) -> str:
+        """Render the ultra-compact `tether stats` engineering scorecard and top offenders."""
+        report = self.get_stats(model=model, skill=skill, limit=limit)
+        if not report.models:
+            return "No sessions recorded."
+
+        lines = [
+            f"{'MODEL':<21} {'RUNS':>4} {'PASS%':>6} {'AVG_STEPS':>9} "
+            f"{'PEAK_TOK':>8} {'TOTAL_TOK':>9} {'NUDGES':>6} {'LOOPS':>5} {'SYNTAX_ERR':>10}"
+        ]
+        for m in report.models:
+            pass_str = f"{m.pass_rate:.1f}%"
+            lines.append(
+                f"{m.model:<21} {m.runs:>4} {pass_str:>6} {m.avg_steps:>9.1f} "
+                f"{m.avg_peak_tokens:>8} {m.avg_total_tokens:>9} "
+                f"{m.avg_nudges:>6.1f} {m.avg_loop_stalls:>5.1f} {m.avg_syntax_errors:>10.1f}"
+            )
+
+        if report.offenders:
+            lines.append("")
+            lines.append("Top Friction Offenders (by command):")
+            lines.append(
+                f"{'COMMAND':<21} {'SYNTAX_ERR':>10} {'LOOPS':>5} {'TOOL_ERR':>8} {'TOTAL':>5}"
+            )
+            for off in report.offenders:
+                lines.append(
+                    f"{off.command:<21} {off.syntax_errors:>10} {off.loop_stalls:>5} "
+                    f"{off.tool_errors:>8} {off.total_friction:>5}"
+                )
         return "\n".join(lines)

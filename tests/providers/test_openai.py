@@ -34,7 +34,7 @@ async def test_openai_provider() -> None:
                             }
                         }
                     ],
-                    "usage": {"prompt_tokens": 77},
+                    "usage": {"prompt_tokens": 77, "completion_tokens": 23},
                 },
             )
         return httpx.Response(
@@ -48,6 +48,7 @@ async def test_openai_provider() -> None:
     or1 = await oai.generate([{"role": "user", "content": "hi"}], [])
     assert or1.action is not None and or1.action.stdin == "oai"
     assert or1.prompt_tokens == 77
+    assert or1.completion_tokens == 23
     or2 = await oai.generate([{"role": "user", "content": "hi"}], [])
     assert or2.action is not None and or2.action.stdin == "fallback"
     await oai.aclose()

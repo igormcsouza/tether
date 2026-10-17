@@ -74,6 +74,7 @@ class OpenAIProvider:
         content = str(msg.get("content") or "").strip()
         usage = data.get("usage") or {}
         prompt_tokens = int(usage.get("prompt_tokens") or 0)
+        completion_tokens = int(usage.get("completion_tokens") or 0)
 
         action: ActionCall | None = None
         tool_calls = msg.get("tool_calls") or []
@@ -86,4 +87,9 @@ class OpenAIProvider:
         if action is None and content:
             action = extract_fallback_action(content)
 
-        return ModelResponse(content=content, action=action, prompt_tokens=prompt_tokens)
+        return ModelResponse(
+            content=content,
+            action=action,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )

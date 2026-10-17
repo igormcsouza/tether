@@ -26,18 +26,55 @@ async def test_deterministic_loop_stall_breaker(tmp_path: Path) -> None:
 
     provider = FakeScriptedProvider(
         [
-            ModelResponse(content="", action=ActionCall(cmd="ping example.com")),
-            ModelResponse(content="", action=ActionCall(cmd="ping example.com")),
-            ModelResponse(content="", action=ActionCall(cmd="done", stdin="Recovered from loop")),
+            ModelResponse(
+                content="",
+                action=ActionCall(cmd="ping"),
+                prompt_tokens=100,
+                completion_tokens=20,
+            ),
+            ModelResponse(
+                content="",
+                action=ActionCall(cmd="edit view missing_file_xyz.txt"),
+                prompt_tokens=110,
+                completion_tokens=20,
+            ),
+            ModelResponse(
+                content="",
+                action=ActionCall(cmd="ping example.com"),
+                prompt_tokens=120,
+                completion_tokens=25,
+            ),
+            ModelResponse(
+                content="",
+                action=ActionCall(cmd="ping example.com"),
+                prompt_tokens=130,
+                completion_tokens=25,
+            ),
+            ModelResponse(
+                content="",
+                action=ActionCall(cmd="done", stdin="Recovered from loop"),
+                prompt_tokens=140,
+                completion_tokens=30,
+            ),
         ]
     )
-    harness = Harness(db_path=tmp_path / "tether.db", tools=[ping], provider=provider)
+    harness = Harness(db_path=tmp_path / "tether.db", tools=[ping, "edit"], provider=provider)
     session = await harness.run("Ping example.com once")
     assert session.status == "COMPLETED"
     assert session.result == "Recovered from loop"
     assert call_count == 1
-    step3_prompt = "\n".join(m["content"] for m in provider.recorded_calls[2])
-    assert "[LOOP DETECTED]" in step3_prompt
+    assert session.total_prompt_tokens == 600
+    assert session.total_completion_tokens == 120
+    turns = [t for t in harness.store.get_turns(session.id) if t.role == "assistant"]
+    assert [t.event_type for t in turns] == [
+        "syntax_error",
+        "tool_error",
+        "ok",
+        "loop_stall",
+        "completed",
+    ]
+    step5_prompt = "\n".join(m["content"] for m in provider.recorded_calls[4])
+    assert "[LOOP DETECTED]" in step5_prompt
 
 
 async def test_harness_lifecycle_and_edge_cases(

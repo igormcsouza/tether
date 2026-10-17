@@ -202,6 +202,9 @@ $ tether read ses_8f92a1
 
 # 5. Send a follow-up (queues into live inbox if RUNNING, or auto-resumes if COMPLETED)
 $ tether send ses_8f92a1 --headless "Now spawn a sub-agent to fact-check the top 2 announcements."
+
+# 6. Inspect model pass rates, cumulative token economy, and ACI friction offenders
+$ tether stats
 ```
 
 ### Python SDK Usage

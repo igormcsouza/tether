@@ -1,4 +1,4 @@
-"""Headless-capable CLI entrypoint for Tether (`tether run|status|read|query|send|wait|list`)."""
+"""Headless-capable CLI entrypoint (`tether run|status|read|query|send|wait|list|stats`)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,17 @@ from tether.harness import Harness
 from tether.sandbox import SandboxPolicy
 from tether.store import SQLiteStore
 
-_KNOWN_SUBCOMMANDS = {"run", "status", "read", "query", "send", "wait", "list", "_worker"}
+_KNOWN_SUBCOMMANDS = {
+    "run",
+    "status",
+    "read",
+    "query",
+    "send",
+    "wait",
+    "list",
+    "stats",
+    "_worker",
+}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -94,6 +104,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list", help="List recent sessions")
     p_list.add_argument("--limit", type=int, default=20)
     p_list.add_argument("--db", type=str, default=None)
+
+    # `tether stats`
+    p_stats = sub.add_parser(
+        "stats",
+        help="Show telemetry scorecard, cumulative token cost, and ACI friction offenders",
+    )
+    p_stats.add_argument("--model", type=str, default=None, help="Filter by model identifier")
+    p_stats.add_argument("--skill", type=str, default=None, help="Filter by skill name")
+    p_stats.add_argument("--limit", type=int, default=100, help="Max recent sessions to analyze")
+    p_stats.add_argument("--db", type=str, default=None)
 
     # Internal `_worker`
     p_worker = sub.add_parser("_worker")
@@ -225,6 +245,10 @@ async def _async_main(argv: list[str]) -> int:
         for s in sessions:
             g = s.goal.replace("\n", " ")[:48]
             print(f"{s.id:<14} {s.status:<10} {s.model:<22} {s.step_count}/{s.max_steps:<4} {g}")
+        return 0
+
+    if cmd == "stats":
+        print(store.format_stats_report(model=ns.model, skill=ns.skill, limit=ns.limit))
         return 0
 
     parser.print_help()

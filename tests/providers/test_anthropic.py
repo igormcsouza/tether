@@ -52,7 +52,8 @@ async def test_anthropic_provider_and_ephemeral_cache() -> None:
         [{"function": {"name": "act", "description": "d", "parameters": {}}}],
     )
     assert ar1.action is not None and ar1.action.stdin == "claude_ok"
-    assert ar1.prompt_tokens == 125
+    assert ar1.prompt_tokens == 100
+    assert ar1.completion_tokens == 25
     ar2 = await anth.generate([{"role": "user", "content": "Hi"}], [])
     assert ar2.action is not None and ar2.action.stdin == "anth_fb"
     await anth.aclose()

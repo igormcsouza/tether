@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -365,8 +366,13 @@ class Harness:
                 )
 
                 est_tokens = estimate_messages_tokens(messages, [ACT_TOOL_SCHEMA])
+                t_llm_start = time.perf_counter()
                 resp = await provider.generate(messages, [ACT_TOOL_SCHEMA])
-                actual_tokens = max(est_tokens, resp.prompt_tokens)
+                llm_duration_ms = int((time.perf_counter() - t_llm_start) * 1000)
+
+                prompt_tokens = resp.prompt_tokens if resp.prompt_tokens > 0 else est_tokens
+                completion_tokens = resp.completion_tokens
+                actual_tokens = max(est_tokens, prompt_tokens + completion_tokens)
                 resolved_model = (
                     f"ollama/{provider.model_name}"
                     if rec.model.startswith("ollama/")
@@ -378,6 +384,8 @@ class Harness:
                     model=resolved_model,
                     step_count=step,
                     peak_tokens=actual_tokens,
+                    add_prompt_tokens=prompt_tokens,
+                    add_completion_tokens=completion_tokens,
                 )
 
                 # 3. If the model emitted plain text without calling `act`, nudge it (Rule 3)
@@ -387,6 +395,10 @@ class Harness:
                         step=step,
                         role="assistant",
                         content=resp.content or "(no output)",
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        duration_ms=llm_duration_ms,
+                        event_type="nudge",
                     )
                     self.store.add_turn(
                         session_id=session_id,
@@ -401,17 +413,23 @@ class Harness:
 
                 cmd = resp.action.cmd
                 stdin = resp.action.stdin
-                self.store.add_turn(
+                action_sig = (cmd.strip(), stdin)
+                is_loop_stall = action_sig == last_action_sig and not cmd.strip().startswith("done")
+
+                assistant_turn_id = self.store.add_turn(
                     session_id=session_id,
                     step=step,
                     role="assistant",
                     content=resp.content,
                     tool_cmd=cmd,
                     tool_stdin=stdin,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    duration_ms=llm_duration_ms,
+                    event_type="loop_stall" if is_loop_stall else "ok",
                 )
 
-                action_sig = (cmd.strip(), stdin)
-                if action_sig == last_action_sig and not cmd.strip().startswith("done"):
+                if is_loop_stall:
                     stall_msg = (
                         f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input in the "
                         "previous step. Do not repeat the same command—inspect the prior output, "
@@ -426,7 +444,10 @@ class Harness:
                     continue
                 last_action_sig = action_sig
 
+                t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
+                tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)
+
                 if dispatch.is_waiting_input:
                     late_inbox = self.store.consume_inbox(session_id)
                     if late_inbox:
@@ -445,6 +466,7 @@ class Harness:
                         step=step,
                         role="tool",
                         content=f"[WAITING_INPUT] {question_text}",
+                        duration_ms=tool_duration_ms,
                     )
                     self.store.update_session(
                         session_id,
@@ -471,10 +493,15 @@ class Harness:
 
                     # 4. Run deterministic pre-`done` verification gates if configured
                     if verify_commands:
+                        t_gate_start = time.perf_counter()
                         gate_failure = await self._run_verification_gates(sandbox, verify_commands)
+                        gate_duration_ms = int((time.perf_counter() - t_gate_start) * 1000)
                         if gate_failure is not None:
                             failed_cmd, exit_code, gate_out = gate_failure
                             consecutive_verify_failures += 1
+                            self.store.update_turn_telemetry(
+                                assistant_turn_id, event_type="gate_fail"
+                            )
                             gate_msg = (
                                 f"[VERIFICATION GATE FAILED: `{failed_cmd}` (exit {exit_code})]\n"
                                 f"{gate_out}\n"
@@ -492,6 +519,7 @@ class Harness:
                                 role="tool",
                                 content=gate_msg,
                                 obs_id=obs.id,
+                                duration_ms=tool_duration_ms + gate_duration_ms,
                             )
                             if (
                                 self.max_verify_failures > 0
@@ -511,12 +539,14 @@ class Harness:
                                 return failed_rec
                             continue
 
+                    self.store.update_turn_telemetry(assistant_turn_id, event_type="completed")
                     final_text = dispatch.final_result or ""
                     self.store.add_turn(
                         session_id=session_id,
                         step=step,
                         role="tool",
                         content=f"[COMPLETED] {final_text}",
+                        duration_ms=tool_duration_ms,
                     )
                     self.store.update_session(
                         session_id,
@@ -527,6 +557,11 @@ class Harness:
                     done_rec = self.store.get_session(session_id)
                     assert done_rec is not None
                     return done_rec
+
+                if dispatch.error_kind in ("syntax_error", "unknown_cmd"):
+                    self.store.update_turn_telemetry(assistant_turn_id, event_type="syntax_error")
+                elif dispatch.is_error:
+                    self.store.update_turn_telemetry(assistant_turn_id, event_type="tool_error")
 
                 # Record tool observation in SQLite (auto-chunks into FTS5)
                 obs = self.store.add_observation(
@@ -541,6 +576,7 @@ class Harness:
                     role="tool",
                     content=dispatch.output,
                     obs_id=obs.id,
+                    duration_ms=tool_duration_ms,
                 )
 
             # Max steps reached without explicit `done`
