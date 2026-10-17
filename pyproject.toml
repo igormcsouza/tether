@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tether"
+name = "tether-sdk"
 dynamic = ["version"]
 description = "General-purpose, headless-first LLM-Native micro-harness for small language models"
 readme = "README.md"

@@ -10,8 +10,8 @@ The `delivery.yml` workflow then verifies the tag, builds the sdist and wheel, p
 
 ## One-time setup (repository owner)
 
-- On PyPI (`https://pypi.org/manage/account/publishing/`), register a trusted publisher for `tether`:
-  - **PyPI Project Name**: `tether`
+- On PyPI (`https://pypi.org/manage/account/publishing/`), register a trusted publisher for `tether-sdk`:
+  - **PyPI Project Name**: `tether-sdk`
   - **Owner**: `igormcsouza`
   - **Repository name**: `tether`
   - **Workflow name**: `delivery.yml`

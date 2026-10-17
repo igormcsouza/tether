@@ -18,13 +18,13 @@ Requires Python 3.12+.
 === "pip"
 
     ```sh
-    pip install tether
+    pip install tether-sdk
     ```
 
 === "uv"
 
     ```sh
-    uv add tether
+    uv add tether-sdk
     ```
 
 ---

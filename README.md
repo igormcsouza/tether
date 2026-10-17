@@ -159,6 +159,16 @@ xychart-beta
 
 ## Quickstart
 
+### Installation
+
+```bash
+pip install tether-sdk
+# or with uv:
+uv add tether-sdk
+```
+
+Full documentation is available at **[https://igormcsouza.github.io/tether/](https://igormcsouza.github.io/tether/)**.
+
 ### Headless CLI Usage
 
 ```bash
