@@ -537,3 +537,25 @@ def test_kv_prefix_immutability_with_pins(tmp_path: Path) -> None:
     assert msgs_step2[:3] == msgs_step3[:3]
     assert "[PINNED MEMORY]" in msgs_step3[-1]["content"]
     assert "[PINNED MEMORY]" not in msgs_step3[3]["content"]
+
+
+async def test_connection_pooling_and_sqlite_reuse(tmp_path: Path) -> None:
+    """Verify SQLite thread-local connection caching and HTTP provider client reuse."""
+    from tether.providers.ollama import OllamaProvider
+    from tether.store import SQLiteStore
+
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    conn1 = store._connect()
+    conn2 = store._connect()
+    assert conn1 is conn2
+    store.close()
+    conn3 = store._connect()
+    assert conn3 is not conn1
+    store.close()
+
+    provider = OllamaProvider("qwen3.5:9b")
+    c1 = provider._get_client()
+    c2 = provider._get_client()
+    assert c1 is c2
+    await provider.aclose()
+    assert c1.is_closed

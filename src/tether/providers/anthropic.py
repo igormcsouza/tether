@@ -27,6 +27,7 @@ class AnthropicProvider:
         base_url: str | None = None,
         max_tokens: int = 4096,
         timeout: float = 180.0,
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self.model_name = model_name
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY") or ""
@@ -36,6 +37,17 @@ class AnthropicProvider:
         ).rstrip("/")
         self.max_tokens = max_tokens
         self.timeout = timeout
+        self._client = client
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP connection pool."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
 
     async def generate(
         self,
@@ -91,14 +103,14 @@ class AnthropicProvider:
                 }
             ]
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(
-                f"{self.base_url}/v1/messages",
-                headers=headers,
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        client = self._get_client()
+        resp = await client.post(
+            f"{self.base_url}/v1/messages",
+            headers=headers,
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
         text_parts: list[str] = []
         action: ActionCall | None = None

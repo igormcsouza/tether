@@ -26,12 +26,24 @@ class OllamaProvider:
         num_ctx: int = 8192,
         keep_alive: str = "10m",
         timeout: float = 120.0,
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self.model_name = model_name
         self.host = (host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
         self.num_ctx = num_ctx
         self.keep_alive = keep_alive
         self.timeout = timeout
+        self._client = client
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP connection pool."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
 
     async def _resolve_installed_model(self, client: httpx.AsyncClient) -> str | None:
         """Query Ollama `/api/tags` to find an installed Qwen (or fallback) model if 404."""
@@ -63,16 +75,16 @@ class OllamaProvider:
             "keep_alive": self.keep_alive,
             "options": {"num_ctx": self.num_ctx, "temperature": 0.2},
         }
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(f"{self.host}/api/chat", json=payload)
-            if resp.status_code == 404:
-                fallback = await self._resolve_installed_model(client)
-                if fallback and fallback != self.model_name:
-                    self.model_name = fallback
-                    payload["model"] = fallback
-                    resp = await client.post(f"{self.host}/api/chat", json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+        client = self._get_client()
+        resp = await client.post(f"{self.host}/api/chat", json=payload)
+        if resp.status_code == 404:
+            fallback = await self._resolve_installed_model(client)
+            if fallback and fallback != self.model_name:
+                self.model_name = fallback
+                payload["model"] = fallback
+                resp = await client.post(f"{self.host}/api/chat", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
 
         msg = data.get("message") or {}
         content = str(msg.get("content") or "").strip()

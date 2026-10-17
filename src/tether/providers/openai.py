@@ -25,6 +25,7 @@ class OpenAIProvider:
         api_key: str | None = None,
         base_url: str | None = None,
         timeout: float = 120.0,
+        client: httpx.AsyncClient | None = None,
     ) -> None:
         self.model_name = model_name
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY") or ""
@@ -32,6 +33,17 @@ class OpenAIProvider:
             base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
         ).rstrip("/")
         self.timeout = timeout
+        self._client = client
+
+    def _get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self._client
+
+    async def aclose(self) -> None:
+        """Close the underlying HTTP connection pool."""
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
 
     async def generate(
         self,
@@ -48,14 +60,14 @@ class OpenAIProvider:
             "tools": tools,
             "temperature": 0.2,
         }
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            resp = await client.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
+        client = self._get_client()
+        resp = await client.post(
+            f"{self.base_url}/chat/completions",
+            headers=headers,
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
         choices = data.get("choices") or [{}]
         msg = choices[0].get("message") or {}
