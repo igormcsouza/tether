@@ -71,8 +71,11 @@ Local inference engines (`Ollama`, `llama.cpp`, `vLLM`) and cloud providers (`An
 - Working memory pins (`[PINNED MEMORY]`) are attached to the tail message of the assembled prompt rather than injected near the top of the message list, ensuring all historical turn messages remain 100% byte-identical across steps.
 - `AnthropicProvider` automatically marks the static system prompt and `act` tool schema with `cache_control: {"type": "ephemeral"}`.
 
-### Deterministic Loop-Stall Breaker
-Small 8B/9B models occasionally fall into a probability trap where they emit the exact same command (`web search "..."` or `bash ...`) twice in a row. `Harness.execute_session` tracks the `(cmd, stdin)` signature of the previous step and intercepts consecutive duplicates before executing the tool, returning a `[LOOP DETECTED]` nudge that forces the model to advance.
+### Deterministic Loop-Stall Breaker & Pre-`done` Verification Gates
+Small 8B/9B models occasionally fall into a probability trap where they emit the exact same command (`web search "..."` or `bash ...`) twice in a row, or prematurely call `done` while tests or linters are failing:
+
+- **Loop-Stall Breaker:** `Harness.execute_session` tracks the `(cmd, stdin)` signature of the previous step and intercepts consecutive duplicates before executing the tool, returning a `[LOOP DETECTED]` nudge that forces the model to advance.
+- **Pre-`done` Verification Gates:** When configured via `Harness(verify=[...])`, CLI `--verify`, or Skill YAML `verify: [...]`, Tether intercepts `done` and runs each verification command inside the session's `SandboxPolicy`. It consumes **0 static prompt tokens** unless a gate exits non-zero—at which point termination is rejected and a compact `[VERIFICATION GATE FAILED]` observation is injected so the model can self-heal.
 
 ### Connection Pooling & Thread-Local SQLite WAL Reuse
 - Model providers reuse persistent `httpx.AsyncClient` connection pools across all turns in a session, eliminating repeated TCP/TLS handshakes.

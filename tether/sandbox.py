@@ -121,6 +121,7 @@ class SandboxPolicy:
     timeout_seconds: float = 30.0
     max_output_chars: int = 12000
     use_kernel_sandbox: bool = True
+    verify_commands: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.workspace_root = Path(self.workspace_root).resolve()
@@ -134,18 +135,21 @@ class SandboxPolicy:
             "timeout_seconds": self.timeout_seconds,
             "max_output_chars": self.max_output_chars,
             "use_kernel_sandbox": self.use_kernel_sandbox,
+            "verify_commands": list(self.verify_commands),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> SandboxPolicy:
         if not data:
             return cls()
+        raw_verify = data.get("verify_commands") or []
         return cls(
             profile=str(data.get("profile", "workspace-write")),
             workspace_root=Path(str(data.get("workspace_root", Path.cwd()))).resolve(),
             timeout_seconds=float(data.get("timeout_seconds", 30.0)),
             max_output_chars=int(data.get("max_output_chars", 12000)),
             use_kernel_sandbox=bool(data.get("use_kernel_sandbox", True)),
+            verify_commands=[str(v) for v in raw_verify if str(v).strip()],
         )
 
     def attenuate(self, child_profile: str | None = None) -> SandboxPolicy:
@@ -161,6 +165,7 @@ class SandboxPolicy:
             timeout_seconds=self.timeout_seconds,
             max_output_chars=self.max_output_chars,
             use_kernel_sandbox=self.use_kernel_sandbox,
+            verify_commands=list(self.verify_commands),
         )
 
     def resolve_safe_path(self, raw_path: str | Path, *, write: bool = False) -> Path:
@@ -285,8 +290,8 @@ class SandboxPolicy:
             return bwrap_cmd
         return ["bash", "-c", cmd]
 
-    async def execute_bash(self, cmd: str, stdin: str | None = None) -> str:
-        """Execute a shell command inside the deterministic sandbox."""
+    async def execute_bash_with_code(self, cmd: str, stdin: str | None = None) -> tuple[int, str]:
+        """Execute a shell command in the deterministic sandbox and return (returncode, output)."""
         effective_cmd = cmd.strip()
         if not effective_cmd and stdin:
             effective_cmd = stdin.strip()
@@ -318,8 +323,12 @@ class SandboxPolicy:
             except ProcessLookupError:
                 pass
             await proc.wait()
-            return f"Error: command timed out after {self.timeout_seconds:.1f}s (SIGKILL)."
+            return (
+                124,
+                f"Error: command timed out after {self.timeout_seconds:.1f}s (SIGKILL).",
+            )
 
+        returncode = int(proc.returncode or 0)
         stdout_str = stdout_b.decode("utf-8", errors="replace")
         stderr_str = stderr_b.decode("utf-8", errors="replace")
         combined = stdout_str
@@ -327,9 +336,9 @@ class SandboxPolicy:
             combined = f"{stdout_str}\n[stderr]\n{stderr_str}".strip()
 
         if not combined:
-            combined = f"[exit {proc.returncode}]"
-        elif proc.returncode != 0:
-            combined = f"{combined}\n[exit {proc.returncode}]"
+            combined = f"[exit {returncode}]"
+        elif returncode != 0:
+            combined = f"{combined}\n[exit {returncode}]"
 
         if len(combined) > self.max_output_chars:
             half = self.max_output_chars // 2
@@ -339,4 +348,9 @@ class SandboxPolicy:
                 f"... [truncated {omitted:,} chars by sandbox cap] ...\n"
                 f"{combined[-half:]}"
             )
+        return returncode, combined
+
+    async def execute_bash(self, cmd: str, stdin: str | None = None) -> str:
+        """Execute a shell command inside the deterministic sandbox."""
+        _, combined = await self.execute_bash_with_code(cmd, stdin=stdin)
         return combined

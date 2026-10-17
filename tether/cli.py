@@ -36,6 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--tools", type=str, default=None, help="Comma-separated tools (e.g. web,mem,bash or all)"
     )
     p_run.add_argument(
+        "--verify",
+        action="append",
+        default=None,
+        help="Deterministic verification gate command to run before `done` (repeatable)",
+    )
+    p_run.add_argument(
         "--sandbox",
         type=str,
         default="workspace-write",
@@ -127,6 +133,7 @@ async def _async_main(argv: list[str]) -> int:
             model=ns.model,
             skill=ns.skill,
             tools=ns.tools,
+            verify=ns.verify,
             sandbox=sandbox,
             db_path=ns.db,
             max_steps=ns.max_steps,

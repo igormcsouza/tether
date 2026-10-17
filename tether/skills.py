@@ -20,6 +20,7 @@ class Skill:
     instructions: str
     model: str | None = None
     tools: list[str] = field(default_factory=list)
+    verify: list[str] = field(default_factory=list)
     path: Path | None = None
     custom_tools: list[ToolSpec] = field(default_factory=list)
 
@@ -50,6 +51,14 @@ def parse_skill_markdown(
         if isinstance(raw_tools, list)
         else [t.strip() for t in str(raw_tools).split(",") if t.strip()]
     )
+    raw_verify = meta.get("verify") or []
+    verify_list = (
+        [str(v).strip() for v in raw_verify if str(v).strip()]
+        if isinstance(raw_verify, list)
+        else [str(raw_verify).strip()]
+        if str(raw_verify).strip()
+        else []
+    )
 
     custom_tools: list[ToolSpec] = []
     if source_path and source_path.name == "SKILL.md":
@@ -63,6 +72,7 @@ def parse_skill_markdown(
         instructions=body,
         model=model,
         tools=tools_list,
+        verify=verify_list,
         path=source_path,
         custom_tools=custom_tools,
     )

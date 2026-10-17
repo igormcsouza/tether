@@ -56,6 +56,7 @@ def make_agent_tool(
             if not goal:
                 return f"Error: missing `<goal>` for `agent spawn`.\n{help_str}"
 
+            skill_verify: list[str] = []
             if skill_name:
                 sk = skill_loader.load(skill_name)
                 if not sk:
@@ -64,8 +65,13 @@ def make_agent_tool(
                     model_name = sk.model
                 if not tools_list and sk.tools:
                     tools_list = list(sk.tools)
+                if sk.verify:
+                    skill_verify = list(sk.verify)
 
             child_sandbox = parent_sandbox.attenuate()
+            for sv in skill_verify:
+                if sv not in child_sandbox.verify_commands:
+                    child_sandbox.verify_commands.append(sv)
             child = store.create_session(
                 goal=goal,
                 model=model_name or default_model,

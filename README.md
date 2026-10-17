@@ -45,7 +45,7 @@ Instead of registering dozens of JSON schemas with the model provider, Tether ex
 - **Zero Tools by Default:** Start completely bare (`done` only), or opt-in to specific tools via CLI (`--tools web,bash` or `--tools all`), Python SDK (`tools=["web"]`), or Skill frontmatter.
 - **1-Line Toolbox Index:** Active tools appear as a compact 1-line summary in the static prompt prefix (~10 tokens per tool).
 - **JIT Schema Disclosure (`--help`):** Full flags and docstrings are disclosed only when the model runs `<cmd> --help` or makes an argument error (self-healing usage hint).
-- **Explicit Termination (`act("done", stdin="...")`):** Small models often think out loud mid-task. Rather than prematurely ending the session on an un-tooled text reply, Tether requires an explicit `act("done", stdin="final report")` call to lock in the final deliverable.
+- **Explicit Termination (`act("done", stdin="...")`) & Pre-`done` Verification Gates:** Small models often think out loud mid-task or prematurely claim completion. Tether requires an explicit `act("done", stdin="final report")` call and can enforce zero-token **deterministic pre-`done` verification gates** (`--verify "pytest -q"`, `Harness(verify=[...])`, or `verify:` in Skill YAML)—blocking completion and feeding compact compiler/test diagnostics back for self-healing if any gate fails.
 
 ```mermaid
 flowchart LR
@@ -88,7 +88,7 @@ Every Tether execution is a stateful session persisted in `.tether/tether.db` (S
   - If **`COMPLETED` / `IDLE`**: appends the message and automatically spawns a worker to resume the session with its pinned memory and folded context intact.
 
 ### 3. Progressive Skills (`skills/`)
-Skills are portable capability bundles stored in `./skills/<name>/SKILL.md` (or `./skills/<name>.md`) with YAML frontmatter and an optional sibling `tools.py`:
+Skills are portable capability bundles stored in `./skills/<name>/SKILL.md` (or `./skills/<name>.md`) with YAML frontmatter (including optional `verify` gates) and an optional sibling `tools.py`:
 ```markdown
 ---
 name: researcher
