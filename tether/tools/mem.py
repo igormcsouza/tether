@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from tether.decorator import ToolSpec, build_tool_spec
-from tether.store import SQLiteStore
+from tether.store import GLOBAL_SESSION_ID, SQLiteStore
 
 
 def make_mem_tool(store: SQLiteStore, session_id: str) -> ToolSpec:
     help_str = (
-        "Usage: mem pin <key> <val> | mem unpin <key> | mem search <query> [--obs id] [--top 3] | "
-        "mem recall <obs_id>\n"
-        "Desc : Pin facts, search folded observations via BM25, or recall raw output."
+        "Usage: mem pin [--project] <key> <val> | mem unpin [--project] <key> | "
+        "mem search [--project] <query> [--obs id] [--top 3] | mem recall <obs_id>\n"
+        "Desc : Pin session/project facts, BM25-search memory, or recall raw output."
     )
 
     def _mem(args: list[str], stdin: str | None = None) -> str:
@@ -19,34 +19,57 @@ def make_mem_tool(store: SQLiteStore, session_id: str) -> ToolSpec:
 
         sub = args[0]
         if sub == "pin":
-            if len(args) < 2:
+            is_project = False
+            positional: list[str] = []
+            for arg in args[1:]:
+                if arg in ("--project", "--all"):
+                    is_project = True
+                else:
+                    positional.append(arg)
+            if not positional:
                 return f"Error: missing `<key>`.\n{help_str}"
-            key = args[1]
-            val = " ".join(args[2:]).strip() if len(args) > 2 else (stdin or "").strip()
+            key = positional[0]
+            val = " ".join(positional[1:]).strip() if len(positional) > 1 else (stdin or "").strip()
             if not val:
                 return f"Error: missing `<val>` (pass inline or via `stdin`).\n{help_str}"
-            store.set_pin(session_id, key, val)
-            return f"Pinned `{key}`."
+            target_sid = GLOBAL_SESSION_ID if is_project else session_id
+            store.set_pin(target_sid, key, val)
+            return f"Pinned `{key}` (project)." if is_project else f"Pinned `{key}`."
 
         if sub == "unpin":
-            if len(args) < 2:
+            is_project = False
+            positional = []
+            for arg in args[1:]:
+                if arg in ("--project", "--all"):
+                    is_project = True
+                else:
+                    positional.append(arg)
+            if not positional:
                 return f"Error: missing `<key>`.\n{help_str}"
-            removed = store.remove_pin(session_id, args[1])
-            return f"Unpinned `{args[1]}`." if removed else f"Key `{args[1]}` not found."
+            key = positional[0]
+            target_sid = GLOBAL_SESSION_ID if is_project else session_id
+            removed = store.remove_pin(target_sid, key)
+            return f"Unpinned `{key}`." if removed else f"Key `{key}` not found."
 
         if sub == "list":
-            pins = store.get_pins(session_id)
+            is_project = any(a in ("--project", "--all") for a in args[1:])
+            target_sid = GLOBAL_SESSION_ID if is_project else session_id
+            pins = store.get_pins(target_sid)
             if not pins:
                 return "No pinned facts."
             return "\n".join(f"- {k}: {v}" for k, v in pins.items())
 
         if sub == "search":
+            is_project = False
             obs_filter: str | None = None
             top_k = 3
             q_parts: list[str] = []
             i = 1
             while i < len(args):
-                if args[i] == "--obs" and i + 1 < len(args):
+                if args[i] in ("--project", "--all"):
+                    is_project = True
+                    i += 1
+                elif args[i] == "--obs" and i + 1 < len(args):
                     obs_filter = args[i + 1]
                     i += 2
                 elif args[i] == "--top" and i + 1 < len(args):
@@ -61,17 +84,30 @@ def make_mem_tool(store: SQLiteStore, session_id: str) -> ToolSpec:
             query = " ".join(q_parts).strip() or (stdin or "").strip()
             if not query:
                 return f"Error: missing `<query>`.\n{help_str}"
-            hits = store.search_chunks(
-                query,
-                session_ids=[session_id],
-                source_id=obs_filter,
-                top_k=top_k,
-            )
+            if is_project:
+                hits = store.search_project_chunks(
+                    query,
+                    source_id=obs_filter,
+                    top_k=top_k,
+                )
+            else:
+                hits = store.search_chunks(
+                    query,
+                    session_ids=[session_id],
+                    source_id=obs_filter,
+                    top_k=top_k,
+                )
             if not hits:
                 return f"No matching chunks for `{query}`."
-            formatted = [
-                f"[{h.source_type}:{h.source_id}#{h.chunk_index}]\n{h.content}" for h in hits
-            ]
+            if is_project:
+                formatted = [
+                    f"[{h.session_id} {h.source_type}:{h.source_id}#{h.chunk_index}]\n{h.content}"
+                    for h in hits
+                ]
+            else:
+                formatted = [
+                    f"[{h.source_type}:{h.source_id}#{h.chunk_index}]\n{h.content}" for h in hits
+                ]
             return "\n\n---\n\n".join(formatted)
 
         if sub == "recall":

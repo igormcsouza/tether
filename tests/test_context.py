@@ -114,6 +114,13 @@ def test_kv_prefix_immutability_with_pins(tmp_path: Path) -> None:
     assert "[PINNED MEMORY]" in msgs_step3[-1]["content"]
     assert "[PINNED MEMORY]" not in msgs_step3[3]["content"]
 
+    # Project-scoped pins (__project__) must never mutate static system prompt or session L1 pins
+    sys_before = assembler.build_system_prompt("- mem: memory")
+    store.set_pin("__project__", "global_convention", "Use strict mypy")
+    sys_after = assembler.build_system_prompt("- mem: memory")
+    assert sys_before == sys_after
+    assert "global_convention" not in str(store.get_pins(rec.id))
+
 
 def test_context_assembler_edge_cases() -> None:
     """Cover token estimation, static system prompt caching, and window trimming with pins."""

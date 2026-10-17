@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
-from tether.store import SQLiteStore, _sanitize_fts_tokens, chunk_text
+from tether.store import GLOBAL_SESSION_ID, SQLiteStore, _sanitize_fts_tokens, chunk_text
 
 
 def test_sqlite_connection_reuse_and_crud(tmp_path: Path) -> None:
@@ -48,4 +49,52 @@ def test_sqlite_connection_reuse_and_crud(tmp_path: Path) -> None:
     assert "not found" in store.get_session_digest("ses_nope")
     store.update_session(s1.id, result="R" * 200)
     assert "..." in store.get_session_digest(s1.id)
+    store.close()
+
+
+def test_project_memory_and_episodic_rag(tmp_path: Path) -> None:
+    """Verify GLOBAL_SESSION_ID pins and sub-millisecond cross-session BM25 RAG."""
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    assert GLOBAL_SESSION_ID == "__project__"
+
+    store.set_pin(GLOBAL_SESSION_ID, "db_engine", "SQLite WAL with FTS5 Porter tokenizer")
+    assert store.get_pins(GLOBAL_SESSION_ID) == {
+        "db_engine": "SQLite WAL with FTS5 Porter tokenizer"
+    }
+
+    s_done = store.create_session("Completed session")
+    store.update_session(
+        s_done.id,
+        status="COMPLETED",
+        result="Implemented zero-bloat sub-agent orchestration using bwrap sandbox.",
+    )
+
+    s_failed = store.create_session("Failed session")
+    store.update_session(
+        s_failed.id,
+        status="FAILED",
+        result="Unverified hallucinated approach with broken imports.",
+    )
+
+    project_ids = store.get_project_session_ids()
+    assert GLOBAL_SESSION_ID in project_ids
+    assert s_done.id in project_ids
+    assert s_failed.id not in project_ids
+
+    t0 = time.perf_counter()
+    hits_pin = store.search_project_chunks("Porter tokenizer")
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    assert elapsed_ms < 50.0
+    assert len(hits_pin) == 1
+    assert hits_pin[0].session_id == GLOBAL_SESSION_ID
+    assert hits_pin[0].source_type == "pin"
+
+    hits_done = store.search_project_chunks("bwrap sandbox")
+    assert len(hits_done) == 1
+    assert hits_done[0].session_id == s_done.id
+    assert hits_done[0].source_type == "result"
+
+    assert store.search_project_chunks("hallucinated") == []
+    assert store.remove_pin(GLOBAL_SESSION_ID, "db_engine") is True
+    assert store.search_project_chunks("Porter tokenizer") == []
     store.close()
