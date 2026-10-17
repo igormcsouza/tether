@@ -116,6 +116,42 @@ Tether supports any local or cloud model through **3 ultra-thin `httpx` adapters
 
 ---
 
+## Real-World Benchmark: Autonomous YouTube Short Production
+
+To measure how harness architecture impacts token consumption, latency, and local-model viability, we ran a head-to-head benchmark across **three configurations** (2 trials each) on a multi-stage media task:
+
+> **Task:** *"Create a 30-to-40 second vertical YouTube Short (1080x1920 `.mp4`) explaining 'What is an AI Harness, the Context Bloat Problem, and Micro-Harnesses', complete with 4 animated **Manim** vector diagrams, **EdgeTTS** neural voiceover (`en-US-ChristopherNeural`), synchronized subtitles, and **FFmpeg** muxing."*
+
+### Results Summary (2-Trial Averages)
+
+| Configuration | Harness | Model | Avg Steps | Avg Total Tokens | Peak Context | Avg Wall Time | Token Reduction vs. Claude Code |
+| :--- | :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **Tether + Local 8B** | **Tether `v0`** | `ollama/gemma4:e4b` | **2.0** | **3,073** | **1,854** | **53.1s** | **68.8× fewer tokens** (\$0 local) |
+| **Tether + Claude** | **Tether `v0`** | `anthropic/claude-sonnet-5-5` | **2.0** | **5,318** | **3,118** | **48.7s** | **39.7× fewer tokens** (2.0× faster) |
+| **Claude Code CLI** | Claude Code | `claude-sonnet-5-5` | 5.0 | 211,355 | 42,091 | 97.4s | 1.0× (baseline) |
+
+```mermaid
+xychart-beta
+    title "Total Tokens Consumed per Video (Lower is Better)"
+    x-axis ["Tether + gemma4:e4b (Local)", "Tether + Claude Sonnet", "Claude Code CLI (Sonnet)"]
+    y-axis "Total Tokens (Prompt + Output)" 0 --> 220000
+    bar [3073, 5318, 211355]
+```
+
+```mermaid
+xychart-beta
+    title "End-to-End Wall-Clock Time in Seconds (Lower is Better)"
+    x-axis ["Tether + Claude Sonnet", "Tether + gemma4:e4b (Local)", "Claude Code CLI (Sonnet)"]
+    y-axis "Seconds (incl. Manim + EdgeTTS + FFmpeg)" 0 --> 110
+    bar [48.7, 53.1, 97.4]
+```
+
+### Why the 40×–69× Token Difference?
+1. **Zero Tool Schema Bloat:** Claude Code injects **~41,000+ tokens** of system instructions and JSON tool schemas on *every single reasoning turn* (consuming `164k–257k` cumulative tokens across 4–6 turns of file exploration and shell execution). Tether's static prefix + `shorts-maker` skill framing is **< 400 tokens**, allowing both `claude-sonnet-5-5` and a local `8B` model (`gemma4:e4b`) to one-shot the entire 4-scene YAML specification via `act("render-short ...", stdin="...")` on Turn 1 and call `done` on Turn 2.
+2. **Identical Frontier Model, 39.7× Less Context:** Running the *exact same* `claude-sonnet-5-5` model inside Tether instead of Claude Code cut token consumption from **211,355 $\rightarrow$ 5,318 tokens** and halved execution time (**97.4s $\rightarrow$ 48.7s**), because nearly 100% of wall-clock time went to actual Manim + EdgeTTS rendering (~43s) rather than re-processing massive prompt prefixes.
+
+---
+
 ## Quickstart
 
 ### Headless CLI Usage

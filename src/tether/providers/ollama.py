@@ -76,7 +76,7 @@ class OllamaProvider:
 
         msg = data.get("message") or {}
         content = str(msg.get("content") or "").strip()
-        prompt_tokens = int(data.get("prompt_eval_count") or 0)
+        prompt_tokens = int(data.get("prompt_eval_count") or 0) + int(data.get("eval_count") or 0)
 
         action: ActionCall | None = None
         tool_calls = msg.get("tool_calls") or []
