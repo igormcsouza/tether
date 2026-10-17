@@ -36,3 +36,37 @@ async def test_mem_tool(tmp_path: Path) -> None:
     assert "not found" in (await mux.execute("mem recall obs_999")).output
     assert "Quantum" in (await mux.execute(f"mem recall {obs.id}")).output
     assert "Error: unknown subcommand" in (await mux.execute("mem bogus")).output
+
+    # Project-scoped pins and cross-session episodic BM25 RAG (--project / --all)
+    assert "No pinned facts." in (await mux.execute("mem list --project")).output
+    pin_proj = (
+        await mux.execute("mem pin --project arch_rule", stdin="Always use WAL mode")
+    ).output
+    assert "Pinned `arch_rule` (project)." in pin_proj
+    assert store.get_pins(srec.id) == {}
+    assert "arch_rule: Always use WAL mode" in (await mux.execute("mem list --project")).output
+
+    past_ses = store.create_session("Past completed session")
+    store.update_session(
+        past_ses.id,
+        status="COMPLETED",
+        result="Resolved migration issue by enabling foreign_keys pragma.",
+    )
+    failed_ses = store.create_session("Past failed session")
+    store.update_session(
+        failed_ses.id,
+        status="FAILED",
+        result="Corrupted migration script output.",
+    )
+
+    proj_hit1 = (await mux.execute("mem search --project WAL mode")).output
+    assert "[__project__ pin:arch_rule#0]" in proj_hit1
+    assert "Always use WAL mode" in proj_hit1
+
+    proj_hit2 = (await mux.execute("mem search --all foreign_keys --top 2")).output
+    assert f"[{past_ses.id} result:final#0]" in proj_hit2
+    assert "foreign_keys pragma" in proj_hit2
+
+    assert "No matching chunks" in (await mux.execute("mem search --project Corrupted")).output
+    assert "Unpinned `arch_rule`." in (await mux.execute("mem unpin --project arch_rule")).output
+    assert "not found" in (await mux.execute("mem unpin --project arch_rule")).output

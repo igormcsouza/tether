@@ -106,7 +106,7 @@ Because every Tether session is headless-capable, a parent agent can delegate co
 - `agent spawn --skill researcher "Summarize AI news"` $\rightarrow$ immediately returns `ses_9a2f1c` (non-blocking).
 - `agent wait ses_9a2f1c ses_4b8e0d` $\rightarrow$ returns a **compact ~50-token digest** (status, chunk count, preview) rather than dumping thousands of tokens into the parent's prompt.
 - `agent query ses_9a2f1c "open-weight benchmarks" --top 3` $\rightarrow$ uses **SQLite FTS5 (BM25 ranking)** over the sub-agent's chunked final deliverable *and* raw scraped observations to retrieve only the top-K relevant snippets (~250 tokens). Pass `--all` to search across all child sessions at once!
-- `mem search "rate limits"` $\rightarrow$ uses the same FTS5 index inside a single session to pull specific chunks from folded observations without recalling the entire raw output.
+- `mem search "rate limits"` $\rightarrow$ uses the same FTS5 index inside a single session to pull specific chunks from folded observations without recalling the entire raw output, or pass `mem search --project "<query>"` (and `mem pin --project <k> <v>`) to query across workspace-level facts (`__project__`) and all past `COMPLETED` sessions.
 
 ### 5. Deterministic Security Sandbox (Never Relying on the LLM)
 In line with Maia et al. (2026), safety boundaries are enforced **deterministically by the harness and OS kernel**, never by prompting the model to "be careful":
@@ -286,7 +286,7 @@ harness = Harness(model="gateway/qwen-enterprise-32b", tools=["web", "mem"])
 | **`web`** | `web search <query>` \| `web fetch <url>` | Zero-config DuckDuckGo Lite search (auto-upgrades to Brave/Tavily/SearXNG) + clean reader |
 | **`bash`** | `bash <command>` *(or script via `stdin`)* | Kernel-sandboxed (`bwrap`/`unshare`), env-scrubbed, workspace-bounded shell execution |
 | **`edit`** | `edit view <path>` \| `edit write <path>` \| `edit replace <path>` | Workspace-jailed, line-numbered file viewing and `stdin`-based creation/replacement |
-| **`mem`** | `mem pin <k> <v>` \| `mem search <query>` \| `mem recall <obs_id>` | Pinned working memory + BM25 RAG search & retrieval over folded observations |
+| **`mem`** | `mem pin [--project] <k> <v>` \| `mem search [--project] <q>` \| `mem recall <obs_id>` | Pinned session/project memory + BM25 RAG search across folded observations and completed sessions |
 | **`skill`** | `skill list` \| `skill load <name>` | Progressive discovery and JIT loading of skill instructions & tools |
 | **`agent`** | `agent spawn` \| `agent wait` \| `agent query` \| `agent read` \| `agent send` | Async sub-agent spawning, compact wait digests, and BM25 RAG queries over child sessions |
 

@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+GLOBAL_SESSION_ID = "__project__"
+
 
 @dataclass(slots=True)
 class SessionRecord:
@@ -620,6 +622,32 @@ class SQLiteStore:
                         for r in rows
                     ]
         return []
+
+    def get_project_session_ids(self) -> list[str]:
+        """Return GLOBAL_SESSION_ID plus all COMPLETED session IDs for cross-session RAG."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id FROM sessions WHERE status = 'COMPLETED' ORDER BY updated_at DESC"
+            ).fetchall()
+            completed_ids = [str(r["id"]) for r in rows if str(r["id"]) != GLOBAL_SESSION_ID]
+            return [GLOBAL_SESSION_ID, *completed_ids]
+
+    def search_project_chunks(
+        self,
+        query: str,
+        *,
+        source_types: list[str] | None = None,
+        source_id: str | None = None,
+        top_k: int = 3,
+    ) -> list[ChunkHit]:
+        """Run a BM25 FTS5 query across project pins (`__project__`) and COMPLETED sessions."""
+        return self.search_chunks(
+            query,
+            session_ids=self.get_project_session_ids(),
+            source_types=source_types,
+            source_id=source_id,
+            top_k=top_k,
+        )
 
     def get_session_digest(self, session_id: str) -> str:
         """Build a compact ~50-token digest card for a session (avoids flooding parent context)."""

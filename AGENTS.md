@@ -99,8 +99,8 @@ tether/
   - `sessions`: `id`, `parent_id`, `status` (`PENDING`, `RUNNING`, `WAITING_INPUT`, `COMPLETED`, `FAILED`), `model`, `skill`, `tools_json`, `sandbox_json`, `goal`, `result`, `step_count`, `max_steps`, `peak_tokens`, `pid`, `created_at`, `updated_at`.
   - `turns`: `id`, `session_id`, `step`, `role`, `content`, `tool_cmd`, `tool_stdin`, `obs_id`, `created_at`.
   - `observations`: `id`, `session_id`, `step`, `cmd`, `raw_output`, `summary`, `char_len`.
-  - `chunks_fts` *(SQLite FTS5 Virtual Table)*: `session_id`, `source_type` (`result` | `observation` | `pin`), `source_id`, `chunk_index`, `content` — automatically indexes ~150-token paragraph/heading chunks of all observations and final `done` deliverables for sub-millisecond BM25 RAG.
-  - `pins`: `session_id`, `key`, `value`.
+  - `chunks_fts` *(SQLite FTS5 Virtual Table)*: `session_id`, `source_type` (`result` | `observation` | `pin`), `source_id`, `chunk_index`, `content` — automatically indexes ~150-token paragraph/heading chunks of all observations, pins, and final `done` deliverables for sub-millisecond BM25 RAG (including cross-session project search via `mem search --project <query>`).
+  - `pins`: `session_id`, `key`, `value` (supports session-scoped working memory and workspace-wide semantic facts under `GLOBAL_SESSION_ID = "__project__"` via `mem pin --project <key> <val>`).
   - `inbox`: `id`, `session_id`, `message`, `consumed` (`0` or `1`), `created_at`.
 - **Headless Worker & Live `send` Contract:**
   - `tether run --headless ...` creates the session row in SQLite and spawns `python -m tether.cli _worker <session_id>` via `subprocess.Popen(..., start_new_session=True)`, printing `<session_id>` immediately to stdout.

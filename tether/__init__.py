@@ -13,12 +13,13 @@ from tether.providers import (
 )
 from tether.sandbox import SandboxPolicy, SandboxViolationError
 from tether.skills import Skill, SkillLoader
-from tether.store import SessionRecord, SQLiteStore
+from tether.store import GLOBAL_SESSION_ID, SessionRecord, SQLiteStore
 
 __version__ = "0.0.3"
 
 __all__ = [
     "ActionCall",
+    "GLOBAL_SESSION_ID",
     "Harness",
     "ModelProvider",
     "ModelResponse",
