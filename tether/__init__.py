@@ -15,7 +15,7 @@ from tether.sandbox import SandboxPolicy, SandboxViolationError
 from tether.skills import Skill, SkillLoader
 from tether.store import SessionRecord, SQLiteStore
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 __all__ = [
     "ActionCall",
