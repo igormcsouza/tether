@@ -238,7 +238,7 @@ class Harness:
         *,
         headless: bool = False,
     ) -> SessionRecord:
-        """Send a message to a session's SQLite inbox; auto-resumes if COMPLETED/FAILED."""
+        """Send a message to SQLite inbox; auto-resumes if WAITING_INPUT/COMPLETED/FAILED."""
         rec = self.store.get_session(session_id)
         if not rec:
             raise ValueError(f"Session `{session_id}` not found.")
@@ -247,7 +247,7 @@ class Harness:
         if rec.status == "RUNNING":
             return rec
 
-        # Session was IDLE/COMPLETED/FAILED -> resume it
+        # Session was WAITING_INPUT/IDLE/COMPLETED/FAILED -> resume it
         if headless:
             self.store.update_session(session_id, status="PENDING")
             spawner = self._spawner_for_store()
@@ -427,6 +427,35 @@ class Harness:
                 last_action_sig = action_sig
 
                 dispatch = await mux.execute(cmd, stdin=stdin)
+                if dispatch.is_waiting_input:
+                    late_inbox = self.store.consume_inbox(session_id)
+                    if late_inbox:
+                        for lmsg in late_inbox:
+                            self.store.add_turn(
+                                session_id=session_id,
+                                step=step,
+                                role="user",
+                                content=f"[Follow-up instruction]: {lmsg}",
+                            )
+                        continue
+
+                    question_text = dispatch.final_result or ""
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=f"[WAITING_INPUT] {question_text}",
+                    )
+                    self.store.update_session(
+                        session_id,
+                        status="WAITING_INPUT",
+                        result=question_text,
+                        step_count=step,
+                    )
+                    waiting_rec = self.store.get_session(session_id)
+                    assert waiting_rec is not None
+                    return waiting_rec
+
                 if dispatch.is_done:
                     # Check if any new message arrived in inbox while executing this step
                     late_inbox = self.store.consume_inbox(session_id)
