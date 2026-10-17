@@ -128,9 +128,10 @@ src/tether/
   ```
 - If `skills/<name>/tools.py` exists, any `@tool`-decorated functions inside it are automatically registered into the session's multiplexer when the skill is loaded.
 
-#### D. 3 Thin `httpx` Model Providers (`providers/`)
+#### D. 3 Thin `httpx` Model Providers & SDK Provider Routing (`providers/`)
 - Model identifier format: `<provider>/<model_name>` (e.g., `ollama/qwen3.5:9b`, `openai/gpt-4o-mini`, `anthropic/claude-3-7-sonnet-latest`).
 - If no provider prefix is given, defaults to `ollama/<model>`.
+- Custom SDK transports (e.g., custom corporate gateways or stripped CLI pipes like `claude -p --tools ""`) can be injected via `Harness(provider=...)` or registered under a custom `<prefix>/<model>` via `register_provider(prefix, factory)` without adding crutches to the core `httpx` adapters.
 - Environment variables:
   - `OLLAMA_HOST` (default `http://localhost:11434`)
   - `OPENAI_API_KEY`, `OPENAI_BASE_URL` (default `https://api.openai.com/v1` — works with OpenRouter, vLLM, Groq, etc.)

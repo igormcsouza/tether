@@ -208,6 +208,72 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
+### Custom SDK Provider Routing (`register_provider` / `provider=...`)
+
+Want to route Tether through a custom transport—such as a corporate gateway, a custom local inference engine, or even a stripped CLI OAuth pipe (e.g., `claude -p --tools ""`) without touching Tether's core adapters? Implement the 1-method `ModelProvider` protocol or register a custom URL prefix with `register_provider`:
+
+```python
+import asyncio
+import json
+from tether import (
+    Harness,
+    ModelResponse,
+    extract_fallback_action,
+    register_provider,
+)
+
+
+class StrippedClaudeCLIProvider:
+    """Routes Tether turns through `claude -p --tools ''` using local OAuth."""
+
+    def __init__(self, model_name: str = "claude-sonnet-5-5") -> None:
+        self.model_name = model_name
+
+    async def generate(self, messages: list[dict], tools: list[dict]) -> ModelResponse:
+        system = next((m["content"] for m in messages if m["role"] == "system"), "")
+        prompt = "\n\n".join(
+            f"[{m['role']}]\n{m['content']}" for m in messages if m["role"] != "system"
+        )
+        proc = await asyncio.create_subprocess_exec(
+            "claude",
+            "-p",
+            "--tools",
+            "",
+            "--model",
+            self.model_name,
+            "--system-prompt",
+            f'{system}\nRespond ONLY with `act("<cmd>", stdin="...")`.',
+            "--output-format",
+            "json",
+            prompt,
+            stdout=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc.communicate()
+        data = json.loads(stdout.decode().strip().splitlines()[-1])
+        text = str(data.get("result") or "").strip()
+        usage = data.get("usage") or {}
+        tokens = sum(
+            int(usage.get(k) or 0)
+            for k in (
+                "input_tokens",
+                "cache_creation_input_tokens",
+                "cache_read_input_tokens",
+                "output_tokens",
+            )
+        )
+        return ModelResponse(
+            content=text,
+            action=extract_fallback_action(text),
+            prompt_tokens=tokens,
+        )
+
+
+# Register as a custom `<prefix>/<model>` for Harness, Skills, and Sub-Agents:
+register_provider("claude-cli", StrippedClaudeCLIProvider)
+
+harness = Harness(model="claude-cli/claude-sonnet-5-5", tools=["web", "mem"])
+```
+
 ---
 
 ## Built-In Virtual CLI Toolbox (Opt-In)
