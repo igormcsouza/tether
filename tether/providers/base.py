@@ -20,6 +20,10 @@ class ModelResponse:
     content: str
     action: ActionCall | None = None
     prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+ProviderResponse = ModelResponse
 
 
 class ModelProvider(Protocol):

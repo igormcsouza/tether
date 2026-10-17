@@ -9,6 +9,7 @@ from tether.providers.base import (
     ActionCall,
     ModelProvider,
     ModelResponse,
+    ProviderResponse,
     extract_fallback_action,
     parse_tool_arguments,
 )
@@ -59,6 +60,7 @@ __all__ = [
     "OllamaProvider",
     "OpenAIProvider",
     "ProviderFactory",
+    "ProviderResponse",
     "extract_fallback_action",
     "parse_tool_arguments",
     "register_provider",

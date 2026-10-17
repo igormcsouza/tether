@@ -130,6 +130,11 @@ class AnthropicProvider:
             int(usage.get("input_tokens") or 0)
             + int(usage.get("cache_creation_input_tokens") or 0)
             + int(usage.get("cache_read_input_tokens") or 0)
-            + int(usage.get("output_tokens") or 0)
         )
-        return ModelResponse(content=content, action=action, prompt_tokens=prompt_tokens)
+        completion_tokens = int(usage.get("output_tokens") or 0)
+        return ModelResponse(
+            content=content,
+            action=action,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )

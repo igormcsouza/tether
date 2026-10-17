@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import sqlite3
 import time
 from pathlib import Path
 
-from tether.store import GLOBAL_SESSION_ID, SQLiteStore, _sanitize_fts_tokens, chunk_text
+from tether.store import (
+    GLOBAL_SESSION_ID,
+    SQLiteStore,
+    _sanitize_fts_tokens,
+    canonical_tool_command,
+    chunk_text,
+)
 
 
 def test_sqlite_connection_reuse_and_crud(tmp_path: Path) -> None:
@@ -97,4 +104,130 @@ def test_project_memory_and_episodic_rag(tmp_path: Path) -> None:
     assert store.search_project_chunks("hallucinated") == []
     assert store.remove_pin(GLOBAL_SESSION_ID, "db_engine") is True
     assert store.search_project_chunks("Porter tokenizer") == []
+    store.close()
+
+
+def test_telemetry_migration_and_stats_aggregation(tmp_path: Path) -> None:
+    """Verify legacy DB migration, canonical_tool_command, and get_stats / format_stats_report."""
+    assert canonical_tool_command(None) == "unknown"
+    assert canonical_tool_command("   ") == "unknown"
+    assert canonical_tool_command('""') == "unknown"
+    assert canonical_tool_command("$ tether edit replace a.py --lines 1:2") == "edit replace"
+    assert canonical_tool_command("`bash pytest -q`") == "bash"
+
+    legacy_db = tmp_path / "legacy.db"
+    with sqlite3.connect(str(legacy_db)) as raw_conn:
+        raw_conn.executescript(
+            """
+            CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                parent_id TEXT,
+                status TEXT NOT NULL,
+                model TEXT NOT NULL,
+                skill TEXT,
+                tools_json TEXT NOT NULL,
+                sandbox_json TEXT NOT NULL,
+                goal TEXT NOT NULL,
+                result TEXT,
+                step_count INTEGER NOT NULL DEFAULT 0,
+                max_steps INTEGER NOT NULL DEFAULT 15,
+                peak_tokens INTEGER NOT NULL DEFAULT 0,
+                pid INTEGER,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            );
+            CREATE TABLE turns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                step INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                tool_cmd TEXT,
+                tool_stdin TEXT,
+                obs_id TEXT,
+                created_at REAL NOT NULL
+            );
+            """
+        )
+
+    store = SQLiteStore(db_path=legacy_db)
+    assert store.format_stats_report() == "No sessions recorded."
+
+    s1 = store.create_session("Goal 1", model="ollama/qwen3.5:9b", skill="coder")
+    store.update_session(
+        s1.id,
+        status="COMPLETED",
+        step_count=3,
+        peak_tokens=500,
+        add_prompt_tokens=400,
+        add_completion_tokens=100,
+    )
+    t1 = store.add_turn(
+        s1.id,
+        step=1,
+        role="assistant",
+        content="thinking",
+        prompt_tokens=120,
+        completion_tokens=30,
+        duration_ms=45,
+        event_type="nudge",
+    )
+    store.update_turn_telemetry(t1)  # no-op when no fields specified
+    t2 = store.add_turn(
+        s1.id,
+        step=2,
+        role="assistant",
+        content="",
+        tool_cmd="edit replace foo.py",
+        prompt_tokens=140,
+        completion_tokens=35,
+        duration_ms=50,
+    )
+    store.update_turn_telemetry(t2, event_type="syntax_error", duration_ms=55)
+    t3 = store.add_turn(
+        s1.id,
+        step=3,
+        role="assistant",
+        content="",
+        tool_cmd="bash pytest",
+        event_type="loop_stall",
+    )
+    assert t3 > 0
+    store.add_turn(
+        s1.id,
+        step=3,
+        role="assistant",
+        content="",
+        tool_cmd="edit view missing.py",
+        event_type="tool_error",
+    )
+
+    s2 = store.create_session("Goal 2", model="openai/gpt-4o-mini", skill="researcher")
+    store.update_session(
+        s2.id,
+        status="FAILED",
+        step_count=2,
+        peak_tokens=300,
+        add_prompt_tokens=250,
+        add_completion_tokens=50,
+    )
+
+    report = store.get_stats(model="ollama/qwen3.5:9b", skill="coder", limit=10)
+    assert len(report.models) == 1
+    m = report.models[0]
+    assert m.runs == 1
+    assert m.pass_rate == 100.0
+    assert m.total_tokens == 500
+    assert m.nudges == 1
+    assert m.syntax_errors == 1
+    assert m.loop_stalls == 1
+    assert m.tool_errors == 1
+    assert len(report.offenders) == 3
+
+    formatted = store.format_stats_report()
+    assert "MODEL" in formatted
+    assert "ollama/qwen3.5:9b" in formatted
+    assert "openai/gpt-4o-mini" in formatted
+    assert "Top Friction Offenders (by command):" in formatted
+    assert "edit replace" in formatted
     store.close()

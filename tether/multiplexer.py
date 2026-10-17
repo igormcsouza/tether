@@ -10,6 +10,13 @@ from typing import Any
 from tether.decorator import ToolSpec, build_tool_spec
 from tether.sandbox import SandboxViolationError
 
+_SYNTAX_ERROR_MARKERS = (
+    "\nUsage:",
+    "expects an integer",
+    "invalid line range",
+    "URL must start with",
+)
+
 
 @dataclass(slots=True)
 class DispatchResult:
@@ -18,6 +25,14 @@ class DispatchResult:
     is_waiting_input: bool = False
     final_result: str | None = None
     is_error: bool = False
+    error_kind: str | None = None
+
+
+def _classify_tool_error(output: str) -> str:
+    """Classify a tool Error: response as syntax_error (JIT --help / bad args) vs runtime_error."""
+    if any(marker in output for marker in _SYNTAX_ERROR_MARKERS):
+        return "syntax_error"
+    return "runtime_error"
 
 
 def normalize_cmd(raw_cmd: str) -> str:
@@ -85,11 +100,16 @@ class Multiplexer:
             return DispatchResult(
                 output=f"Error: empty command. Available tools: {avail}. Run `<tool> --help`.",
                 is_error=True,
+                error_kind="syntax_error",
             )
 
         tokens = split_cli(clean_cmd)
         if not tokens:
-            return DispatchResult(output="Error: empty command.", is_error=True)
+            return DispatchResult(
+                output="Error: empty command.",
+                is_error=True,
+                error_kind="syntax_error",
+            )
 
         name = tokens[0]
         args = tokens[1:]
@@ -107,16 +127,18 @@ class Multiplexer:
             return DispatchResult(
                 output=f"Error: unknown command `{name}`. Enabled tools: {avail}.",
                 is_error=True,
+                error_kind="unknown_cmd",
             )
 
         try:
             out = await spec.invoke(args, stdin=stdin)
         except SandboxViolationError as exc:
-            return DispatchResult(output=str(exc), is_error=True)
+            return DispatchResult(output=str(exc), is_error=True, error_kind="runtime_error")
         except Exception as exc:
             return DispatchResult(
                 output=f"Error executing `{name}`: {exc}\n{spec.help_text()}",
                 is_error=True,
+                error_kind="runtime_error",
             )
 
         if name == "done" and not out.startswith("Error:") and not out.startswith("Usage:"):
@@ -124,4 +146,9 @@ class Multiplexer:
                 return DispatchResult(output=out, is_waiting_input=True, final_result=out)
             return DispatchResult(output=out, is_done=True, final_result=out)
 
-        return DispatchResult(output=out, is_error=out.startswith("Error:"))
+        is_err = out.startswith("Error:")
+        return DispatchResult(
+            output=out,
+            is_error=is_err,
+            error_kind=_classify_tool_error(out) if is_err else None,
+        )

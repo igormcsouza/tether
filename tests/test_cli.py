@@ -72,8 +72,11 @@ async def test_cli_subcommands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     await task
 
     assert await _async_main(["list", "--db", db_arg]) == 0
+    assert await _async_main(["stats", "--db", db_arg]) == 0
+    assert await _async_main(["stats", "--model", "cli-test/qwen", "--db", db_arg]) == 0
     empty_db = str(tmp_path / "empty.db")
     assert await _async_main(["list", "--db", empty_db]) == 0
+    assert await _async_main(["stats", "--db", empty_db]) == 0
 
     orig_build_parser = cli_mod.build_parser
 

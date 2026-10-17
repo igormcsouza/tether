@@ -8,12 +8,20 @@ from tether.providers import (
     ActionCall,
     ModelProvider,
     ModelResponse,
+    ProviderResponse,
     extract_fallback_action,
     register_provider,
 )
 from tether.sandbox import SandboxPolicy, SandboxViolationError
 from tether.skills import Skill, SkillLoader
-from tether.store import GLOBAL_SESSION_ID, SessionRecord, SQLiteStore
+from tether.store import (
+    GLOBAL_SESSION_ID,
+    ModelStats,
+    SessionRecord,
+    SQLiteStore,
+    StatsReport,
+    ToolOffender,
+)
 
 __version__ = "0.0.3"
 
@@ -23,12 +31,16 @@ __all__ = [
     "Harness",
     "ModelProvider",
     "ModelResponse",
+    "ModelStats",
+    "ProviderResponse",
     "SQLiteStore",
     "SandboxPolicy",
     "SandboxViolationError",
     "SessionRecord",
     "Skill",
     "SkillLoader",
+    "StatsReport",
+    "ToolOffender",
     "ToolSpec",
     "extract_fallback_action",
     "register_provider",

@@ -78,7 +78,8 @@ async def test_ollama_provider_and_connection_pooling() -> None:
     r1 = await op.generate([{"role": "user", "content": "hi"}], [])
     assert op.model_name == "qwen3.5:9b"
     assert r1.action is not None and r1.action.cmd == "done 'ok'"
-    assert r1.prompt_tokens == 60
+    assert r1.prompt_tokens == 50
+    assert r1.completion_tokens == 10
 
     ollama_step = 2
     assert await op._resolve_installed_model(client_ollama) == "gemma4:e4b"

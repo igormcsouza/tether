@@ -88,7 +88,8 @@ class OllamaProvider:
 
         msg = data.get("message") or {}
         content = str(msg.get("content") or "").strip()
-        prompt_tokens = int(data.get("prompt_eval_count") or 0) + int(data.get("eval_count") or 0)
+        prompt_tokens = int(data.get("prompt_eval_count") or 0)
+        completion_tokens = int(data.get("eval_count") or 0)
 
         action: ActionCall | None = None
         tool_calls = msg.get("tool_calls") or []
@@ -109,4 +110,9 @@ class OllamaProvider:
         if action is None and content:
             action = extract_fallback_action(content)
 
-        return ModelResponse(content=content, action=action, prompt_tokens=prompt_tokens)
+        return ModelResponse(
+            content=content,
+            action=action,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
