@@ -23,11 +23,16 @@ On frontier cloud models, that waste is expensive. On local and small models lik
 
 ## Theoretical Foundation
 
-Tether's architecture is grounded in **Maia et al. (2026)**, *"LLM-Native Applications as a Paradigm for AI-Driven Software Architecture"*:
+Tether is not just another wrapper around chat completions; every design choice is grounded in recent systems and software-architecture research on why LLM agents succeed or fail:
 
-- **Probabilistic Core, Deterministic Envelope:** The LLM serves as the central reasoning kernel, while tool routing, CLI parsing, context eviction, SQLite state persistence, and completion gates remain strictly deterministic.
-- **Explicit Context & State Governance:** Context is managed as a scarce L1 working memory backed by an ACID SQLite store (`.tether/tether.db` in WAL mode)—never an unbounded append-only chat transcript.
-- **First-Class AI Quality Attributes:** Every subsystem optimizes for **Token Economy**, **KV-Cache Prefix Immutability**, **Self-Healing Execution**, and **Observability**.
+1. **Probabilistic Core, Deterministic Envelope ([Maia et al., 2026](#references)):**
+   Rather than trusting the model to enforce its own guardrails or manage state in raw text, Tether separates the **probabilistic reasoning kernel** (the LLM) from a **strictly deterministic envelope** (CLI argument parsing, path canonicalization, OS kernel sandboxing, SQLite ACID state transitions, and explicit `done` termination gates).
+2. **Why a Single `act(cmd, stdin)` Primitive Beats 30 JSON Schemas ([Wang et al., ICML 2024 — *CodeAct*](#references)):**
+   Across 17 evaluated models, Wang et al. demonstrated that forcing an LLM to choose among dozens of rigid JSON function-calling schemas degrades reasoning and wastes thousands of prompt tokens. Consolidating actions into a **single unified executable action channel** improves task success rates by **up to 20%** while cutting required turns by **~30%**—an effect that is especially pronounced on smaller open-weight models (`7B`–`9B`).
+3. **Why a Virtual CLI + Progressive `--help` + Observation Folding ([Yang et al., NeurIPS 2024 — *SWE-agent*](#references)):**
+   Just as humans need ergonomic UIs, LLMs need purpose-built **Agent-Computer Interfaces (ACIs)**. Following Yang et al., Tether replaces raw shell dumps and upfront schema walls with a compact POSIX-style command bus, windowed line-numbered file editing (`edit view`/`replace`), immediate self-healing usage hints (`--help`) when a command is malformed, and **ephemeral observation folding** so old tool outputs don't crowd out active reasoning.
+4. **Context as L1 Cache Backed by SQLite L2 Storage ([Packer et al., 2023 — *MemGPT*](#references)):**
+   Instead of treating the prompt as an unbounded append-only transcript, Tether treats the active context window like an **OS L1 working cache** (static prefix + `mem pin` scratchpad + the last $K$ raw observations) backed by **L2 disk storage** (`.tether/tether.db` in WAL mode with an automatic FTS5 BM25 index), allowing agents to page relevant knowledge in and out on demand via `mem search`, `mem recall`, and `agent query`.
 
 ---
 
@@ -293,4 +298,7 @@ tether/
 
 ## References
 
-- Maia, P. H. M., et al. (2026). *LLM-Native Applications as a Paradigm for AI-Driven Software Architecture*.
+1. **Maia, P. H. M., et al. (2026).** *LLM-Native Applications as a Paradigm for AI-Driven Software Architecture*.
+2. **Wang, X., Chen, Y., Yuan, L., Zhang, Y., Li, Y., Peng, H., & Ji, H. (2024).** *Executable Code Actions Elicit Better LLM Agents (CodeAct)*. In **Proceedings of the 41st International Conference on Machine Learning (ICML 2024)**. [arXiv:2402.01030](https://arxiv.org/abs/2402.01030)
+3. **Yang, J., Jimenez, C. E., Wettig, A., Lieret, K., Yao, S., Narasimhan, K., & Press, O. (2024).** *SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering*. In **Advances in Neural Information Processing Systems (NeurIPS 2024)**. [arXiv:2405.15793](https://arxiv.org/abs/2405.15793)
+4. **Packer, C., Wooders, S., Lin, K., Fang, V., Patil, S. G., Stoica, I., & Gonzalez, J. E. (2023).** *MemGPT: Towards LLMs as Operating Systems*. [arXiv:2310.08560](https://arxiv.org/abs/2310.08560)
