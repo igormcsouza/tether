@@ -276,22 +276,23 @@ harness = Harness(model="gateway/qwen-enterprise-32b", tools=["web", "mem"])
 tether/
 ├── README.md
 ├── AGENTS.md                  # Authoritative blueprint for coding agents & contributors
+├── mkdocs.yml                 # MkDocs Material documentation configuration
 ├── pyproject.toml             # Managed with uv (httpx, pyyaml, standard library)
+├── docs/                      # Full documentation, tutorials & API reference
 ├── skills/                    # Built-in & workspace progressive skills
-├── src/
-│   └── tether/
-│       ├── __init__.py        # SDK exports: Harness, Session, Skill, SandboxPolicy, tool
-│       ├── cli.py             # `tether` CLI entrypoint (run, status, read, send, list)
-│       ├── harness.py         # Control Plane: bounded agent loop, inbox polling, worker spawn
-│       ├── store.py           # State & RAG Plane: SQLite WAL + FTS5 BM25 chunk store
-│       ├── sandbox.py         # Security Plane: bwrap/unshare kernel sandbox & workspace jail
-│       ├── multiplexer.py     # Action Plane: `act(cmd, stdin)` parser, router & JIT --help
-│       ├── decorator.py       # `@tool` introspection -> POSIX CLI parser & compact usage
-│       ├── context.py         # State Plane: ContextAssembler & Ephemeral Observation Folder
-│       ├── skills.py          # Markdown + YAML frontmatter + companion `tools.py` loader
-│       ├── providers/         # Thin httpx adapters: ollama.py, openai.py, anthropic.py
-│       └── tools/             # Opt-in built-ins: bash.py, web.py, edit.py, mem.py, agent.py
-└── tests/
+├── tether/
+│   ├── __init__.py            # SDK exports: Harness, Session, Skill, SandboxPolicy, tool
+│   ├── cli.py                 # `tether` CLI entrypoint (run, status, read, send, list)
+│   ├── harness.py             # Control Plane: bounded agent loop, inbox polling, worker spawn
+│   ├── store.py               # State & RAG Plane: SQLite WAL + FTS5 BM25 chunk store
+│   ├── sandbox.py             # Security Plane: bwrap/unshare kernel sandbox & workspace jail
+│   ├── multiplexer.py         # Action Plane: `act(cmd, stdin)` parser, router & JIT --help
+│   ├── decorator.py           # `@tool` introspection -> POSIX CLI parser & compact usage
+│   ├── context.py             # State Plane: ContextAssembler & Ephemeral Observation Folder
+│   ├── skills.py              # Markdown + YAML frontmatter + companion `tools.py` loader
+│   ├── providers/             # Thin httpx adapters: ollama.py, openai.py, anthropic.py
+│   └── tools/                 # Opt-in built-ins: bash.py, web.py, edit.py, mem.py, agent.py
+└── tests/                     # Per-module unit tests + integration suite (100% coverage)
 ```
 
 ---

@@ -1,0 +1,121 @@
+site_name: tether
+site_description: General-purpose, headless-first LLM-Native micro-harness for small and frontier language models
+site_author: Igor Souza
+site_url: https://igormcsouza.github.io/tether/
+
+repo_name: igormcsouza/tether
+repo_url: https://github.com/igormcsouza/tether
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.path
+    - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.select
+    - content.code.annotate
+    - content.tabs.link
+    - content.action.edit
+  palette:
+    - scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+extra:
+  social:
+    - icon: fontawesome/brands/linkedin
+      link: https://www.linkedin.com/in/igormcsouza/
+      name: LinkedIn
+    - icon: fontawesome/brands/github
+      link: https://github.com/igormcsouza
+      name: GitHub
+    - icon: fontawesome/solid/globe
+      link: https://igormcsouza.github.io/
+      name: Personal Website
+
+copyright: Copyright &copy; 2026 Igor Souza
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: false
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - admonition
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.arithmatex:
+      generic: true
+  - footnotes
+  - attr_list
+  - md_in_html
+  - toc:
+      permalink: true
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+nav:
+  - Home: index.md
+  - Tutorial:
+      - tutorial/index.md
+      - CLI and Headless Sessions: tutorial/cli-and-headless.md
+      - Python SDK and Custom Tools: tutorial/sdk-and-custom-tools.md
+      - Built-in Tools: tutorial/built-in-tools.md
+      - Progressive Skills: tutorial/skills.md
+      - Async Multi-Agent Orchestration: tutorial/multi-agent.md
+      - Security and Sandbox: tutorial/security-and-sandbox.md
+  - Advanced:
+      - Architecture and Literature: architecture.md
+      - Extending Tether: extending.md
+      - Benchmark Evaluation: benchmarks.md
+  - Reference:
+      - reference/index.md
+      - Harness and CLI: reference/harness.md
+      - Context and SQLite Store: reference/context-and-store.md
+      - Multiplexer and Decorator: reference/multiplexer-and-decorator.md
+      - Sandbox and Skills: reference/sandbox-and-skills.md
+      - Model Providers: reference/providers.md
+      - Built-in Tools: reference/tools.md
+  - Project:
+      - Release Notes: release-notes.md
+      - Releasing: releasing.md
+
+validation:
+  links:
+    anchors: warn

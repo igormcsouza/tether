@@ -66,7 +66,7 @@ Tether implements the architectural principles from *"LLM-Native Applications as
 ## 3. `v0` Architecture & Module Specifications
 
 ```text
-src/tether/
+tether/
 ├── __init__.py          # Public SDK exports: Harness, Session, Skill, SandboxPolicy, tool
 ├── cli.py               # Headless-capable CLI: `tether run|status|read|send|list|wait`
 ├── harness.py           # Control Plane: bounded agent loop, SQLite inbox polling, worker spawn
@@ -155,7 +155,7 @@ uv run ruff check .
 uv run ruff format --check .
 
 # Run static type checking
-uv run mypy src/
+uv run mypy tether/
 ```
 
 ---
