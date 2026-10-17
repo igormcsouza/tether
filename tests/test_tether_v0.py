@@ -436,3 +436,35 @@ async def test_custom_sdk_provider_routing(tmp_path: Path) -> None:
     assert session.status == "COMPLETED"
     assert session.result == "Routed via custom gateway: qwen-enterprise-32b"
     assert session.peak_tokens == 320
+
+
+def test_head_tail_active_observation_elision(tmp_path: Path) -> None:
+    """Verify oversized active observations keep Head + Tail in L1."""
+    from tether.context import ContextAssembler, elide_active_observation
+    from tether.store import SQLiteStore
+
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    rec = store.create_session("Test head tail elision")
+    big_text = "HEAD_MARKER_" + ("middle_noise " * 400) + "_TAIL_TRACEBACK_EXIT_0"
+    obs = store.add_observation(rec.id, step=1, cmd="bash run.sh", raw_output=big_text)
+    store.add_turn(rec.id, step=1, role="tool", content=obs.raw_output, obs_id=obs.id)
+
+    elided = elide_active_observation(obs.id, big_text, max_chars=400)
+    assert "HEAD_MARKER_" in elided
+    assert "_TAIL_TRACEBACK_EXIT_0" in elided
+    assert "middle chars elided in L1" in elided
+    assert len(elided) < 600
+
+    assembler = ContextAssembler(fold_after_turns=2, active_char_cap=400)
+    msgs = assembler.assemble(
+        system_prompt="Sys",
+        goal=rec.goal,
+        turns=store.get_turns(rec.id),
+        observations=store.list_observations(rec.id),
+        pins={},
+        current_step=2,  # age=1, so still active!
+    )
+    obs_msg = msgs[-1]["content"]
+    assert "HEAD_MARKER_" in obs_msg
+    assert "_TAIL_TRACEBACK_EXIT_0" in obs_msg
+    assert "middle chars elided in L1" in obs_msg

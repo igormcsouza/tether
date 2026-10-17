@@ -46,6 +46,22 @@ def estimate_messages_tokens(
     return total
 
 
+def elide_active_observation(obs_id: str, raw_output: str, max_chars: int = 2400) -> str:
+    """Slice oversized active observations into Head + Tail in L1."""
+    if len(raw_output) <= max_chars:
+        return f"[{obs_id}] {raw_output}"
+    head_len = int(max_chars * 0.6)
+    tail_len = max_chars - head_len
+    elided_count = len(raw_output) - (head_len + tail_len)
+    head = raw_output[:head_len].rstrip()
+    tail = raw_output[-tail_len:].lstrip()
+    marker = (
+        f"\n... [{obs_id}: {elided_count:,} middle chars elided in L1 | "
+        f"use `mem search <query>` or `mem recall {obs_id}`] ...\n"
+    )
+    return f"[{obs_id}] {head}{marker}{tail}"
+
+
 class ContextAssembler:
     """Assembles KV-cache-friendly prompts with deterministic observation folding."""
 
@@ -54,10 +70,12 @@ class ContextAssembler:
         *,
         fold_after_turns: int = 2,
         fold_char_threshold: int = 200,
+        active_char_cap: int = 2400,
         max_context_tokens: int = 8192,
     ) -> None:
         self.fold_after_turns = fold_after_turns
         self.fold_char_threshold = fold_char_threshold
+        self.active_char_cap = active_char_cap
         self.max_context_tokens = max_context_tokens
         self._static_system_prompt: str | None = None
 
@@ -109,7 +127,9 @@ class ContextAssembler:
                 if age >= self.fold_after_turns and obs.char_len >= self.fold_char_threshold:
                     content = obs.summary
                 else:
-                    content = f"[{obs.id}] {obs.raw_output}"
+                    content = elide_active_observation(
+                        obs.id, obs.raw_output, max_chars=self.active_char_cap
+                    )
 
             if turn.role == "assistant" and turn.tool_cmd:
                 call_preview = f"act({turn.tool_cmd!r})"
