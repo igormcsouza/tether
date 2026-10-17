@@ -72,6 +72,7 @@ tether/
 ├── cli.py               # Headless-capable CLI: `tether run|pipeline|status|read|send|list|wait`
 ├── harness.py           # Control Plane: bounded agent loop, pipelines, SQLite inbox, worker spawn
 ├── pipeline.py          # Workflow Plane: declarative multi-stage YAML pipelines & model routing
+├── retro.py             # Offline post-mortem: friction trace -> ≤2 Learned Rules (`tether retro`)
 ├── store.py             # SQLite WAL + FTS5 RAG (.tether/tether.db): sessions, turns, inbox, obs, chunks_fts
 ├── sandbox.py           # Security Plane: workspace-write jail, env scrubbing, Linux bwrap/unshare
 ├── multiplexer.py       # Action Plane: `act(cmd, stdin)` parser, command registry, JIT --help
@@ -105,6 +106,7 @@ tether/
   - `inbox`: `id`, `session_id`, `message`, `consumed` (`0` or `1`), `created_at`.
 - **Telemetry & Failure-Mode Inspector (`tether stats`):**
   - `tether stats [--model <m>] [--skill <s>] [--limit <n>]` aggregates per-model pass rates, cumulative token economy (`total_prompt_tokens + total_completion_tokens`), step latency, and self-healing ACI friction (`nudge`, `loop_stall`, `syntax_error`, `tool_error`, `gate_fail`), plus a top-offenders breakdown by tool command.
+- **Post-Mortem Distillation (`tether retro <session_id> [--apply] [--model <m>]`):** offline only (never mutates a live prompt). `store.extract_friction_trace` pulls `inbox` corrections and `loop_stall`/`syntax_error`/`tool_error`/`gate_fail` turns (+ the fixing command); one bounded LLM pass yields ≤2 rules (≤30 tokens each, deduped against existing rules). Prints a unified diff of `SKILL.md`; `--apply` appends under `## Learned Rules` (or pins to project memory when no skill was used).
 - **Headless Worker & Live `send` Contract:**
   - `tether run --headless ...` creates the session row in SQLite and spawns `python -m tether.cli _worker <session_id>` via `subprocess.Popen(..., start_new_session=True)`, printing `<session_id>` immediately to stdout.
   - Before each step, the running worker queries `inbox WHERE session_id = ? AND consumed = 0` and injects any new user/parent messages into the conversation.

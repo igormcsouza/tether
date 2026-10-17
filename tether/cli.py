@@ -21,6 +21,7 @@ _KNOWN_SUBCOMMANDS = {
     "wait",
     "list",
     "stats",
+    "retro",
     "_worker",
 }
 
@@ -145,6 +146,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_stats.add_argument("--skill", type=str, default=None, help="Filter by skill name")
     p_stats.add_argument("--limit", type=int, default=100, help="Max recent sessions to analyze")
     p_stats.add_argument("--db", type=str, default=None)
+
+    # `tether retro`
+    p_retro = sub.add_parser(
+        "retro", help="Distill friction in a finished session into <=2 short Skill rules"
+    )
+    p_retro.add_argument("session_id", help="Session ID")
+    p_retro.add_argument(
+        "--apply", action="store_true", help="Write rules (SKILL.md or project pin)"
+    )
+    p_retro.add_argument("--model", type=str, default=None, help="Model for the single LLM pass")
+    p_retro.add_argument("--db", type=str, default=None)
 
     # Internal `_worker`
     p_worker = sub.add_parser("_worker")
@@ -298,6 +310,16 @@ async def _async_main(argv: list[str]) -> int:
 
     if cmd == "stats":
         print(store.format_stats_report(model=ns.model, skill=ns.skill, limit=ns.limit))
+        return 0
+
+    if cmd == "retro":
+        from tether.retro import run_retro
+
+        try:
+            print(await run_retro(store, ns.session_id, apply=ns.apply, model=ns.model))
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
         return 0
 
     parser.print_help()

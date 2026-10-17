@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 GLOBAL_SESSION_ID = "__project__"
+_FRICTION_EVENTS = ("loop_stall", "syntax_error", "tool_error", "gate_fail")
 
 
 @dataclass(slots=True)
@@ -855,6 +856,34 @@ class SQLiteStore:
                 f"or `agent read {session.id} --full`."
             )
         return "\n".join(lines)
+
+    def extract_friction_trace(self, session_id: str) -> list[str]:
+        """Deterministic `failed -> correction/fix` lines from a session's turns (for `retro`)."""
+        turns = self.get_turns(session_id)
+        trace: list[str] = []
+        for i, t in enumerate(turns):
+            if t.role == "user" and t.content.startswith("[Follow-up instruction]:"):
+                trace.append(f"correction: {t.content.split(':', 1)[1].strip()[:200]}")
+            elif t.role == "assistant" and t.event_type in _FRICTION_EVENTS:
+                err = next(
+                    (x.content for x in turns[i + 1 :] if x.role == "tool" and x.step == t.step),
+                    "",
+                )
+                line = f"failed[{t.event_type}]: `{(t.tool_cmd or '').strip()[:100]}`"
+                if err:
+                    line += f" -> {err.strip()[:150]}"
+                fix = next(
+                    (
+                        x.tool_cmd
+                        for x in turns[i + 1 :]
+                        if x.role == "assistant" and x.event_type in ("ok", "completed")
+                    ),
+                    None,
+                )
+                if fix:
+                    line += f" | then: `{fix.strip()[:100]}`"
+                trace.append(line)
+        return trace
 
     def get_stats(
         self,
