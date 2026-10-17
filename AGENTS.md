@@ -182,3 +182,4 @@ uv run mypy tether/
    - Small models occasionally emit `cmd` with minor quirks (e.g., leading `$`, wrapping backticks, or calling a tool name directly instead of `act`). The multiplexer must normalize trivial syntax quirks deterministically before failing.
 4. **Documentation Integrity:**
    - Keep `README.md` and `AGENTS.md` synchronized whenever architectural interfaces or built-in tool signatures change.
+   - **Always update documentation in the same PR** when introducing a new feature, changing an existing behavior, or altering a CLI/SDK interface. This covers `README.md`, `AGENTS.md`, the MkDocs pages under `docs/` (including `docs/reference/*` for new modules), and a `docs/release-notes.md` entry. A change without matching docs is incomplete.
