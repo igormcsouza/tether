@@ -495,3 +495,45 @@ async def test_deterministic_loop_stall_breaker(tmp_path: Path) -> None:
     assert call_count == 1
     step3_prompt = "\n".join(m["content"] for m in provider.recorded_calls[2])
     assert "[LOOP DETECTED]" in step3_prompt
+
+
+def test_kv_prefix_immutability_with_pins(tmp_path: Path) -> None:
+    """Verify earlier turn messages stay byte-identical when new turns are added after pins."""
+    from tether.context import ContextAssembler
+    from tether.store import SQLiteStore
+
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    rec = store.create_session("Test prefix stability")
+    store.set_pin(rec.id, "key1", "val1")
+
+    store.add_turn(rec.id, step=1, role="assistant", content="", tool_cmd="mem pin key1 val1")
+    store.add_turn(rec.id, step=1, role="tool", content="Pinned key1")
+
+    assembler = ContextAssembler(fold_after_turns=5)
+    msgs_step2 = assembler.assemble(
+        system_prompt="StaticSys",
+        goal=rec.goal,
+        turns=store.get_turns(rec.id),
+        observations={},
+        pins=store.get_pins(rec.id),
+        current_step=2,
+    )
+
+    store.add_turn(rec.id, step=2, role="assistant", content="", tool_cmd="web search test")
+    store.add_turn(rec.id, step=2, role="tool", content="Search results")
+
+    msgs_step3 = assembler.assemble(
+        system_prompt="StaticSys",
+        goal=rec.goal,
+        turns=store.get_turns(rec.id),
+        observations={},
+        pins=store.get_pins(rec.id),
+        current_step=3,
+    )
+    # Messages 0, 1, 2 (system, goal, step 1 assistant) remain 100% identical
+    # and step 1 tool observation does NOT have an extra standalone user message inserted after it
+    assert len(msgs_step2) == 4
+    assert len(msgs_step3) == 6
+    assert msgs_step2[:3] == msgs_step3[:3]
+    assert "[PINNED MEMORY]" in msgs_step3[-1]["content"]
+    assert "[PINNED MEMORY]" not in msgs_step3[3]["content"]

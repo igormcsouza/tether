@@ -142,17 +142,29 @@ class ContextAssembler:
             else:
                 history_msgs.append({"role": turn.role, "content": content})
 
+        pin_block = ""
         if pins:
             pin_lines = ["[PINNED MEMORY]"] + [f"- {k}: {v}" for k, v in pins.items()]
-            history_msgs.append({"role": "user", "content": "\n".join(pin_lines)})
+            pin_block = "\n".join(pin_lines)
 
         # Enforce max_context_tokens by dropping oldest turns if needed
-        base_tokens = estimate_messages_tokens(messages, [ACT_TOOL_SCHEMA])
+        base_tokens = estimate_messages_tokens(messages, [ACT_TOOL_SCHEMA]) + estimate_tokens(
+            pin_block
+        )
         while len(history_msgs) > 2:
             total = base_tokens + estimate_messages_tokens(history_msgs)
             if total <= self.max_context_tokens:
                 break
             history_msgs.pop(0)
+
+        if pin_block:
+            if history_msgs and history_msgs[-1]["role"] == "user":
+                history_msgs[-1] = {
+                    "role": "user",
+                    "content": f"{history_msgs[-1]['content']}\n\n{pin_block}",
+                }
+            else:
+                history_msgs.append({"role": "user", "content": pin_block})
 
         messages.extend(history_msgs)
         return messages

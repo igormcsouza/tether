@@ -65,6 +65,8 @@ class AnthropicProvider:
                     "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
                 }
             )
+        if anthropic_tools:
+            anthropic_tools[-1]["cache_control"] = {"type": "ephemeral"}
 
         headers: dict[str, str] = {
             "x-api-key": self.api_key,
@@ -81,7 +83,13 @@ class AnthropicProvider:
             "tools": anthropic_tools,
         }
         if system_text:
-            payload["system"] = system_text
+            payload["system"] = [
+                {
+                    "type": "text",
+                    "text": system_text,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ]
 
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             resp = await client.post(
