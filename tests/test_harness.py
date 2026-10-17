@@ -153,3 +153,107 @@ async def test_harness_lifecycle_and_edge_cases(
     h_crash = Harness(db_path=tmp_path / "tether.db", provider=CrashProvider(), max_steps=2)
     s_crash = await h_crash.run("Crash test")
     assert s_crash.status == "FAILED" and "provider exploded" in (s_crash.result or "")
+
+
+async def test_pre_done_verification_gates_and_self_healing(tmp_path: Path) -> None:
+    """Verify failing pre-done gate blocks completion, feeds stderr back, and self-heals."""
+    from tether.sandbox import SandboxPolicy
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    target_file = ws / "module.py"
+    target_file.write_text("VALUE = 1\n", encoding="utf-8")
+
+    provider = FakeScriptedProvider(
+        [
+            # Step 1: Agent prematurely calls done while VALUE != 42
+            ModelResponse(content="", action=ActionCall(cmd="done", stdin="Premature completion")),
+            # Step 2: Agent sees [VERIFICATION GATE FAILED] and fixes module.py
+            ModelResponse(
+                content="",
+                action=ActionCall(cmd="edit write module.py", stdin="VALUE = 42\n"),
+            ),
+            # Step 3: Agent calls done again; gate now exits 0
+            ModelResponse(content="", action=ActionCall(cmd="done", stdin="Verified deliverable")),
+        ]
+    )
+
+    sandbox = SandboxPolicy(workspace_root=ws, use_kernel_sandbox=False)
+    gate_cmd = "python3 -c 'import module, sys; sys.exit(0 if module.VALUE == 42 else 1)'"
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        tools=["edit"],
+        verify=[gate_cmd],
+        sandbox=sandbox,
+        provider=provider,
+    )
+
+    session = await harness.run("Set VALUE = 42 in module.py")
+    assert session.status == "COMPLETED"
+    assert session.result == "Verified deliverable"
+    assert session.step_count == 3
+
+    # Verify step 2 prompt included the deterministic verification gate failure diagnostic
+    step2_prompt = "\n".join(m["content"] for m in provider.recorded_calls[1])
+    assert "[VERIFICATION GATE FAILED:" in step2_prompt
+    assert "Fix the reported issues before calling `done` again." in step2_prompt
+
+
+async def test_verification_gate_circuit_breaker_and_skill_verify(tmp_path: Path) -> None:
+    """Verify circuit breaker trips on consecutive gate failures and skills declare verify gates."""
+    from tether.sandbox import SandboxPolicy
+
+    ws = tmp_path / "ws_cb"
+    ws.mkdir()
+    sk_dir = tmp_path / "skills"
+    sk_dir.mkdir()
+    (sk_dir / "strict.md").write_text(
+        "---\n"
+        "name: strict\n"
+        "description: Strict verifier\n"
+        "tools: [bash]\n"
+        "verify:\n"
+        "  - python3 -c \"import sys; print('X' * 2500); sys.exit(2)\"\n"
+        "---\n"
+        "Always pass verification.",
+        encoding="utf-8",
+    )
+
+    provider = FakeScriptedProvider(
+        [
+            ModelResponse(content="", action=ActionCall(cmd="done", stdin="Try 1")),
+            ModelResponse(content="", action=ActionCall(cmd="done", stdin="Try 2")),
+            ModelResponse(content="", action=ActionCall(cmd="done", stdin="Try 3")),
+        ]
+    )
+
+    sandbox = SandboxPolicy(workspace_root=ws, use_kernel_sandbox=False)
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        skill="strict",
+        verify="echo ok",
+        max_verify_failures=2,
+        sandbox=sandbox,
+        provider=provider,
+        skill_search_dirs=[sk_dir],
+    )
+    session = await harness.run("Test circuit breaker")
+    assert session.status == "FAILED"
+    assert "consecutive times" in (session.result or "")
+    assert session.step_count == 2
+
+    # Also test sandbox violation inside verification gate (e.g., blocked sudo command)
+    bad_gate_provider = FakeScriptedProvider(
+        [
+            ModelResponse(content="", action=ActionCall(cmd="done", stdin="Try bad gate")),
+        ]
+    )
+    h_bad = Harness(
+        db_path=tmp_path / "tether.db",
+        verify=["sudo rm -rf /"],
+        max_verify_failures=1,
+        sandbox=sandbox,
+        provider=bad_gate_provider,
+    )
+    s_bad = await h_bad.run("Bad gate command")
+    assert s_bad.status == "FAILED"

@@ -29,10 +29,11 @@ Tether implements the architectural principles from *"LLM-Native Applications as
 - **By default, no optional tools are loaded**—only the mandatory `done` termination command is active unless the caller explicitly loads tools via CLI (`--tools web,bash` or `--tools all`), SDK (`tools=[...]`), or a Skill (`tools: [...]` in YAML frontmatter).
 - Multiline payloads (file contents, code patches, final markdown reports, scripts) **must** be passed via `stdin` rather than complex shell-escaped strings inside `cmd`.
 
-### Rule 3: Explicit Termination (`act("done", stdin="...")`)
+### Rule 3: Explicit Termination (`act("done", stdin="...")`) & Pre-`done` Verification Gates
 - Sessions do **not** terminate simply because the model emitted a text response without a tool call (small 9B models frequently "think out loud" before acting).
 - A task only completes when the agent explicitly calls `act("done", stdin="<final deliverable>")` (or `act("done '<short answer>'")`), or hits `max_steps`.
 - If the model emits plain text without calling `act`, the harness appends a brief deterministic nudge reminding it to either execute a command or call `done`.
+- When `verify` gate commands are configured (via `Harness(verify=[...])`, CLI `--verify`, or Skill YAML `verify: [...]`), `Harness.execute_session` deterministically executes each command inside the session's `SandboxPolicy` before allowing `done` to transition to `COMPLETED` (consuming 0 static prompt tokens until a gate fails).
 
 ### Rule 4: Progressive `--help` (JIT Schema Disclosure)
 - The system prompt lists at most **1 line per enabled tool namespace** (`<name> : <short summary>`, target **≤ 12 tokens per entry**).
@@ -124,6 +125,8 @@ tether/
   description: Fast web research and synthesis
   model: ollama/qwen3.5:9b
   tools: [web, mem]
+  verify:
+    - pytest -q
   ---
   ```
 - If `skills/<name>/tools.py` exists, any `@tool`-decorated functions inside it are automatically registered into the session's multiplexer when the skill is loaded.

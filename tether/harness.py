@@ -51,6 +51,8 @@ class Harness:
         model: str | None = None,
         tools: list[str | ToolSpec | Callable[..., Any]] | str | None = None,
         skill: str | Skill | None = None,
+        verify: list[str] | str | None = None,
+        max_verify_failures: int = 3,
         sandbox: SandboxPolicy | None = None,
         db_path: str | Path | None = None,
         max_steps: int = 15,
@@ -64,6 +66,7 @@ class Harness:
         self.store = SQLiteStore(db_path=db_path)
         self.sandbox = sandbox or SandboxPolicy()
         self.max_steps = max_steps
+        self.max_verify_failures = max_verify_failures
         self.max_context_tokens = max_context_tokens
         self.fold_observations_after = fold_observations_after
         self._provider = provider
@@ -72,6 +75,7 @@ class Harness:
 
         self._custom_tools: dict[str, ToolSpec] = {}
         self._enabled_tool_names: list[str] = []
+        self._verify_commands: list[str] = []
 
         if isinstance(skill, Skill):
             self._skill: Skill | None = skill
@@ -88,6 +92,21 @@ class Harness:
                 self.model = self._skill.model
             for ct in self._skill.custom_tools:
                 self._custom_tools[ct.name] = ct
+            for vcmd in self._skill.verify:
+                if vcmd not in self._verify_commands:
+                    self._verify_commands.append(vcmd)
+
+        if verify is not None:
+            raw_verify = [verify] if isinstance(verify, str) else list(verify)
+            for v in raw_verify:
+                v_clean = v.strip()
+                if v_clean and v_clean not in self._verify_commands:
+                    self._verify_commands.append(v_clean)
+
+        for sv in self.sandbox.verify_commands:
+            if sv not in self._verify_commands:
+                self._verify_commands.append(sv)
+        self.sandbox.verify_commands = list(self._verify_commands)
 
         self._configure_initial_tools(tools)
 
@@ -239,6 +258,32 @@ class Harness:
 
         return await self.execute_session(session_id)
 
+    async def _run_verification_gates(
+        self,
+        sandbox: SandboxPolicy,
+        verify_commands: list[str],
+        max_gate_output_chars: int = 2000,
+    ) -> tuple[str, int, str] | None:
+        """Run deterministic verification gates in order; return (cmd, code, output) on failure."""
+        for vcmd in verify_commands:
+            try:
+                code, out = await sandbox.execute_bash_with_code(vcmd)
+            except Exception as exc:
+                code, out = 1, str(exc)
+
+            if code != 0:
+                compact_out = out.strip()
+                if len(compact_out) > max_gate_output_chars:
+                    half = max_gate_output_chars // 2
+                    omitted = len(compact_out) - max_gate_output_chars
+                    compact_out = (
+                        f"{compact_out[:half]}\n"
+                        f"... [truncated {omitted:,} chars] ...\n"
+                        f"{compact_out[-half:]}"
+                    )
+                return vcmd, code, compact_out
+        return None
+
     async def execute_session(self, session_id: str) -> SessionRecord:
         """Execute the bounded agent loop for a persisted session in SQLite."""
         rec = self.store.get_session(session_id)
@@ -258,6 +303,15 @@ class Harness:
             for st in skill_obj.tools:
                 if st not in enabled_tools:
                     enabled_tools.append(st)
+
+        verify_commands: list[str] = []
+        for sv in [
+            *(skill_obj.verify if skill_obj else []),
+            *sandbox.verify_commands,
+            *self._verify_commands,
+        ]:
+            if sv not in verify_commands:
+                verify_commands.append(sv)
 
         mux = self.build_multiplexer(
             session_id=session_id,
@@ -281,6 +335,7 @@ class Harness:
         step_start = rec.step_count
         step_limit = step_start + rec.max_steps
         last_action_sig: tuple[str, str | None] | None = None
+        consecutive_verify_failures = 0
 
         try:
             for step in range(step_start + 1, step_limit + 1):
@@ -384,6 +439,48 @@ class Harness:
                                 content=f"[Follow-up instruction]: {lmsg}",
                             )
                         continue
+
+                    # 4. Run deterministic pre-`done` verification gates if configured
+                    if verify_commands:
+                        gate_failure = await self._run_verification_gates(sandbox, verify_commands)
+                        if gate_failure is not None:
+                            failed_cmd, exit_code, gate_out = gate_failure
+                            consecutive_verify_failures += 1
+                            gate_msg = (
+                                f"[VERIFICATION GATE FAILED: `{failed_cmd}` (exit {exit_code})]\n"
+                                f"{gate_out}\n"
+                                "Fix the reported issues before calling `done` again."
+                            )
+                            obs = self.store.add_observation(
+                                session_id=session_id,
+                                step=step,
+                                cmd=f"verify: {failed_cmd}",
+                                raw_output=gate_msg,
+                            )
+                            self.store.add_turn(
+                                session_id=session_id,
+                                step=step,
+                                role="tool",
+                                content=gate_msg,
+                                obs_id=obs.id,
+                            )
+                            if (
+                                self.max_verify_failures > 0
+                                and consecutive_verify_failures >= self.max_verify_failures
+                            ):
+                                self.store.update_session(
+                                    session_id,
+                                    status="FAILED",
+                                    result=(
+                                        f"Verification gate `{failed_cmd}` failed "
+                                        f"{consecutive_verify_failures} consecutive times."
+                                    ),
+                                    step_count=step,
+                                )
+                                failed_rec = self.store.get_session(session_id)
+                                assert failed_rec is not None
+                                return failed_rec
+                            continue
 
                     final_text = dispatch.final_result or ""
                     self.store.add_turn(

@@ -15,7 +15,8 @@ async def test_agent_tool_subcommands(tmp_path: Path) -> None:
     sk_dir = tmp_path / "skills"
     sk_dir.mkdir()
     (sk_dir / "researcher.md").write_text(
-        "---\nname: researcher\nmodel: ollama/qwen3.5:9b\ntools: [web]\n---\nBody",
+        "---\nname: researcher\nmodel: ollama/qwen3.5:9b\n"
+        "tools: [web]\nverify: [echo ok]\n---\nBody",
         encoding="utf-8",
     )
     loader = SkillLoader(search_dirs=[sk_dir])
