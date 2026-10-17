@@ -64,3 +64,37 @@ async def test_retro_diff_and_apply(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert SECTION in skill.read_text()
     again = await run_retro(store, sid, apply=True, provider=FakeScriptedProvider([resp]))
     assert "No new rules" in again and skill.read_text().count("edit --help") == 1
+
+
+async def test_retro_edge_cases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    store = SQLiteStore(db_path=tmp_path / "t.db")
+    with pytest.raises(ValueError):
+        await run_retro(store, "ses_nope")
+    assert "No friction" in await run_retro(store, store.create_session("clean").id)
+
+    sid = _friction_session(store)  # no skill -> project pins
+    junk = FakeScriptedProvider([ModelResponse(content="no bullets")])
+    assert "No new rules" in await run_retro(store, sid, provider=junk)
+    good = ModelResponse(content="- Run `edit --help` first.")
+    out = await run_retro(store, sid, provider=FakeScriptedProvider([good]))
+    assert "pinned" not in out and not store.get_pins("__project__")
+    out = await run_retro(store, sid, apply=True, provider=FakeScriptedProvider([good]))
+    assert "pinned" in out and len(store.get_pins("__project__")) == 1
+
+
+async def test_cli_retro(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tether.cli import _async_main
+
+    monkeypatch.chdir(tmp_path)
+    db = str(tmp_path / "t.db")
+    assert await _async_main(["retro", "ses_nope", "--db", db]) == 1
+    store = SQLiteStore(db_path=db)
+    assert await _async_main(["retro", store.create_session("g").id, "--db", db]) == 0
+
+
+def test_append_rules_existing_section() -> None:
+    from tether.retro import append_rules
+
+    assert append_rules(f"x\n\n{SECTION}\n- a\n", ["b"]).endswith("- a\n- b\n")
