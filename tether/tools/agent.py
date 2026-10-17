@@ -104,13 +104,10 @@ def make_agent_tool(
             elapsed = 0.0
             poll_interval = 0.05
             while elapsed < wait_timeout:
-                all_done = True
-                for sid in target_ids:
-                    rec = store.get_session(sid)
-                    if rec and rec.status in ("PENDING", "RUNNING"):
-                        all_done = False
-                        break
-                if all_done:
+                records = [store.get_session(sid) for sid in target_ids]
+                if any(r is not None and r.status == "WAITING_INPUT" for r in records) or all(
+                    r is None or r.status not in ("PENDING", "RUNNING") for r in records
+                ):
                     break
                 await asyncio.sleep(poll_interval)
                 elapsed += poll_interval
@@ -179,7 +176,7 @@ def make_agent_tool(
             if not rec:
                 return f"Error: session `{sid}` not found."
             store.enqueue_inbox(sid, msg)
-            if rec.status in ("COMPLETED", "FAILED", "PENDING"):
+            if rec.status in ("WAITING_INPUT", "COMPLETED", "FAILED", "PENDING"):
                 store.update_session(sid, status="PENDING")
                 worker_spawner(sid)
                 return f"Queued message and resumed session `{sid}`."

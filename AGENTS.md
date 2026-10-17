@@ -29,9 +29,9 @@ Tether implements the architectural principles from *"LLM-Native Applications as
 - **By default, no optional tools are loaded**—only the mandatory `done` termination command is active unless the caller explicitly loads tools via CLI (`--tools web,bash` or `--tools all`), SDK (`tools=[...]`), or a Skill (`tools: [...]` in YAML frontmatter).
 - Multiline payloads (file contents, code patches, final markdown reports, scripts) **must** be passed via `stdin` rather than complex shell-escaped strings inside `cmd`.
 
-### Rule 3: Explicit Termination (`act("done", stdin="...")`) & Pre-`done` Verification Gates
+### Rule 3: Explicit Termination (`act("done", stdin="...")`), Interactive Inquiry (`done --ask`), & Pre-`done` Verification Gates
 - Sessions do **not** terminate simply because the model emitted a text response without a tool call (small 9B models frequently "think out loud" before acting).
-- A task only completes when the agent explicitly calls `act("done", stdin="<final deliverable>")` (or `act("done '<short answer>'")`), or hits `max_steps`.
+- A task only completes when the agent explicitly calls `act("done", stdin="<final deliverable>")` (or `act("done '<short answer>'")`), pauses for human/parent input via `act("done --ask", stdin="<question>")` (transitioning the session to `WAITING_INPUT` and releasing the worker process until resumed via `send`), or hits `max_steps`.
 - If the model emits plain text without calling `act`, the harness appends a brief deterministic nudge reminding it to either execute a command or call `done`.
 - When `verify` gate commands are configured (via `Harness(verify=[...])`, CLI `--verify`, or Skill YAML `verify: [...]`), `Harness.execute_session` deterministically executes each command inside the session's `SandboxPolicy` before allowing `done` to transition to `COMPLETED` (consuming 0 static prompt tokens until a gate fails).
 
@@ -96,7 +96,7 @@ tether/
 #### A. SQLite WAL State + FTS5 RAG Store (`store.py`) & Headless Execution (`cli.py` / `harness.py`)
 - Default DB path: `.tether/tether.db` (configurable via `TETHER_DB` or `Harness(db_path=...)`) with `PRAGMA journal_mode=WAL;`.
 - Tables:
-  - `sessions`: `id`, `parent_id`, `status` (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`), `model`, `skill`, `tools_json`, `sandbox_json`, `goal`, `result`, `step_count`, `max_steps`, `peak_tokens`, `pid`, `created_at`, `updated_at`.
+  - `sessions`: `id`, `parent_id`, `status` (`PENDING`, `RUNNING`, `WAITING_INPUT`, `COMPLETED`, `FAILED`), `model`, `skill`, `tools_json`, `sandbox_json`, `goal`, `result`, `step_count`, `max_steps`, `peak_tokens`, `pid`, `created_at`, `updated_at`.
   - `turns`: `id`, `session_id`, `step`, `role`, `content`, `tool_cmd`, `tool_stdin`, `obs_id`, `created_at`.
   - `observations`: `id`, `session_id`, `step`, `cmd`, `raw_output`, `summary`, `char_len`.
   - `chunks_fts` *(SQLite FTS5 Virtual Table)*: `session_id`, `source_type` (`result` | `observation` | `pin`), `source_id`, `chunk_index`, `content` — automatically indexes ~150-token paragraph/heading chunks of all observations and final `done` deliverables for sub-millisecond BM25 RAG.
@@ -105,7 +105,7 @@ tether/
 - **Headless Worker & Live `send` Contract:**
   - `tether run --headless ...` creates the session row in SQLite and spawns `python -m tether.cli _worker <session_id>` via `subprocess.Popen(..., start_new_session=True)`, printing `<session_id>` immediately to stdout.
   - Before each step, the running worker queries `inbox WHERE session_id = ? AND consumed = 0` and injects any new user/parent messages into the conversation.
-  - If `tether send <session_id> "msg"` (or `agent send`) is called when the session is `COMPLETED` or `FAILED`, it inserts the message into `inbox`, sets status back to `RUNNING`, and spawns/resumes the worker from the persisted SQLite state.
+  - If `tether send <session_id> "msg"` (or `agent send`) is called when the session is `WAITING_INPUT`, `COMPLETED`, or `FAILED`, it inserts the message into `inbox`, sets status back to `RUNNING`/`PENDING`, and spawns/resumes the worker from the persisted SQLite state.
 
 #### B. Always-Async Sub-Agent Tool & BM25 RAG (`tools/agent.py`)
 - Sub-agents share the same `.tether/tether.db` with `parent_id` set to the caller's `session_id`:

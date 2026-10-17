@@ -45,7 +45,7 @@ Instead of registering dozens of JSON schemas with the model provider, Tether ex
 - **Zero Tools by Default:** Start completely bare (`done` only), or opt-in to specific tools via CLI (`--tools web,bash` or `--tools all`), Python SDK (`tools=["web"]`), or Skill frontmatter.
 - **1-Line Toolbox Index:** Active tools appear as a compact 1-line summary in the static prompt prefix (~10 tokens per tool).
 - **JIT Schema Disclosure (`--help`):** Full flags and docstrings are disclosed only when the model runs `<cmd> --help` or makes an argument error (self-healing usage hint).
-- **Explicit Termination (`act("done", stdin="...")`) & Pre-`done` Verification Gates:** Small models often think out loud mid-task or prematurely claim completion. Tether requires an explicit `act("done", stdin="final report")` call and can enforce zero-token **deterministic pre-`done` verification gates** (`--verify "pytest -q"`, `Harness(verify=[...])`, or `verify:` in Skill YAML)—blocking completion and feeding compact compiler/test diagnostics back for self-healing if any gate fails.
+- **Explicit Termination (`act("done", stdin="...")`), Interactive Inquiry (`done --ask`), & Pre-`done` Verification Gates:** Small models often think out loud mid-task or prematurely claim completion. Tether requires an explicit `act("done", stdin="final report")` call, supports zero-bloat interactive clarification via `act("done --ask", stdin="question")` (cleanly suspending the session in `WAITING_INPUT`), and can enforce zero-token **deterministic pre-`done` verification gates** (`--verify "pytest -q"`, `Harness(verify=[...])`, or `verify:` in Skill YAML)—blocking completion and feeding compact compiler/test diagnostics back for self-healing if any gate fails.
 
 ```mermaid
 flowchart LR
@@ -85,7 +85,7 @@ flowchart LR
 Every Tether execution is a stateful session persisted in `.tether/tether.db` (SQLite WAL mode). You can run sessions inline or spawn detached background workers (`--headless`):
 - **Live Inbox & Auto-Resume:** Calling `tether send <session_id> "new instruction"` checks the session state in SQLite:
   - If **`RUNNING`**: queues the message into the session's SQLite inbox, which the worker injects before the next reasoning step.
-  - If **`COMPLETED` / `IDLE`**: appends the message and automatically spawns a worker to resume the session with its pinned memory and folded context intact.
+  - If **`WAITING_INPUT` / `COMPLETED` / `IDLE`**: appends the message and automatically spawns a worker to resume the session with its pinned memory and folded context intact.
 
 ### 3. Progressive Skills (`skills/`)
 Skills are portable capability bundles stored in `./skills/<name>/SKILL.md` (or `./skills/<name>.md`) with YAML frontmatter (including optional `verify` gates) and an optional sibling `tools.py`:
@@ -282,7 +282,7 @@ harness = Harness(model="gateway/qwen-enterprise-32b", tools=["web", "mem"])
 
 | Namespace | Subcommands | Description |
 | :--- | :--- | :--- |
-| **`done`** *(always on)* | `done [summary]` *(or via `stdin`)* | Explicitly complete the current task and record + FTS5-index the final deliverable |
+| **`done`** *(always on)* | `done [--ask] [summary]` *(or via `stdin`)* | Explicitly complete the current task (or pass `--ask` to pause in `WAITING_INPUT` and ask a question) |
 | **`web`** | `web search <query>` \| `web fetch <url>` | Zero-config DuckDuckGo Lite search (auto-upgrades to Brave/Tavily/SearXNG) + clean reader |
 | **`bash`** | `bash <command>` *(or script via `stdin`)* | Kernel-sandboxed (`bwrap`/`unshare`), env-scrubbed, workspace-bounded shell execution |
 | **`edit`** | `edit view <path>` \| `edit write <path>` \| `edit replace <path>` | Workspace-jailed, line-numbered file viewing and `stdin`-based creation/replacement |

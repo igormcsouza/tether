@@ -15,6 +15,7 @@ from tether.sandbox import SandboxViolationError
 class DispatchResult:
     output: str
     is_done: bool = False
+    is_waiting_input: bool = False
     final_result: str | None = None
     is_error: bool = False
 
@@ -119,6 +120,8 @@ class Multiplexer:
             )
 
         if name == "done" and not out.startswith("Error:") and not out.startswith("Usage:"):
+            if "--ask" in args:
+                return DispatchResult(output=out, is_waiting_input=True, final_result=out)
             return DispatchResult(output=out, is_done=True, final_result=out)
 
         return DispatchResult(output=out, is_error=out.startswith("Error:"))

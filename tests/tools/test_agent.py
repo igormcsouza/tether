@@ -62,6 +62,11 @@ async def test_agent_tool_subcommands(tmp_path: Path) -> None:
     wait_out = await aspec.invoke(["wait", cid])
     assert cid in wait_out
 
+    store.update_session(cid2, status="WAITING_INPUT", result="Need API key format?")
+    wait_waiting = await aspec.invoke(["wait", cid2])
+    assert "WAITING_INPUT" in wait_waiting and "waiting for input" in wait_waiting
+    assert "resumed session" in await aspec.invoke(["send", cid2, "Use Bearer token"])
+
     store.update_session(cid2, status="COMPLETED", result="Child 2 finished")
     wait_done = await aspec.invoke(["wait", cid2])
     assert "COMPLETED" in wait_done

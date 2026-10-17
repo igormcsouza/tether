@@ -145,7 +145,7 @@ async def _async_main(argv: list[str]) -> int:
         rec = await harness.run(goal)
         if rec.result:
             print(rec.result)
-        return 0 if rec.status == "COMPLETED" else 1
+        return 0 if rec.status in ("COMPLETED", "WAITING_INPUT") else 1
 
     store = SQLiteStore(db_path=getattr(ns, "db", None))
 
@@ -157,8 +157,8 @@ async def _async_main(argv: list[str]) -> int:
         turns = store.get_turns(srec.id)
         last_cmd = next((t.tool_cmd for t in reversed(turns) if t.tool_cmd), "-")
         print(
-            f"{'ID':<14} {'STATUS':<10} {'MODEL':<22} {'STEP':<7} {'PEAK_TOK':<9} LAST_CMD\n"
-            f"{srec.id:<14} {srec.status:<10} {srec.model:<22} "
+            f"{'ID':<14} {'STATUS':<13} {'MODEL':<22} {'STEP':<7} {'PEAK_TOK':<9} LAST_CMD\n"
+            f"{srec.id:<14} {srec.status:<13} {srec.model:<22} "
             f"{srec.step_count}/{srec.max_steps:<4} {srec.peak_tokens:<9} {last_cmd}"
         )
         return 0
@@ -205,9 +205,9 @@ async def _async_main(argv: list[str]) -> int:
     if cmd == "wait":
         elapsed = 0.0
         while elapsed < ns.timeout:
-            if all(
-                (r := store.get_session(sid)) is None or r.status in ("COMPLETED", "FAILED")
-                for sid in ns.session_ids
+            records = [store.get_session(sid) for sid in ns.session_ids]
+            if any(r is not None and r.status == "WAITING_INPUT" for r in records) or all(
+                r is None or r.status in ("COMPLETED", "FAILED", "WAITING_INPUT") for r in records
             ):
                 break
             await asyncio.sleep(0.05)

@@ -257,3 +257,57 @@ async def test_verification_gate_circuit_breaker_and_skill_verify(tmp_path: Path
     )
     s_bad = await h_bad.run("Bad gate command")
     assert s_bad.status == "FAILED"
+
+
+async def test_waiting_input_and_interactive_inquiry(tmp_path: Path) -> None:
+    """Verify `done --ask` pauses in WAITING_INPUT, handles late inbox, and resumes on `send`."""
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    provider = FakeScriptedProvider(
+        [
+            # Step 1: Agent asks a clarifying question via done --ask
+            ModelResponse(
+                content="",
+                action=ActionCall(cmd="done --ask", stdin="Target environment: staging or prod?"),
+            ),
+            # Step 2 (after user answers via send): Agent completes task
+            ModelResponse(
+                content="",
+                action=ActionCall(cmd="done", stdin="Deployed to staging as requested."),
+            ),
+        ]
+    )
+    harness = Harness(db_path=tmp_path / "tether.db", provider=provider)
+    paused = await harness.run("Deploy the service")
+    assert paused.status == "WAITING_INPUT"
+    assert paused.result == "Target environment: staging or prod?"
+    assert "waiting for input" in store.get_session_digest(paused.id)
+
+    resumed = await harness.send(paused.id, "Use staging.")
+    assert resumed.status == "COMPLETED"
+    assert resumed.result == "Deployed to staging as requested."
+    step2_prompt = "\n".join(m["content"] for m in provider.recorded_calls[1])
+    assert "[WAITING_INPUT] Target environment: staging or prod?" in step2_prompt
+    assert "[Follow-up instruction]: Use staging." in step2_prompt
+
+    # Also verify late inbox arrival during `done --ask` continues without suspending
+    late_step = 0
+
+    class LateInboxAskProvider:
+        model_name = "qwen3.5:9b"
+
+        async def generate(self, messages: Any, tools: Any) -> ModelResponse:
+            nonlocal late_step
+            late_step += 1
+            if late_step == 1:
+                store.enqueue_inbox(s_late.id, "Already answered: use Python 3.12")
+                return ModelResponse(
+                    content="",
+                    action=ActionCall(cmd="done --ask 'Which Python version?'"),
+                )
+            return ModelResponse(content="", action=ActionCall(cmd="done 'Used Python 3.12'"))
+
+    h_late = Harness(db_path=tmp_path / "tether.db", provider=LateInboxAskProvider())
+    s_late = h_late.create_session("Late inbox on ask")
+    done_late = await h_late.execute_session(s_late.id)
+    assert done_late.status == "COMPLETED"
+    assert done_late.result == "Used Python 3.12"

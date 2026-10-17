@@ -18,7 +18,7 @@ from typing import Any
 class SessionRecord:
     id: str
     parent_id: str | None
-    status: str  # PENDING | RUNNING | COMPLETED | FAILED
+    status: str  # PENDING | RUNNING | WAITING_INPUT | COMPLETED | FAILED
     model: str
     skill: str | None
     tools: list[str]
@@ -652,7 +652,12 @@ class SQLiteStore:
         ]
         if preview:
             lines.append(f"Preview: {preview}")
-        if chunk_count > 0:
+        if session.status == "WAITING_INPUT":
+            lines.append(
+                f"Hint: session is waiting for input; reply via "
+                f'`agent send {session.id} "<answer>"` or `tether send {session.id} "<answer>"`.'
+            )
+        elif chunk_count > 0:
             lines.append(
                 f'Hint: run `agent query {session.id} "<keywords>"` for BM25 RAG snippets, '
                 f"or `agent read {session.id} --full`."
