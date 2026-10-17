@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+- **Post-Mortem Distillation (`tether retro`)**: `tether retro <session_id> [--apply]` extracts a session's friction trace (inbox corrections, loop stalls, syntax/tool errors, gate failures) and distills at most 2 deduplicated rules (<= 30 tokens each) into `SKILL.md` under `## Learned Rules`, or project memory when no skill was used. Runs offline, never mutating a live prompt.
+
+---
+
 ## v0.0.3 (2026-10-17)
 
 ### Architectural & Performance Upgrades

@@ -13,3 +13,10 @@
     options:
       show_root_heading: false
       members_order: source
+
+## `tether.retro`
+
+::: tether.retro
+    options:
+      show_root_heading: false
+      members_order: source
