@@ -68,9 +68,10 @@ Tether implements the architectural principles from *"LLM-Native Applications as
 
 ```text
 tether/
-├── __init__.py          # Public SDK exports: Harness, Session, Skill, SandboxPolicy, tool
-├── cli.py               # Headless-capable CLI: `tether run|status|read|send|list|wait`
-├── harness.py           # Control Plane: bounded agent loop, SQLite inbox polling, worker spawn
+├── __init__.py          # Public SDK exports: Harness, Pipeline, Session, Skill, SandboxPolicy, tool
+├── cli.py               # Headless-capable CLI: `tether run|pipeline|status|read|send|list|wait`
+├── harness.py           # Control Plane: bounded agent loop, pipelines, SQLite inbox, worker spawn
+├── pipeline.py          # Workflow Plane: declarative multi-stage YAML pipelines & model routing
 ├── store.py             # SQLite WAL + FTS5 RAG (.tether/tether.db): sessions, turns, inbox, obs, chunks_fts
 ├── sandbox.py           # Security Plane: workspace-write jail, env scrubbing, Linux bwrap/unshare
 ├── multiplexer.py       # Action Plane: `act(cmd, stdin)` parser, command registry, JIT --help
@@ -109,7 +110,7 @@ tether/
   - Before each step, the running worker queries `inbox WHERE session_id = ? AND consumed = 0` and injects any new user/parent messages into the conversation.
   - If `tether send <session_id> "msg"` (or `agent send`) is called when the session is `WAITING_INPUT`, `COMPLETED`, or `FAILED`, it inserts the message into `inbox`, sets status back to `RUNNING`/`PENDING`, and spawns/resumes the worker from the persisted SQLite state.
 
-#### B. Always-Async Sub-Agent Tool & BM25 RAG (`tools/agent.py`)
+#### B. Always-Async Sub-Agent Tool (`tools/agent.py`) & Deterministic Pipelines (`pipeline.py`)
 - Sub-agents share the same `.tether/tether.db` with `parent_id` set to the caller's `session_id`:
   - `agent spawn [--skill <name>] [--model <m>] [--tools <t1,t2>] <goal>` $\rightarrow$ spawns a detached headless session and immediately returns `ses_<id>`.
   - `agent status <id>` $\rightarrow$ returns 1-line status, step count, and last command.
@@ -117,6 +118,9 @@ tether/
   - `agent query <id|--all> <query> [--top 3]` $\rightarrow$ queries `chunks_fts` (BM25 ranking) across the sub-agent's final deliverable and raw observations, returning only the top-K relevant chunks (~200–300 tokens).
   - `agent read <id> [--full]` $\rightarrow$ reads the child session's digest or full `result`.
   - `agent send <id> <message>` $\rightarrow$ queues a message into the child session's inbox (or resumes it if completed).
+- **Deterministic Multi-Stage Pipelines (`tether pipeline <pipeline.yaml> "<goal>"` & `Harness.run_pipeline`):**
+  - Each stage runs in its own isolated `SessionRecord` (`parent_id = pipeline_session_id`) with heterogeneous model routing (`stage.model`), stage-level `verify` gates, and strict sandbox monotonicity (`root_sandbox.attenuate(stage.sandbox)`).
+  - Downstream stages receive a compact ~50-token digest of upstream stages plus automatic `agent query` / `agent read` access to upstream `chunks_fts` deliverables.
 
 #### C. Skills System (`skills.py`)
 - Discovers skills in `./skills/` and `~/.tether/skills/`.

@@ -13,6 +13,7 @@ from typing import Any
 from tether.context import ACT_TOOL_SCHEMA, ContextAssembler, estimate_messages_tokens
 from tether.decorator import ToolSpec, build_tool_spec
 from tether.multiplexer import Multiplexer
+from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
 from tether.providers import ModelProvider, resolve_provider
 from tether.sandbox import SandboxPolicy
 from tether.skills import Skill, SkillLoader, make_skill_tool
@@ -208,6 +209,67 @@ class Harness:
                 )
         return mux
 
+    @staticmethod
+    def _resolve_pipeline(
+        pipeline: Pipeline | str | Path | dict[str, Any],
+    ) -> Pipeline:
+        if isinstance(pipeline, Pipeline):
+            return pipeline
+        if isinstance(pipeline, dict):
+            return Pipeline.from_dict(pipeline)
+        if isinstance(pipeline, Path):
+            return load_pipeline(pipeline)
+        raw_str = str(pipeline).strip()
+        if "\n" in raw_str or raw_str.startswith("stages:"):
+            return parse_pipeline_yaml(raw_str)
+        return load_pipeline(Path(raw_str))
+
+    def create_pipeline_session(
+        self,
+        pipeline: Pipeline | str | Path | dict[str, Any],
+        goal: str,
+        *,
+        parent_id: str | None = None,
+    ) -> SessionRecord:
+        """Create a persisted root pipeline session row in SQLite without executing it yet."""
+        resolved = self._resolve_pipeline(pipeline)
+        root_sandbox = self.sandbox.attenuate(resolved.sandbox)
+        sbox_dict = root_sandbox.to_dict()
+        sbox_dict["pipeline"] = resolved.to_dict()
+        return self.store.create_session(
+            goal=goal,
+            model=self.model,
+            skill=resolved.name,
+            tools=self._enabled_tool_names,
+            sandbox_config=sbox_dict,
+            parent_id=parent_id,
+            max_steps=len(resolved.stages),
+        )
+
+    def spawn_pipeline(
+        self,
+        pipeline: Pipeline | str | Path | dict[str, Any],
+        goal: str,
+        *,
+        parent_id: str | None = None,
+    ) -> str:
+        """Create a pipeline session and launch it as a detached headless worker."""
+        rec = self.create_pipeline_session(pipeline, goal, parent_id=parent_id)
+        spawner = self._spawner_for_store()
+        spawner(rec.id)
+        return rec.id
+
+    async def run_pipeline(
+        self,
+        pipeline: Pipeline | str | Path | dict[str, Any],
+        goal: str,
+        *,
+        parent_id: str | None = None,
+    ) -> SessionRecord:
+        """Execute a deterministic multi-stage pipeline with isolated stage sessions."""
+        rec = self.create_pipeline_session(pipeline, goal, parent_id=parent_id)
+        return await self.execute_session(rec.id)
+
     def create_session(self, goal: str, *, parent_id: str | None = None) -> SessionRecord:
         """Create a persisted session row in SQLite without executing it yet."""
         return self.store.create_session(
@@ -285,14 +347,131 @@ class Harness:
                 return vcmd, code, compact_out
         return None
 
+    async def _execute_pipeline_session(self, rec: SessionRecord) -> SessionRecord:
+        """Execute a deterministic multi-stage pipeline with isolated child sessions."""
+        raw_pipe = rec.sandbox_config.get("pipeline")
+        assert isinstance(raw_pipe, dict)
+        pipeline = Pipeline.from_dict(raw_pipe)
+        root_sandbox = SandboxPolicy.from_dict(rec.sandbox_config)
+
+        self.store.update_session(rec.id, status="RUNNING", pid=os.getpid())
+        completed_stages: list[tuple[str, SessionRecord]] = []
+
+        for idx, stage in enumerate(pipeline.stages, start=1):
+            stage_sandbox = root_sandbox.attenuate(stage.sandbox)
+            skill_obj: Skill | None = None
+            if stage.skill:
+                skill_obj = self.skill_loader.load(stage.skill)
+                if skill_obj is None:
+                    err_msg = f"Stage `{stage.id}` failed: skill `{stage.skill}` not found."
+                    self.store.update_session(
+                        rec.id, status="FAILED", result=err_msg, step_count=idx
+                    )
+                    failed_root = self.store.get_session(rec.id)
+                    assert failed_root is not None
+                    return failed_root
+                for ct in skill_obj.custom_tools:
+                    self._custom_tools.setdefault(ct.name, ct)
+
+            stage_model = (
+                stage.model
+                or (skill_obj.model if skill_obj and skill_obj.model else None)
+                or rec.model
+            )
+            stage_tools = (
+                list(stage.tools)
+                if stage.tools
+                else (list(skill_obj.tools) if skill_obj and skill_obj.tools else list(rec.tools))
+            )
+            if completed_stages and "agent" not in stage_tools and "all" not in stage_tools:
+                stage_tools.append("agent")
+
+            stage_verify: list[str] = []
+            for sv in [
+                *(skill_obj.verify if skill_obj else []),
+                *stage.verify,
+                *root_sandbox.verify_commands,
+            ]:
+                if sv not in stage_verify:
+                    stage_verify.append(sv)
+            stage_sandbox.verify_commands = stage_verify
+
+            stage_max_steps = stage.max_steps or pipeline.max_steps or self.max_steps
+            stage_goal = render_stage_goal(stage, rec.goal, completed_stages, self.store)
+
+            stage_rec = self.store.create_session(
+                goal=stage_goal,
+                model=stage_model,
+                skill=stage.skill,
+                tools=stage_tools,
+                sandbox_config=stage_sandbox.to_dict(),
+                parent_id=rec.id,
+                max_steps=stage_max_steps,
+            )
+            stage_done = await self.execute_session(stage_rec.id)
+
+            digest = self.store.get_session_digest(stage_done.id)
+            self.store.add_turn(
+                session_id=rec.id,
+                step=idx,
+                role="tool",
+                content=digest,
+                tool_cmd=f"stage {stage.id} ({stage_done.id})",
+                prompt_tokens=stage_done.total_prompt_tokens,
+                completion_tokens=stage_done.total_completion_tokens,
+                event_type="completed" if stage_done.status == "COMPLETED" else "tool_error",
+            )
+            self.store.update_session(
+                rec.id,
+                step_count=idx,
+                peak_tokens=stage_done.peak_tokens,
+                add_prompt_tokens=stage_done.total_prompt_tokens,
+                add_completion_tokens=stage_done.total_completion_tokens,
+            )
+
+            if stage_done.status == "WAITING_INPUT":
+                wait_msg = (
+                    f"Stage `{stage.id}` ({stage_done.id}) is waiting for input: "
+                    f"{stage_done.result or ''}"
+                )
+                self.store.update_session(
+                    rec.id, status="WAITING_INPUT", result=wait_msg, step_count=idx
+                )
+                waiting_root = self.store.get_session(rec.id)
+                assert waiting_root is not None
+                return waiting_root
+
+            if stage_done.status != "COMPLETED":
+                fail_msg = f"Stage `{stage.id}` ({stage_done.id}) failed: {stage_done.result or ''}"
+                self.store.update_session(rec.id, status="FAILED", result=fail_msg, step_count=idx)
+                aborted_root = self.store.get_session(rec.id)
+                assert aborted_root is not None
+                return aborted_root
+
+            completed_stages.append((stage.id, stage_done))
+
+        final_result = completed_stages[-1][1].result or ""
+        self.store.update_session(
+            rec.id,
+            status="COMPLETED",
+            result=final_result,
+            step_count=len(completed_stages),
+        )
+        done_root = self.store.get_session(rec.id)
+        assert done_root is not None
+        return done_root
+
     async def execute_session(self, session_id: str) -> SessionRecord:
         """Execute the bounded agent loop for a persisted session in SQLite."""
         rec = self.store.get_session(session_id)
         if not rec:
             raise ValueError(f"Session `{session_id}` not found.")
 
+        if isinstance(rec.sandbox_config.get("pipeline"), dict):
+            return await self._execute_pipeline_session(rec)
+
         sandbox = SandboxPolicy.from_dict(rec.sandbox_config)
-        skill_obj = self._skill
+        skill_obj = self._skill if rec.skill == self.skill_name else None
         if skill_obj is None and rec.skill:
             skill_obj = self.skill_loader.load(rec.skill)
             if skill_obj:
@@ -309,7 +488,7 @@ class Harness:
         for sv in [
             *(skill_obj.verify if skill_obj else []),
             *sandbox.verify_commands,
-            *self._verify_commands,
+            *(self._verify_commands if rec.parent_id is None else []),
         ]:
             if sv not in verify_commands:
                 verify_commands.append(sv)

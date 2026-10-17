@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from tether.decorator import ToolSpec, tool
 from tether.harness import Harness
+from tether.pipeline import (
+    Pipeline,
+    PipelineSpec,
+    PipelineStage,
+    load_pipeline,
+    parse_pipeline_yaml,
+)
 from tether.providers import (
     ActionCall,
     ModelProvider,
@@ -32,6 +39,9 @@ __all__ = [
     "ModelProvider",
     "ModelResponse",
     "ModelStats",
+    "Pipeline",
+    "PipelineSpec",
+    "PipelineStage",
     "ProviderResponse",
     "SQLiteStore",
     "SandboxPolicy",
@@ -43,6 +53,8 @@ __all__ = [
     "ToolOffender",
     "ToolSpec",
     "extract_fallback_action",
+    "load_pipeline",
+    "parse_pipeline_yaml",
     "register_provider",
     "tool",
 ]

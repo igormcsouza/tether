@@ -101,11 +101,12 @@ fetch key articles with `web fetch`, pin verified facts with `mem pin`,
 and conclude with `act("done", stdin="<markdown report>")`.
 ```
 
-### 4. Async Multi-Agent Orchestration & Zero-Bloat SQLite FTS5 RAG
-Because every Tether session is headless-capable, a parent agent can delegate context-heavy subtasks to child agents with isolated context windows—**without drowning when reading their results back**:
+### 4. Async Multi-Agent Orchestration, Deterministic Pipelines & Zero-Bloat SQLite FTS5 RAG
+Because every Tether session is headless-capable, a parent agent can delegate context-heavy subtasks to child agents—or execute a deterministic multi-stage YAML pipeline—with isolated context windows **without drowning when reading results back**:
 - `agent spawn --skill researcher "Summarize AI news"` $\rightarrow$ immediately returns `ses_9a2f1c` (non-blocking).
 - `agent wait ses_9a2f1c ses_4b8e0d` $\rightarrow$ returns a **compact ~50-token digest** (status, chunk count, preview) rather than dumping thousands of tokens into the parent's prompt.
-- `agent query ses_9a2f1c "open-weight benchmarks" --top 3` $\rightarrow$ uses **SQLite FTS5 (BM25 ranking)** over the sub-agent's chunked final deliverable *and* raw scraped observations to retrieve only the top-K relevant snippets (~250 tokens). Pass `--all` to search across all child sessions at once!
+- `agent query ses_9a2f1c "open-weight benchmarks" --top 3` $\rightarrow$ uses **SQLite FTS5 (BM25 ranking)** over the sub-agent's chunked final deliverable *and* raw scraped observations to retrieve only the top-K relevant snippets (~250 tokens). Pass `--all` to search across all child/sibling sessions at once!
+- `tether pipeline workflow.yaml "Build feature X"` (or `await harness.run_pipeline(...)`) $\rightarrow$ runs a declarative multi-stage DAG (`spec` $\rightarrow$ `implement` $\rightarrow$ `security_audit`) with **heterogeneous model routing** (e.g., frontier planner + local 9B executor), isolated per-stage `SessionRecord`s, monotonic sandbox attenuation, and compact ~50-token FTS5 stage handoffs.
 - `mem search "rate limits"` $\rightarrow$ uses the same FTS5 index inside a single session to pull specific chunks from folded observations without recalling the entire raw output, or pass `mem search --project "<query>"` (and `mem pin --project <k> <v>`) to query across workspace-level facts (`__project__`) and all past `COMPLETED` sessions.
 
 ### 5. Deterministic Security Sandbox (Never Relying on the LLM)
