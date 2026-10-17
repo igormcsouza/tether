@@ -2,6 +2,30 @@
 
 The `tether` CLI is designed for both interactive developer workflows and headless shell automation. Every session is persisted in an ACID SQLite WAL database (`.tether/tether.db` by default, or overridden via `--db` / `TETHER_DB`).
 
+## Installing the CLI from PyPI
+
+Install the `tether-sdk` package from PyPI using `pip` or `uv` to make the `tether` command available in your shell:
+
+=== "pip"
+
+    ```sh
+    pip install tether-sdk
+    tether --version
+    ```
+
+=== "uv tool (global CLI)"
+
+    ```sh
+    uv tool install tether-sdk
+    tether --version
+    ```
+
+=== "uvx (one-off execution)"
+
+    ```sh
+    uvx --from tether-sdk tether "Summarize the CAP theorem"
+    ```
+
 ## Foreground Execution
 
 When you pass a goal directly to `tether` (or `tether run`), the session runs in the foreground and prints the final deliverable when the agent calls `done`:

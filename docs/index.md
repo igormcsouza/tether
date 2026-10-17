@@ -11,9 +11,9 @@ Most agent frameworks drown small models in 3,000–8,000 tokens of nested JSON 
 
 ---
 
-## Install
+## Install from PyPI
 
-Requires Python 3.12+.
+Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-sdk/)** (requires Python `3.12+`). Installing `tether-sdk` provides both the **`tether` CLI command** and the **`import tether` Python SDK**.
 
 === "pip"
 
@@ -21,10 +21,22 @@ Requires Python 3.12+.
     pip install tether-sdk
     ```
 
-=== "uv"
+=== "uv (project dependency)"
 
     ```sh
     uv add tether-sdk
+    ```
+
+=== "uv tool (global CLI)"
+
+    ```sh
+    uv tool install tether-sdk
+    ```
+
+=== "uvx (zero-install run)"
+
+    ```sh
+    uvx --from tether-sdk tether "Explain the CAP theorem in 3 bullet points"
     ```
 
 ---

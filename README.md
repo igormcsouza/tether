@@ -2,6 +2,8 @@
 
 **A general-purpose, headless-first LLM-Native micro-harness engineered for small context windows and high-signal business logic.**
 
+[![PyPI](https://img.shields.io/pypi/v/tether-sdk?color=0d9488&label=PyPI%20%7C%20tether-sdk)](https://pypi.org/project/tether-sdk/)
+[![Docs](https://img.shields.io/badge/Docs-igormcsouza.github.io%2Ftether-0d9488)](https://igormcsouza.github.io/tether/)
 [![Architecture Paradigm](https://img.shields.io/badge/Paradigm-LLM--Native%20(Maia%20et%20al.%2C%202026)-6366f1)](#theoretical-foundation)
 [![Target Models](https://img.shields.io/badge/Models-Ollama%20(qwen3.5%3A9b)%20%7C%20Claude%20%7C%20GPT-10b981)](#multi-model-zero-bloat-adapters)
 [![Python](https://img.shields.io/badge/Python-3.12%2B%20%7C%20uv%20%7C%20SQLite%20WAL-3b82f6)](#quickstart)
@@ -159,15 +161,25 @@ xychart-beta
 
 ## Quickstart
 
-### Installation
+### Installation (PyPI)
+
+Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-sdk/)** (requires Python `3.12+`). Installing `tether-sdk` provides both the **`tether` CLI entrypoint** and the **`tether` Python package** (`from tether import Harness, tool`):
 
 ```bash
+# Install with pip
 pip install tether-sdk
-# or with uv:
+
+# Or add to a project with uv
 uv add tether-sdk
+
+# Or install the `tether` CLI globally as an isolated tool
+uv tool install tether-sdk
+
+# Or run the CLI directly without installing
+uvx --from tether-sdk tether "Explain the CAP theorem in 3 bullet points"
 ```
 
-Full documentation is available at **[https://igormcsouza.github.io/tether/](https://igormcsouza.github.io/tether/)**.
+Full documentation, tutorials, and API reference: **[https://igormcsouza.github.io/tether/](https://igormcsouza.github.io/tether/)**
 
 ### Headless CLI Usage
 
