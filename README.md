@@ -210,11 +210,10 @@ if __name__ == "__main__":
 
 ### Custom SDK Provider Routing (`register_provider` / `provider=...`)
 
-Want to route Tether through a custom transport—such as a corporate gateway, a custom local inference engine, or even a stripped CLI OAuth pipe (e.g., `claude -p --tools ""`) without touching Tether's core adapters? Implement the 1-method `ModelProvider` protocol or register a custom URL prefix with `register_provider`:
+Want to route Tether through a custom transport—such as an internal corporate gateway, a custom local inference server, or a mock/replay harness for testing? Implement the 1-method `ModelProvider` protocol or register a custom URL prefix with `register_provider`:
 
 ```python
-import asyncio
-import json
+import httpx
 from tether import (
     Harness,
     ModelResponse,
@@ -223,55 +222,31 @@ from tether import (
 )
 
 
-class StrippedClaudeCLIProvider:
-    """Routes Tether turns through `claude -p --tools ''` using local OAuth."""
+class CustomGatewayProvider:
+    """Routes Tether turns through a custom internal LLM gateway."""
 
-    def __init__(self, model_name: str = "claude-sonnet-5-5") -> None:
+    def __init__(self, model_name: str) -> None:
         self.model_name = model_name
 
     async def generate(self, messages: list[dict], tools: list[dict]) -> ModelResponse:
-        system = next((m["content"] for m in messages if m["role"] == "system"), "")
-        prompt = "\n\n".join(
-            f"[{m['role']}]\n{m['content']}" for m in messages if m["role"] != "system"
-        )
-        proc = await asyncio.create_subprocess_exec(
-            "claude",
-            "-p",
-            "--tools",
-            "",
-            "--model",
-            self.model_name,
-            "--system-prompt",
-            f'{system}\nRespond ONLY with `act("<cmd>", stdin="...")`.',
-            "--output-format",
-            "json",
-            prompt,
-            stdout=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        data = json.loads(stdout.decode().strip().splitlines()[-1])
-        text = str(data.get("result") or "").strip()
-        usage = data.get("usage") or {}
-        tokens = sum(
-            int(usage.get(k) or 0)
-            for k in (
-                "input_tokens",
-                "cache_creation_input_tokens",
-                "cache_read_input_tokens",
-                "output_tokens",
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://llm-gateway.internal/v1/generate",
+                json={"model": self.model_name, "messages": messages, "tools": tools},
             )
-        )
+            data = resp.json()
+        text = str(data.get("text") or "").strip()
         return ModelResponse(
             content=text,
             action=extract_fallback_action(text),
-            prompt_tokens=tokens,
+            prompt_tokens=int(data.get("total_tokens") or 0),
         )
 
 
 # Register as a custom `<prefix>/<model>` for Harness, Skills, and Sub-Agents:
-register_provider("claude-cli", StrippedClaudeCLIProvider)
+register_provider("gateway", CustomGatewayProvider)
 
-harness = Harness(model="claude-cli/claude-sonnet-5-5", tools=["web", "mem"])
+harness = Harness(model="gateway/qwen-enterprise-32b", tools=["web", "mem"])
 ```
 
 ---

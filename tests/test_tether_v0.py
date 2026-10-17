@@ -410,29 +410,29 @@ def test_fallback_9b_action_extractor() -> None:
 
 
 async def test_custom_sdk_provider_routing(tmp_path: Path) -> None:
-    """Verify SDK users can register custom model providers (e.g. stripped CLI pipes)."""
+    """Verify SDK users can register custom model providers (e.g. custom gateways)."""
     from tether import register_provider
 
-    class CustomPipeProvider:
+    class CustomGatewayProvider:
         def __init__(self, model_name: str) -> None:
             self.model_name = model_name
 
         async def generate(
             self, messages: list[dict[str, Any]], tools: list[dict[str, Any]]
         ) -> ModelResponse:
-            raw_out = f'act("done", stdin="Routed via custom pipe: {self.model_name}")'
+            raw_out = f'act("done", stdin="Routed via custom gateway: {self.model_name}")'
             return ModelResponse(
                 content=raw_out,
                 action=extract_fallback_action(raw_out),
                 prompt_tokens=320,
             )
 
-    register_provider("claude-cli", lambda name: CustomPipeProvider(name))
+    register_provider("gateway", lambda name: CustomGatewayProvider(name))
     harness = Harness(
         db_path=tmp_path / "tether.db",
-        model="claude-cli/claude-sonnet-5-5",
+        model="gateway/qwen-enterprise-32b",
     )
     session = await harness.run("Test custom provider")
     assert session.status == "COMPLETED"
-    assert session.result == "Routed via custom pipe: claude-sonnet-5-5"
+    assert session.result == "Routed via custom gateway: qwen-enterprise-32b"
     assert session.peak_tokens == 320
