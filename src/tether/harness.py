@@ -282,11 +282,14 @@ class Harness:
 
         step_start = rec.step_count
         step_limit = step_start + rec.max_steps
+        last_action_sig: tuple[str, str | None] | None = None
 
         try:
             for step in range(step_start + 1, step_limit + 1):
                 # 1. Poll SQLite inbox before each reasoning step
                 inbox_msgs = self.store.consume_inbox(session_id)
+                if inbox_msgs:
+                    last_action_sig = None
                 for imsg in inbox_msgs:
                     self.store.add_turn(
                         session_id=session_id,
@@ -353,6 +356,22 @@ class Harness:
                     tool_cmd=cmd,
                     tool_stdin=stdin,
                 )
+
+                action_sig = (cmd.strip(), stdin)
+                if action_sig == last_action_sig and not cmd.strip().startswith("done"):
+                    stall_msg = (
+                        f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input in the "
+                        "previous step. Do not repeat the same command—inspect the prior output, "
+                        'adjust your arguments, or call `act("done", stdin="...")` to finish.'
+                    )
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=stall_msg,
+                    )
+                    continue
+                last_action_sig = action_sig
 
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 if dispatch.is_done:

@@ -468,3 +468,30 @@ def test_head_tail_active_observation_elision(tmp_path: Path) -> None:
     assert "HEAD_MARKER_" in obs_msg
     assert "_TAIL_TRACEBACK_EXIT_0" in obs_msg
     assert "middle chars elided in L1" in obs_msg
+
+
+async def test_deterministic_loop_stall_breaker(tmp_path: Path) -> None:
+    """Verify consecutive identical commands trigger a deterministic [LOOP DETECTED] nudge."""
+    call_count = 0
+
+    @tool(name="ping", description="Ping a host")
+    def ping(host: str) -> str:
+        nonlocal call_count
+        call_count += 1
+        return f"pong from {host}"
+
+    provider = FakeScriptedProvider(
+        [
+            ModelResponse(content="", action=ActionCall(cmd="ping example.com")),
+            ModelResponse(content="", action=ActionCall(cmd="ping example.com")),
+            ModelResponse(content="", action=ActionCall(cmd="done", stdin="Recovered from loop")),
+        ]
+    )
+    harness = Harness(db_path=tmp_path / "tether.db", tools=[ping], provider=provider)
+    session = await harness.run("Ping example.com once")
+    assert session.status == "COMPLETED"
+    assert session.result == "Recovered from loop"
+    # Tool was only executed once; the duplicate call was intercepted by the loop-stall breaker!
+    assert call_count == 1
+    step3_prompt = "\n".join(m["content"] for m in provider.recorded_calls[2])
+    assert "[LOOP DETECTED]" in step3_prompt
