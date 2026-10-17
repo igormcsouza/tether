@@ -81,10 +81,8 @@ def chunk_text(text: str, max_chars: int = 600) -> list[str]:
     current: list[str] = []
     current_len = 0
 
-    for block in blocks:
-        block = block.strip()
-        if not block:
-            continue
+    for raw_block in blocks:
+        block = raw_block.strip()
         if len(block) > max_chars:
             if current:
                 chunks.append("\n\n".join(current))

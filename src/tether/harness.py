@@ -115,9 +115,7 @@ class Harness:
                 elif name and name != "done" and name not in self._enabled_tool_names:
                     self._enabled_tool_names.append(name)
             else:
-                spec = self.register(item)
-                if spec.name not in self._enabled_tool_names:
-                    self._enabled_tool_names.append(spec.name)
+                self.register(item)
 
     def register(self, fn_or_spec: ToolSpec | Callable[..., Any]) -> ToolSpec:
         """Register a custom Python function or ToolSpec with this Harness."""
