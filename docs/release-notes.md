@@ -4,6 +4,7 @@
 
 ### Fixes
 - **`@tool` argument parsing**: extra unquoted words now join into the last positional `str` parameter even when later parameters are optional non-`str` (`yt-search arquitetura em camadas` with `def yt_search(query: str, limit: int = 3)`); later optionals are set via `--flag`. `*args: str` parameters now receive the words splatted instead of failing with `unexpected keyword argument`.
+- **Multiplexer**: small models that send `edit write`/`edit replace` stdin or the `done` deliverable as one line with literal `\n` (and `\t`) escapes now get them unescaped deterministically (only when the stdin has no real newline). `bash` stdin and all other tools are never touched. (#26)
 
 ---
 
