@@ -504,6 +504,7 @@ class Harness:
         assembler = ContextAssembler(
             fold_after_turns=self.fold_observations_after,
             max_context_tokens=self.max_context_tokens,
+            structured=bool(getattr(provider, "structured_history", False)),
         )
         system_prompt = assembler.build_system_prompt(
             toolbox_index=mux.toolbox_index(),

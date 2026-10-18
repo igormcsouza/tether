@@ -18,6 +18,8 @@ from tether.providers.base import (
 class AnthropicProvider:
     """Thin async adapter for Anthropic `/v1/messages`."""
 
+    structured_history = True
+
     def __init__(
         self,
         model_name: str = "claude-3-7-sonnet-latest",
@@ -55,17 +57,47 @@ class AnthropicProvider:
         tools: list[dict[str, Any]],
     ) -> ModelResponse:
         system_text = ""
-        chat_msgs: list[dict[str, str]] = []
-        for m in messages:
-            if m.get("role") == "system":
-                system_text = str(m.get("content") or "")
+        chat_msgs: list[dict[str, Any]] = []
+
+        def add(role: str, blocks: list[dict[str, Any]]) -> None:
+            # Anthropic requires alternating roles: merge consecutive same-role messages.
+            if chat_msgs and chat_msgs[-1]["role"] == role:
+                chat_msgs[-1]["content"].extend(blocks)
             else:
-                role = "assistant" if m.get("role") == "assistant" else "user"
-                content_str = str(m.get("content") or "").strip() or "(empty)"
-                if chat_msgs and chat_msgs[-1]["role"] == role:
-                    chat_msgs[-1]["content"] = f"{chat_msgs[-1]['content']}\n\n{content_str}"
-                else:
-                    chat_msgs.append({"role": role, "content": content_str})
+                chat_msgs.append({"role": role, "content": blocks})
+
+        for m in messages:
+            mrole = m.get("role")
+            text = str(m.get("content") or "").strip()
+            if mrole == "system":
+                system_text = str(m.get("content") or "")
+            elif mrole == "tool":
+                add(
+                    "user",
+                    [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": m.get("tool_call_id"),
+                            "content": text or "(empty)",
+                        }
+                    ],
+                )
+            elif mrole == "assistant" and m.get("tool_calls"):
+                blocks = [{"type": "text", "text": text}] if text else []
+                for tc in m["tool_calls"]:
+                    fn = tc["function"]
+                    blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc["id"],
+                            "name": fn["name"],
+                            "input": fn["arguments"],
+                        }
+                    )
+                add("assistant", blocks)
+            else:
+                role = "assistant" if mrole == "assistant" else "user"
+                add(role, [{"type": "text", "text": text or "(empty)"}])
 
         anthropic_tools: list[dict[str, Any]] = []
         for t in tools:
