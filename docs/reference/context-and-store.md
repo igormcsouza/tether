@@ -14,6 +14,10 @@
       show_root_heading: false
       members_order: source
 
+## Structured history replay
+
+When the provider sets `structured_history = True` (Ollama, OpenAI-compatible, Anthropic), `ContextAssembler(structured=True)` replays each past action as an assistant `tool_calls` message (`act` with `cmd` and a bounded `stdin`) followed by a `tool` message holding the (folded) observation, instead of `act('...')` text and `Observation:` user text that small models imitated into real arguments ([#38](https://github.com/igormcsouza/tether/issues/38)). `stdin` is replayed as a real prefix (400 chars, then `…`), never a `<N chars>` placeholder that could be copied literally. A call and its result are one unit when trimming to `max_context_tokens`; an action with no result yet, and tool turns with no preceding action (pipeline digests), fall back to the textual form. The system prompt and tools array are unchanged (Rule 1).
+
 ## Observation folding and small models
 
 Raw tool outputs stay in the prompt for $K=2$ turns, then fold into a one-line tombstone (see [Built-in Tools](../tutorial/built-in-tools.md#mem-pinned-scratchpad-bm25-observation-recall)). For small models this has consequences ([#27](https://github.com/igormcsouza/tether/issues/27)), seen in the [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course):
