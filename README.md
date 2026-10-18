@@ -160,37 +160,36 @@ xychart-beta
 
 ---
 
-## Lessons from Small-Model Experiments
+## Field Notes: Tether on Small Local Models
 
-We stress-tested Tether on real tasks with local models. The details and the runnable example are in [`examples/course/`](examples/course/) and the [Troubleshooting](docs/troubleshooting.md) page; this is the short version.
+We put Tether through two real tasks with local models, scoring the results with deterministic checks instead of impressions. The runnable example lives in [`examples/course/`](examples/course/), and the [Troubleshooting](docs/troubleshooting.md) page lists the quirks we hit and their workarounds.
 
-### Experiment 1: build a Portuguese course with a 4B-9B model
+### What it can do
 
-**Task:** a mini-course on software architecture (3 modules at most, free YouTube videos, a preferred channel, most-viewed first) built by a plan, search, write [pipeline](docs/tutorial/workflows-and-telemetry.md). Models: `gemma4:e4b`, then `qwen3.5:9b` from a Docker Ollama.
+**A free 9B model built a course.** The task: a Portuguese software-architecture mini-course (at most 3 modules, free YouTube videos, a preferred channel) produced by a plan, search, write [pipeline](docs/tutorial/workflows-and-telemetry.md). With `qwen3.5:9b` running locally, the model designed 3 modules and 15 topics on its own, and **all 15 video links were verified to be real**. Verify gates stopped every invented link and every missing topic before a stage could finish, so no fake link ever reached the output.
 
-- A single prompt failed: the model called a tool wrongly, then said `done` with placeholder links. Verify gates and a pipeline of small stages fixed that.
-- `web search` could not find specific videos, so a custom tool lists numbered candidates and the model picks one by number; the tool copies the exact URL. Over-constraining the model (fixed module counts, word-overlap matching, a reviewer stage on a 4B model) made things worse.
-- Final run (`qwen3.5:9b`): the model designed 3 modules and 15 topics, and all 15 links were verified real. About 4 picks were weak (for example a degree-advice video for an introduction), and the 4B model needed far more scaffolding than the 9B.
-
-### Experiment 2: fix a bug, find a smell, add an endpoint (FastAPI)
-
-**Task:** a small FastAPI project with a planted pagination bug and a planted code smell; fix the bug, review the code, add `GET /items/search`. Each task ran 3 times on Tether v0.1.3 with deterministic scoring (tests, diff scope, a live route check).
+**A local coder fixed real bugs; a frontier model sailed through.** A small FastAPI project with a planted pagination bug, a planted code smell, and a feature request (`GET /items/search`). Each task ran 3 times on Tether v0.1.3:
 
 | Model | Fix the bug | Find the smell | Add the endpoint |
 |---|---|---|---|
-| `qwen3-coder:30b` (local) | 2/3 | 3/3 | 0/3 (wrong route order); 2/3 working code when told, none finished with `done` |
-| `claude-sonnet-5-5` (via a `claude -p` provider, Claude tools disabled) | 3/3 | 3/3 | 3/3, finished in 5-7 steps |
+| `qwen3-coder:30b` (local) | 2/3 | 3/3 | 0/3 unaided; 2/3 working code with a one-line route-order hint |
+| `claude-sonnet-5-5` (through a `claude -p` provider with Claude's own tools disabled) | 3/3 | 3/3 | 3/3, finishing with `done` in 5-7 steps |
 
-The first round on v0.1.2 failed far more often. Reading the traces showed Tether bugs, not model limits: the `bash` tool stripped all quotes (#37), and past actions were replayed as `act('...')` text that the model copied into real arguments and corrupted files (#38). Both were fixed in v0.1.3, and the same bug-fix task went from 0 of 5 to 2 of 3 with `qwen3-coder`.
+Tether ran both through the same sandboxed `bash`/`edit` tools, the same gates and the same SQLite trace. Swapping the model was a provider change, nothing else.
 
-### What we learned
+### What made small models work
 
-1. **The model judges, code checks facts.** Let the model design and choose; let tools copy exact values and gates verify them (links exist, tests pass, every topic covered). Do not make code guess what the model should decide.
-2. **Error messages are prompts.** Gate and tool errors must say what to do next, and bad input is best refused at the tool call with the valid options.
-3. **Small models fail at copying across turns, long single writes, and non-atomic edits.** Give them one compact view right before the write, end tool output with the next call, write in small pieces, and prefer in-place swaps to drop-then-save.
-4. **Look for harness bugs before blaming the model.** Several "model failures" were quote stripping, history replay, a gate the sandbox could never pass (#31), and a fixed step budget. Reproduce against the raw API and read the SQLite trace.
-5. **Finishing is its own problem.** A model that has finished may keep wandering and leave backup files; Tether requires an explicit `done` and caps steps, so size the step budget to the work.
-6. **Small samples.** Three runs per cell on a tiny project: treat these as strong signals, not a benchmark. Open items are tracked in the issues for the next milestone.
+- **The model judges, code checks facts.** Let the model design the plan and choose between options; let tools copy exact values and gates verify them. A tool that lists numbered candidates and a `yt-save <n>` that copies the URL removed a whole class of mistakes.
+- **Messages are prompts.** Gate and tool errors that say what to do next (and refuse bad input with the valid options) let small models recover on their own.
+- **Small stages and compact views.** One module per stage, one joined view right before a write, tool output that ends with the exact next call, and in-place swaps instead of drop-then-save kept 4B-9B models on track.
+- **The trace makes it debuggable.** Every turn, tool call and gate result is in SQLite, so each failure we saw could be traced to a cause and fixed. The first round of runs exposed two harness-side problems (quoting in the `bash` tool, and how past actions were replayed to the model); both were fixed in v0.1.3, and the same bug-fix task went from 0 of 5 to 2 of 3 with the same local model.
+
+### Where small models still need help (and how to give it)
+
+- **Non-obvious framework gotchas.** The unaided 30B model put the new route after `/items/{item_id}` every time and could not work out why its tests returned 422. One sentence of guidance fixed it in 2 of 3 runs, and a stronger model needed no hint. Route those steps to a stronger model with per-stage `model:`, or put the gotcha in the skill.
+- **Knowing when it is done.** Tether asks for an explicit `done` and caps steps; weaker models sometimes finish the work and keep tinkering, leaving backup files behind. Gates, a step budget sized to the work, and a short "when the tests pass, call `done`" line in the skill handle it.
+- **Edits that need to be exact.** Whole-file rewrites and wrong line numbers are the usual failure. Prefer `edit replace` with a viewed range, atomic tools, and a verify gate that runs the tests.
+- **Sample size.** Three runs per cell on a tiny project are a strong signal, not a benchmark. The pattern held across both experiments: the shape of the harness mattered as much as the model.
 
 ## Quickstart
 
