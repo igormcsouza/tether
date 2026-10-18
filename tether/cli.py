@@ -7,6 +7,8 @@ import asyncio
 import sys
 from pathlib import Path
 
+import yaml
+
 from tether.harness import Harness
 from tether.sandbox import SandboxPolicy
 from tether.store import SQLiteStore
@@ -219,11 +221,15 @@ async def _async_main(argv: list[str]) -> int:
             db_path=ns.db,
             max_steps=ns.max_steps,
         )
-        if ns.headless:
-            sid = harness.spawn_pipeline(Path(ns.pipeline_file), goal)
-            print(sid)
-            return 0
-        rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
+        try:
+            if ns.headless:
+                sid = harness.spawn_pipeline(Path(ns.pipeline_file), goal)
+                print(sid)
+                return 0
+            rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            print(f"Error: invalid pipeline `{ns.pipeline_file}`: {exc}", file=sys.stderr)
+            return 1
         if rec.result:
             print(rec.result)
         return 0 if rec.status in ("COMPLETED", "WAITING_INPUT") else 1
@@ -276,7 +282,11 @@ async def _async_main(argv: list[str]) -> int:
     if cmd == "send":
         msg = " ".join(ns.message).strip()
         harness = Harness(db_path=ns.db)
-        rec = await harness.send(ns.session_id, msg, headless=ns.headless)
+        try:
+            rec = await harness.send(ns.session_id, msg, headless=ns.headless)
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
         if ns.headless or rec.status in ("RUNNING", "PENDING"):
             print(f"Message queued for `{rec.id}` [{rec.status}].")
         else:

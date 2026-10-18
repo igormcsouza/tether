@@ -55,7 +55,7 @@ Tether implements the architectural principles from *"LLM-Native Applications as
   - All `edit` and `bash` paths are canonicalized (`Path.resolve()`) and confined to `workspace_root`.
   - Sensitive files/directories (`.env*`, `.git/config`, `.git/hooks`, `~/.ssh`, `.tether/`) are deterministically protected from mutation or read exfiltration.
   - Secret environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `AWS_*`, etc.) are scrubbed from all `bash` subprocesses.
-  - On Linux, `bash` automatically uses **`bwrap` (Bubblewrap) / `unshare`** when available (read-only `/`, hidden `$HOME` tmpfs, read-write bind on `workspace_root`, `PR_SET_NO_NEW_PRIVS`), falling back to a strict deterministic command allowlist/denylist (`rm -rf /`, `sudo`, `dd`, `mkfs`, `chmod 777`, etc. blocked).
+  - On Linux, `bash` automatically uses **`bwrap` (Bubblewrap) / `unshare`** when available (read-only `/`, hidden `$HOME` tmpfs, read-write bind on `workspace_root` with `.env*`, `.tether/`, `.git/config` and `.git/hooks` masked at the mount level, `PR_SET_NO_NEW_PRIVS`), falling back to a strict deterministic command allowlist/denylist (`rm -rf /`, `sudo`, `dd`, `mkfs`, `chmod 777`, etc. blocked).
   - Sub-agents spawned via `agent spawn` strictly inherit or narrow their parent session's `SandboxPolicy` (no privilege escalation).
 
 ### Rule 7: Zero Framework Bloat
