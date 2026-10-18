@@ -58,3 +58,9 @@ harness = Harness(
     sandbox=policy,
 )
 ```
+
+## Example: awk/sed programs that start with `/`
+
+The command guard (the non-`bwrap` fallback check on `bash` commands) tokenizes the command and treats any token starting with `/` as an absolute path (except `/dev/null` and `/tmp`). An inline awk or sed program such as `awk '/Módulo/ {n++}' plan.md` is one token starting with `/`, so it is rejected as "absolute path outside workspace" even though it is not a path ([#31](https://github.com/igormcsouza/tether/issues/31)). This also hit verification gates, which run under the same policy.
+
+Workaround: put the logic in a script file and call that. The [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) uses `python3 checks.py plan|videos|course` as gates instead of inline awk.

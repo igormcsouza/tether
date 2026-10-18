@@ -80,3 +80,50 @@ tether retro "$SID" --apply    # append them
 ```
 
 `retro` reads a finished session's friction trace (your `send` corrections, loop stalls, syntax/tool errors, failed gates), asks one model call for at most **2 rules of at most 30 tokens**, drops duplicates, and shows a unified diff of `SKILL.md`. `--apply` appends them under `## Learned Rules`, or pins them to project memory if the session used no skill. It never changes a live prompt.
+
+## Example: course builder
+
+The [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) uses gates, a pipeline and telemetry. What we learned, by feature.
+
+### Gates
+
+- **Say what to DO next, not only what failed.** The gate output is what the model sees. `checks.py` ends its messages with the next step:
+
+    ```python
+    fail("topics without a video: 1.3, 2.1. Use yt-todo, yt-candidates <ref>, yt-save <n>.")
+    ```
+
+- **Gate scripts as files.** `verify: ['python3 checks.py plan']`, not an inline `awk '/Módulo/ ...'`: the sandbox path check blocks inline programs starting with `/` ([#31](https://github.com/igormcsouza/tether/issues/31), [Security and Sandbox](security-and-sandbox.md#example-awksed-programs-that-start-with)).
+- **Fail closed.** A gate that reads a missing input file and finds nothing to check exits `0`. `checks.py videos` explicitly fails when `plan.md` has no modules.
+- **An environment error counts as a failure.** If the gate command itself cannot run (script missing, sandbox error) it is reported as a failed gate, and 3 consecutive failures end the session `FAILED` ([#33](https://github.com/igormcsouza/tether/issues/33)). Run your gate by hand before the pipeline.
+
+### Pipelines
+
+```yaml
+name: course
+max_steps: 60            # default for every stage; a stage may set its own max_steps
+stages:
+  - {id: plan,   skill: planner,  goal: "{{goal}}"}
+  - {id: videos, skill: searcher, goal: "Escolha 1 vídeo para cada tópico de plan.md"}
+  - {id: course, skill: writer,   goal: "Monte course.md a partir de plan.md e dos vídeos escolhidos"}
+```
+
+Each stage takes its `verify` gates and tools from its skill, and its model from the skill's `model:` (a stage `model:` routes per stage).
+
+- **Size `max_steps` to the work.** A 15-topic plan needed about 57 searcher steps (`yt-todo`, `yt-candidates`, `yt-save` per topic); with 50 the stage failed with 2 topics left.
+- **There is no built-in resume** ([#35](https://github.com/igormcsouza/tether/issues/35)). Progress lives in files (`videos.md`), so re-run the stage's skill by hand; the tools skip finished topics:
+
+    ```sh
+    tether run --skill searcher "Escolha 1 vídeo para cada tópico de plan.md"
+    ```
+
+### Telemetry
+
+List a session's commands from the database (the sandbox hides `.tether/` from the model, so run this in your own shell):
+
+```sh
+sqlite3 .tether/tether.db \
+  "select step, event_type, tool_cmd from turns where session_id='$SID' and tool_cmd is not null order by step"
+```
+
+`turns.event_type` is one of `ok`, `nudge`, `loop_stall`, `syntax_error`, `tool_error`, `gate_fail`, `completed`; the non-`ok` ones are what `tether stats` counts as friction. Model **reasoning is not recorded** (only the action and its output), so a "thinking" model that loops shows no visible cause ([#32](https://github.com/igormcsouza/tether/issues/32)).

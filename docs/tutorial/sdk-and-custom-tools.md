@@ -66,3 +66,54 @@ async def main() -> None:
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+## Example: course builder
+
+Patterns from the [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) (`examples/course/skills/`).
+
+### Argument parsing (v0.1.2)
+
+- Unquoted extra words join into the **last positional `str` parameter**: `yt-candidates 1.1 outras palavras` gives `ref="1.1 outras palavras"`.
+- Optional parameters need a flag: `--limit 2`.
+- `*args: str` receives the words as separate positional arguments.
+
+### Gotcha: list skill tools in `tools:` too
+
+A skill's `tools.py` functions are registered when the skill loads, but the session only exposes names listed in the skill's `tools:`. A tool missing from that list fails with `Error: unknown command`. See [Skills](skills.md#tools-py-and-the-tools-list) ([#24](https://github.com/igormcsouza/tether/issues/24)).
+
+### Pattern: numbered candidates
+
+The model must never retype data such as URLs. The model chooses, the tool copies:
+
+```text
+yt-todo                 # "1.1 Arquitetura em camadas" (topics still without a video)
+yt-candidates 1.1       # "1. title | channel | views" ... numbered, state kept in .yt_cands.json
+yt-save 2               # tool writes the exact URL of candidate 2 to videos.md
+```
+
+```python
+@tool(name="yt-save", description="Save candidate N for the topic of the last yt-candidates")
+def yt_save(number: int) -> str:
+    try:
+        st = json.load(open(STATE))
+        c = st["cands"][number - 1]
+    except (FileNotFoundError, IndexError, KeyError):
+        return "no such candidate; run yt-candidates <ref> first"
+```
+
+### Refuse bad input at the boundary, return the valid options
+
+`yt-candidates` answers an unknown ref with `unknown ref; use one from yt-todo: 1.1, 1.2, ...` instead of raising. The model self-heals on the next call.
+
+### Keep file formats safe
+
+`videos.md` is pipe-delimited. A video title containing ` | ` corrupted it, so the tool sanitizes every field before writing:
+
+```python
+def clean(x):  # '|' is the videos.md column separator
+    return x.replace(" | ", " – ").replace("|", "–").replace("\n", " ")
+```
+
+### Make multi-step edits atomic
+
+Prefer one in-place swap over drop-then-save (delete the old row, then write the new one): if the model stops between the two steps, data is lost. Write the replacement and the removal in the same tool call.
