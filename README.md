@@ -181,7 +181,7 @@ We stress-tested Tether on real tasks with local models. The details and the run
 | `qwen3-coder:30b` (local) | 2/3 | 3/3 | 0/3 (wrong route order); 2/3 working code when told, none finished with `done` |
 | `claude-sonnet-5-5` (via a `claude -p` provider, Claude tools disabled) | 3/3 | 3/3 | 3/3, finished in 5-7 steps |
 
-The first round on v0.1.1/v0.1.2 failed far more often. Reading the traces showed Tether bugs, not model limits: the `bash` tool stripped all quotes (#37), and past actions were replayed as `act('...')` text that the model copied into real arguments and corrupted files (#38). Both were fixed in v0.1.3, and the same bug-fix task went from 0 of 5 to 2 of 3 with `qwen3-coder`.
+The first round on v0.1.2 failed far more often. Reading the traces showed Tether bugs, not model limits: the `bash` tool stripped all quotes (#37), and past actions were replayed as `act('...')` text that the model copied into real arguments and corrupted files (#38). Both were fixed in v0.1.3, and the same bug-fix task went from 0 of 5 to 2 of 3 with `qwen3-coder`.
 
 ### What we learned
 
