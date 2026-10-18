@@ -108,7 +108,7 @@ async def test_sandbox_bwrap_and_execution_edge_cases(
     out_err = await ws_sb.execute_bash("echo err_msg >&2; exit 2")
     assert "[stderr]" in out_err and "[exit 2]" in out_err
     out_empty = await ws_sb.execute_bash("true")
-    assert out_empty == "[exit 0]"
+    assert out_empty == "[exit 0: no output] Command succeeded."
     out_trunc = await ws_sb.execute_bash("python3 -c 'print(\"X\" * 200)'")
     assert "truncated" in out_trunc
     out_timeout = await ws_sb.execute_bash("sleep 5")
