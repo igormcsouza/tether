@@ -1,5 +1,12 @@
 # Release Notes
 
+## Unreleased (v0.1.2)
+
+### Fixes
+- **Multiplexer**: small models that send `edit write`/`edit replace` stdin or the `done` deliverable as one line with literal `\n` (and `\t`) escapes now get them unescaped deterministically (only when the stdin has no real newline). `bash` stdin and all other tools are never touched. (#26)
+
+---
+
 ## v0.1.1 (2026-10-18)
 
 ### Fixes

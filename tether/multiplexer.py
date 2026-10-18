@@ -56,6 +56,13 @@ def normalize_cmd(raw_cmd: str) -> str:
     return s
 
 
+def unescape_literal_newlines(stdin: str | None) -> str | None:
+    """Unescape literal `\\n`/`\\t` when a small model sent a whole payload on one line."""
+    if stdin and "\n" not in stdin and "\\n" in stdin:
+        return stdin.replace("\\n", "\n").replace("\\t", "\t")
+    return stdin
+
+
 def split_cli(cmd: str) -> list[str]:
     """Split a CLI command string using POSIX shlex with graceful fallback on unclosed quotes."""
     try:
@@ -130,6 +137,9 @@ class Multiplexer:
                 is_error=True,
                 error_kind="unknown_cmd",
             )
+
+        if name == "done" or (name == "edit" and args[:1] in (["write"], ["replace"])):
+            stdin = unescape_literal_newlines(stdin)
 
         try:
             out = await spec.invoke(args, stdin=stdin)
