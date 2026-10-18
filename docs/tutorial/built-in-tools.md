@@ -64,6 +64,10 @@ When raw tool outputs age past $K=2$ turns, Tether folds them into 1-line tombst
 # Pin a key-value fact into active working memory
 act(cmd="mem pin db_engine sqlite_wal")
 
+# Pin a workspace-wide fact visible to every session, and search across all sessions
+act(cmd="mem pin --project test_cmd pytest")
+act(cmd="mem search --project test")
+
 # Search across all folded observations in the session using BM25 ranking
 act(cmd='mem search "checkpoint starvation" --top 3')
 
