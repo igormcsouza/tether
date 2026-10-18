@@ -1,5 +1,12 @@
 # Release Notes
 
+## Unreleased
+
+### Docs
+- New runnable example `examples/course/` (a plan, research and write pipeline on small local models), used as the running example across the tutorial, and a new Troubleshooting page (symptom, cause, fix, known limitations). Documents `@tool` argument parsing, the `tools.py` plus `tools:` requirement, gate and pipeline practices, observation-folding workarounds, Ollama in Docker, and the awk/sed sandbox false positive.
+
+---
+
 ## v0.1.2 (2026-10-18)
 
 ### Fixes

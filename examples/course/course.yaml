@@ -1,0 +1,6 @@
+name: course
+max_steps: 60
+stages:
+  - {id: plan, skill: planner, goal: "{{goal}}"}
+  - {id: videos, skill: searcher, goal: "Escolha 1 vídeo para cada tópico de plan.md"}
+  - {id: course, skill: writer, goal: "Monte course.md a partir de plan.md e dos vídeos escolhidos"}

@@ -74,3 +74,15 @@ act(cmd='mem search "checkpoint starvation" --top 3')
 # Recall a specific observation in full by ID
 act(cmd="mem recall obs_3")
 ```
+
+---
+
+## Example: course builder
+
+The [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) uses `edit` and custom tools to turn a plan into a course. Three limits shaped it:
+
+- **`edit write` replaces the whole file.** Small models assume it appends and silently lose earlier content. The planner skill says so explicitly: "write the COMPLETE plan in ONE call". (An `edit append` is proposed in [#34](https://github.com/igormcsouza/tether/issues/34).)
+- **`web search` cannot reliably find a specific YouTube video.** Use a [custom tool](sdk-and-custom-tools.md#pattern-numbered-candidates) that returns numbered candidates instead.
+- **Tools are opt-in.** The searcher skill lists `tools: [yt-todo, yt-candidates, yt-save]` and nothing else; `edit` is only loaded by the stages that write files.
+
+Re-viewing files with `edit view` also interacts badly with observation folding; see [Context and SQLite Store](../reference/context-and-store.md#observation-folding-and-small-models).

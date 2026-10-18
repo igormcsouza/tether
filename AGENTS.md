@@ -137,7 +137,7 @@ tether/
     - pytest -q
   ---
   ```
-- If `skills/<name>/tools.py` exists, any `@tool`-decorated functions inside it are automatically registered into the session's multiplexer when the skill is loaded.
+- If `skills/<name>/tools.py` exists, any `@tool`-decorated functions inside it are loaded with the skill and registered into the session's multiplexer when their name is also listed in the skill's `tools:` (otherwise: `unknown command`).
 
 #### D. 3 Thin `httpx` Model Providers & SDK Provider Routing (`providers/`)
 - Model identifier format: `<provider>/<model_name>` (e.g., `ollama/qwen3.5:9b`, `openai/gpt-4o-mini`, `anthropic/claude-3-7-sonnet-latest`).

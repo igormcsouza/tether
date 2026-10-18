@@ -92,3 +92,18 @@ tether send --headless "$SESSION_ID" "Now export the comparison table to CSV"
 ## Waiting for input, telemetry and retro
 
 If the agent calls `done --ask`, the session becomes `WAITING_INPUT`; `tether wait` returns and `tether send` resumes it. `tether stats` shows per-model pass rate, token cost and friction, and `tether retro <session_id>` distills a session's mistakes into at most 2 rules. See [Gates, Memory, Pipelines & Telemetry](workflows-and-telemetry.md).
+
+## Example: Ollama in Docker
+
+The [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) ran against an Ollama container instead of a host install:
+
+```sh
+docker run -d --name tether-ollama --gpus all -v ollama_models:/root/.ollama \
+  -p 11435:11434 ollama/ollama:0.40.0
+docker exec tether-ollama ollama pull qwen3.5:9b
+
+export OLLAMA_HOST=http://localhost:11435
+tether run --model ollama/qwen3.5:9b "Say hello"
+```
+
+`OLLAMA_HOST` is read by the Ollama provider (default `http://localhost:11434`).

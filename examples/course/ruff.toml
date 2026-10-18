@@ -1,0 +1,5 @@
+extend = "../../pyproject.toml"
+
+[lint]
+# Example prompts and tool messages are long strings meant to be read whole.
+extend-ignore = ["E501"]

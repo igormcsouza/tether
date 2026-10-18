@@ -34,7 +34,7 @@ You are a quantitative financial analyst.
 
 ### Companion `tools.py`
 
-Any `@tool`-decorated function in `skills/<name>/tools.py` is automatically registered into the session's multiplexer when the skill is loaded:
+Any `@tool`-decorated function in `skills/<name>/tools.py` is loaded with the skill, and is registered into the session's multiplexer **only if its name is also listed in the skill's `tools:`** (see [below](#tools-py-and-the-tools-list)):
 
 ```python
 from tether import tool
@@ -67,3 +67,32 @@ Small models rarely quote arguments, so extra unquoted words join into the last 
     # act(cmd="skill list")
     # act(cmd="skill load analyst")
     ```
+
+## Example: course builder
+
+The [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) has three skills, each with its own model, tools and gate:
+
+```markdown
+---
+name: searcher
+description: Picks one real YouTube video for every topic of the plan
+model: ollama/qwen3.5:9b
+tools: [yt-todo, yt-candidates, yt-save]
+verify:
+  - 'python3 checks.py videos'
+---
+```
+
+| Skill | `tools:` | `verify:` |
+|---|---|---|
+| `planner` | `edit` | `python3 checks.py plan` |
+| `searcher` | `yt-todo`, `yt-candidates`, `yt-save` (from its `tools.py`) | `python3 checks.py videos` |
+| `writer` | `edit`, `course-source`, `course-build` (from its `tools.py`) | `python3 checks.py course` |
+
+### <a id="tools-py-and-the-tools-list"></a>`tools.py` and the `tools:` list
+
+Defining a tool in `tools.py` is not enough: name it in the skill `tools:` as well, or the model gets `unknown command` ([#24](https://github.com/igormcsouza/tether/issues/24)). See [Python SDK and Custom Tools](sdk-and-custom-tools.md).
+
+### Let the model decide, let code enforce hard requirements
+
+The planner's goal states what the course must cover; the model designs the modules, topics and their order. Code checks only what is a hard requirement: `checks.py plan` demands 1 to 3 modules and at least one topic per module, nothing about content. Gates that police taste make small models loop.

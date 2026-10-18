@@ -114,6 +114,7 @@ nav:
       - Model Providers: reference/providers.md
       - Built-in Tools: reference/tools.md
   - Project:
+      - Troubleshooting: troubleshooting.md
       - Release Notes: release-notes.md
       - Releasing: releasing.md
 
