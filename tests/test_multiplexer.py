@@ -69,3 +69,27 @@ async def test_literal_newline_stdin_normalized(tmp_path: Path) -> None:
     # bash stdin untouched
     out = await mux.execute("bash cat", stdin="x\\ny")
     assert "x\\ny" in out.output
+
+
+async def test_bash_preserves_quotes_and_shell_syntax(tmp_path: Path) -> None:
+    """bash receives the raw command text, so quotes, pipes and && survive (#37)."""
+    sandbox = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
+    harness = Harness(db_path=tmp_path / "t.db", tools=["bash"], sandbox=sandbox)
+    mux = harness.build_multiplexer("ses_q", ["bash"], sandbox, "ollama/qwen3.5:9b")
+    (tmp_path / "f").write_text("a b\n")
+    (tmp_path / "app.py").write_text("def f():\n    return list(x)\n    return 1\n")
+
+    await mux.execute("bash sed -i 's/a b/c d/' f")
+    assert (tmp_path / "f").read_text() == "c d\n"
+
+    out = await mux.execute('bash grep -n "return list(" app.py')
+    assert "2:    return list(x)" in out.output and "return 1" not in out.output
+
+    assert "2" in (await mux.execute('bash python3 -c "print(1+1)"')).output
+    assert "2" in (await mux.execute("bash echo a b | wc -w")).output
+    assert "x" in (await mux.execute("bash true && echo x")).output
+    assert "hi there" in (await mux.execute("bash echo hi there")).output
+    assert "IN" in (await mux.execute("bash tr a-z A-Z", stdin="in")).output
+    assert "Usage: bash" in (await mux.execute("bash --help")).output
+    assert "Usage: bash" in (await mux.execute("bash -h")).output
+    assert "missing" in (await mux.execute("bash")).output

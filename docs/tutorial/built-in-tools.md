@@ -29,6 +29,7 @@ Executes commands inside `workspace_root` with secret environment variables scru
 
 ```text
 act(cmd="bash pytest -q")
+act(cmd="bash grep -n \"return list\" app/main.py | head")
 act(cmd="bash", stdin="python3 - << 'EOF'\nimport math\nprint(math.pi)\nEOF")
 ```
 
