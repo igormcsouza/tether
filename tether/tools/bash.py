@@ -15,6 +15,7 @@ def make_bash_tool(sandbox: SandboxPolicy) -> ToolSpec:
     async def _bash(args: list[str], stdin: str | None = None) -> str:
         if args and args[0] in ("--help", "-h"):
             return help_str
+        # The multiplexer passes the raw command text as a single arg so quotes survive.
         cmd_str = " ".join(args).strip()
         if not cmd_str and not stdin:
             return f"Error: missing `<command>`.\n{help_str}"

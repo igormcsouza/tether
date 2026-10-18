@@ -138,6 +138,10 @@ class Multiplexer:
                 error_kind="unknown_cmd",
             )
 
+        if name == "bash":
+            # shlex already stripped quotes; hand the shell the original text (#37).
+            args = clean_cmd.split(None, 1)[1:]
+
         if name == "done" or (name == "edit" and args[:1] in (["write"], ["replace"])):
             stdin = unescape_literal_newlines(stdin)
 
