@@ -29,7 +29,8 @@ _SENSITIVE_FILENAMES = {
 }
 
 _SECRET_ENV_RE = re.compile(
-    r"(API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|PRIVATE_KEY|^AWS_|^OPENAI_|^ANTHROPIC_|^GH_)",
+    r"(API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|PRIVATE_KEY|^AWS_|^OPENAI_|^ANTHROPIC_|^GH_"
+    r"|^SSH_AUTH_SOCK$|^GPG_AGENT_INFO$)",
     re.IGNORECASE,
 )
 
@@ -258,6 +259,21 @@ class SandboxPolicy:
                     f"Sandbox violation: binary `{first_bin}` is not in the `read-only` allowlist."
                 )
 
+    def _protected_mounts(self) -> list[str]:
+        """bwrap args masking sensitive workspace paths so globs/indirection cannot reach them."""
+        ws = self.workspace_root
+        args: list[str] = []
+        for env_file in sorted(ws.glob(".env*")):
+            if env_file.is_file():
+                args += ["--ro-bind", "/dev/null", str(env_file)]
+        for hidden in (ws / ".tether", ws / ".git" / "hooks"):
+            if hidden.is_dir():
+                args += ["--tmpfs", str(hidden)]
+        git_config = ws / ".git" / "config"
+        if git_config.is_file():
+            args += ["--ro-bind", "/dev/null", str(git_config)]
+        return args
+
     def _build_exec_argv(self, cmd: str) -> list[str]:
         """Wrap command in Linux `bwrap` kernel sandbox if available, else standard bash."""
         if self.use_kernel_sandbox and _can_use_bwrap():
@@ -275,11 +291,15 @@ class SandboxPolicy:
                 "/tmp",
                 "--tmpfs",
                 os.path.expanduser("~"),
+                *(["--tmpfs", "/run/user"] if os.path.isdir("/run/user") else []),
                 "--bind" if self.profile == "workspace-write" else "--ro-bind",
                 ws,
                 ws,
+                *self._protected_mounts(),
                 "--chdir",
                 ws,
+                "--unshare-pid",
+                "--unshare-ipc",
                 "--die-with-parent",
                 "--new-session",
                 "--",

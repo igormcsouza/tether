@@ -124,8 +124,9 @@ class Multiplexer:
         spec = self._tools.get(name)
         if spec is None:
             avail = ", ".join(self._tools.keys())
+            hint = f" For shell commands use `bash {clean_cmd}`." if "bash" in self._tools else ""
             return DispatchResult(
-                output=f"Error: unknown command `{name}`. Enabled tools: {avail}.",
+                output=f"Error: unknown command `{name}`. Enabled tools: {avail}.{hint}",
                 is_error=True,
                 error_kind="unknown_cmd",
             )

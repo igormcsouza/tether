@@ -36,7 +36,8 @@ On Linux, when `bwrap` is available and functional, `bash` subprocesses automati
 - `/` (`usr`, `bin`, `lib`, `etc`) is mounted **read-only** (`--ro-bind`).
 - `$HOME` is masked with an empty ephemeral `--tmpfs`.
 - `workspace_root` is bind-mounted (`--bind` in `workspace-write` mode, `--ro-bind` in `read-only` mode).
-- `--die-with-parent` and `--unshare-pid` ensure runaway child processes are reaped immediately on timeout.
+- `.env*`, `.tether/`, `.git/config` and `.git/hooks` inside the workspace are masked (`/dev/null` bind or empty `--tmpfs`), so globbing or shell indirection cannot reach them; `/run/user` is hidden to block the ssh/gpg agent sockets.
+- `--unshare-pid`, `--unshare-ipc` and `--die-with-parent` ensure runaway child processes are reaped immediately on timeout.
 
 ## Configuring `SandboxPolicy` in Python
 

@@ -909,10 +909,15 @@ class SQLiteStore:
                 f"SELECT * FROM sessions WHERE {where_sql} ORDER BY created_at DESC LIMIT ?",
                 tuple(params),
             ).fetchall()
-            if not session_rows:
+            # Pipeline root rows only roll up their stage sessions: counting them would
+            # double-count tokens and invent a run for a model that never executed.
+            sessions = [
+                s
+                for s in (self._row_to_session(r) for r in session_rows)
+                if "pipeline" not in s.sandbox_config
+            ]
+            if not sessions:
                 return StatsReport(models=[], offenders=[])
-
-            sessions = [self._row_to_session(r) for r in session_rows]
             session_ids = [s.id for s in sessions]
             placeholders = ",".join("?" for _ in session_ids)
             turn_rows = conn.execute(
