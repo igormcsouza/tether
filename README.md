@@ -160,6 +160,38 @@ xychart-beta
 
 ---
 
+## Lessons from Small-Model Experiments
+
+We stress-tested Tether on real tasks with local models. The details and the runnable example are in [`examples/course/`](examples/course/) and the [Troubleshooting](docs/troubleshooting.md) page; this is the short version.
+
+### Experiment 1: build a Portuguese course with a 4B-9B model
+
+**Task:** a mini-course on software architecture (3 modules at most, free YouTube videos, a preferred channel, most-viewed first) built by a plan, search, write [pipeline](docs/tutorial/workflows-and-telemetry.md). Models: `gemma4:e4b`, then `qwen3.5:9b` from a Docker Ollama.
+
+- A single prompt failed: the model called a tool wrongly, then said `done` with placeholder links. Verify gates and a pipeline of small stages fixed that.
+- `web search` could not find specific videos, so a custom tool lists numbered candidates and the model picks one by number; the tool copies the exact URL. Over-constraining the model (fixed module counts, word-overlap matching, a reviewer stage on a 4B model) made things worse.
+- Final run (`qwen3.5:9b`): the model designed 3 modules and 15 topics, and all 15 links were verified real. About 4 picks were weak (for example a degree-advice video for an introduction), and the 4B model needed far more scaffolding than the 9B.
+
+### Experiment 2: fix a bug, find a smell, add an endpoint (FastAPI)
+
+**Task:** a small FastAPI project with a planted pagination bug and a planted code smell; fix the bug, review the code, add `GET /items/search`. Each task ran 3 times on Tether v0.1.3 with deterministic scoring (tests, diff scope, a live route check).
+
+| Model | Fix the bug | Find the smell | Add the endpoint |
+|---|---|---|---|
+| `qwen3-coder:30b` (local) | 2/3 | 3/3 | 0/3 (wrong route order); 2/3 working code when told, none finished with `done` |
+| `claude-sonnet-5-5` (via a `claude -p` provider, Claude tools disabled) | 3/3 | 3/3 | 3/3, finished in 5-7 steps |
+
+The first round on v0.1.1/v0.1.2 failed far more often. Reading the traces showed Tether bugs, not model limits: the `bash` tool stripped all quotes (#37), and past actions were replayed as `act('...')` text that the model copied into real arguments and corrupted files (#38). Both were fixed in v0.1.3, and the same bug-fix task went from 0 of 5 to 2 of 3 with `qwen3-coder`.
+
+### What we learned
+
+1. **The model judges, code checks facts.** Let the model design and choose; let tools copy exact values and gates verify them (links exist, tests pass, every topic covered). Do not make code guess what the model should decide.
+2. **Error messages are prompts.** Gate and tool errors must say what to do next, and bad input is best refused at the tool call with the valid options.
+3. **Small models fail at copying across turns, long single writes, and non-atomic edits.** Give them one compact view right before the write, end tool output with the next call, write in small pieces, and prefer in-place swaps to drop-then-save.
+4. **Look for harness bugs before blaming the model.** Several "model failures" were quote stripping, history replay, a gate the sandbox could never pass (#31), and a fixed step budget. Reproduce against the raw API and read the SQLite trace.
+5. **Finishing is its own problem.** A model that has finished may keep wandering and leave backup files; Tether requires an explicit `done` and caps steps, so size the step budget to the work.
+6. **Small samples.** Three runs per cell on a tiny project: treat these as strong signals, not a benchmark. Open items are tracked in the issues for the next milestone.
+
 ## Quickstart
 
 ### Installation (PyPI)
