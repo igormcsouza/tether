@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import glob
 import os
 import re
 import shlex
 import shutil
 import signal
-import stat
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -31,19 +31,12 @@ _SENSITIVE_FILENAMES = {
 }
 
 # Env allowlist (Rule 6): only these names reach `bash` subprocesses. Extra names can be passed
-# through explicitly with TETHER_ENV_PASSTHROUGH=NAME1,NAME2 (still dropped if they look secret
-# unless listed there).
+# through explicitly with TETHER_ENV_PASSTHROUGH=NAME1,NAME2.
 _ENV_ALLOW_EXACT = {
     "PATH", "LANG", "LANGUAGE", "TERM", "COLORTERM", "NO_COLOR", "TZ", "USER", "LOGNAME",
     "SHELL", "TMPDIR", "VIRTUAL_ENV", "CI", "PYTHONPATH", "PYTHONIOENCODING",
 }  # fmt: skip
 _ENV_ALLOW_PREFIX = ("LC_",)
-
-_SECRET_ENV_RE = re.compile(
-    r"(API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|PRIVATE_KEY|^AWS_|^OPENAI_|^ANTHROPIC_|^GH_"
-    r"|^SSH_AUTH_SOCK$|^GPG_AGENT_INFO$)",
-    re.IGNORECASE,
-)
 
 _BLOCKED_BASH_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(?:^|[;&|()\s])sudo\b"), "`sudo` privilege escalation is blocked"),
@@ -111,7 +104,6 @@ _MASK_MAX_DEPTH = 8
 
 # Host directories holding other users' data / service sockets, hidden behind empty tmpfs.
 _HIDDEN_HOST_DIRS = ("/home", "/media", "/mnt", "/srv", "/var/tmp")
-_SOCKET_ROOTS = ("/run",)
 
 _BWRAP_USABLE: bool | None = None
 
@@ -122,26 +114,8 @@ def _host_socket_masks() -> tuple[str, ...]:
 
     ro-bind does not stop `connect()`, so a reachable docker.sock is a host escape.
     """
-    args: list[str] = []
-    for root in _SOCKET_ROOTS:
-        try:
-            top = list(os.scandir(root))
-        except OSError:
-            continue
-        for entry in top:
-            subs = [entry]
-            try:
-                if entry.is_dir(follow_symlinks=False):
-                    subs = list(os.scandir(entry.path))
-            except OSError:
-                continue
-            for sub in subs:
-                try:
-                    if stat.S_ISSOCK(sub.stat(follow_symlinks=False).st_mode):
-                        args += ["--ro-bind", "/dev/null", sub.path]
-                except OSError:
-                    continue
-    return tuple(args)
+    paths = [p for pat in ("/run/*", "/run/*/*") for p in sorted(glob.glob(pat))]
+    return tuple(a for p in paths if Path(p).is_socket() for a in ("--ro-bind", "/dev/null", p))
 
 
 def _can_use_bwrap() -> bool:
@@ -275,8 +249,6 @@ class SandboxPolicy:
         clean: dict[str, str] = {}
         for k, v in source.items():
             if k in extra or k in _ENV_ALLOW_EXACT or k.startswith(_ENV_ALLOW_PREFIX):
-                if k not in extra and _SECRET_ENV_RE.search(k):
-                    continue
                 clean[k] = v
         clean["HOME"] = str(self.workspace_root)
         clean["PWD"] = str(self.workspace_root)

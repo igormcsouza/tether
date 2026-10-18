@@ -144,6 +144,7 @@ class Harness:
             if n not in ALL_BUILTIN_TOOLS and n not in self._custom_tools
         ]
         if unknown:
+            self.store.close()
             raise ValueError(
                 f"Unknown tool(s): {', '.join(unknown)}. "
                 f"Valid: {', '.join(ALL_BUILTIN_TOOLS)}, or a registered custom/skill tool."

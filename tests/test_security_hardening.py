@@ -116,3 +116,28 @@ def test_unknown_tool_name_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="bahs"):
         Harness(tools="bash,bahs", db_path=tmp_path / "t.db")
     Harness(tools="all", db_path=tmp_path / "t.db")
+
+
+def test_host_socket_masks_are_ro_bind_triples() -> None:
+    args = sb_mod._host_socket_masks()
+    assert len(args) % 3 == 0
+    assert all(args[i : i + 2] == ("--ro-bind", "/dev/null") for i in range(0, len(args), 3))
+
+
+async def test_web_fetch_tool_reports_blocked_and_mapped_addresses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from tether.tools.web import make_web_tool
+
+    monkeypatch.delenv("TETHER_WEB_ALLOW_PRIVATE", raising=False)
+    tool = make_web_tool()
+    out = await tool.fn(["fetch", "http://[::ffff:127.0.0.1]/"])
+    assert out.startswith("Error: blocked")
+
+
+async def test_cli_rejects_unknown_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tether.cli import _async_main
+
+    monkeypatch.chdir(tmp_path)
+    rc = await _async_main(["run", "--tools", "bahs", "--db", str(tmp_path / "t.db"), "hello"])
+    assert rc == 1
