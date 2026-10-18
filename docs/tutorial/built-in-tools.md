@@ -7,7 +7,7 @@ By default, Tether loads **only** the `done` command so pure reasoning tasks pay
 | `done` | `done : Finish task and submit final deliverable` | Mandatory explicit termination command |
 | `bash` | `bash : Execute sandboxed shell command in workspace` | Kernel-sandboxed (`bwrap`), env-scrubbed shell execution |
 | `edit` | `edit : View, write, or replace lines in workspace files` | Workspace-jailed file viewing and `stdin` patching |
-| `web` | `web : Search the web or fetch URL as markdown` | Zero-config DuckDuckGo Lite search & HTML-to-Markdown reader |
+| `web` | `web : Search the web or fetch URL as markdown` | Zero-config DuckDuckGo Lite search & HTML-to-Markdown reader (`fetch` blocks private addresses) |
 | `mem` | `mem : Pin working facts or search folded observations` | Key-value scratchpad + SQLite FTS5 BM25 search & recall |
 | `skill` | `skill : List or load specialized domain skills` | Progressive discovery and JIT loading of Skills |
 | `agent` | `agent : Spawn and query async child sub-agents` | Detached multi-agent orchestration + BM25 RAG |

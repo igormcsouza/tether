@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import os
 import re
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -27,6 +29,15 @@ _SENSITIVE_FILENAMES = {
     "id_ed25519",
     "authorized_keys",
 }
+
+# Env allowlist (Rule 6): only these names reach `bash` subprocesses. Extra names can be passed
+# through explicitly with TETHER_ENV_PASSTHROUGH=NAME1,NAME2 (still dropped if they look secret
+# unless listed there).
+_ENV_ALLOW_EXACT = {
+    "PATH", "LANG", "LANGUAGE", "TERM", "COLORTERM", "NO_COLOR", "TZ", "USER", "LOGNAME",
+    "SHELL", "TMPDIR", "VIRTUAL_ENV", "CI", "PYTHONPATH", "PYTHONIOENCODING",
+}  # fmt: skip
+_ENV_ALLOW_PREFIX = ("LC_",)
 
 _SECRET_ENV_RE = re.compile(
     r"(API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL|PRIVATE_KEY|^AWS_|^OPENAI_|^ANTHROPIC_|^GH_"
@@ -85,7 +96,52 @@ _READONLY_ALLOWED_BINARIES = {
     "tr",
 }
 
+# Binaries whose first non-option argument is a program/pattern (e.g. awk '/re/{...}'), not a path.
+_PROGRAM_ARG_BINARIES = {"awk", "gawk", "mawk", "sed", "grep", "egrep", "fgrep", "rg", "perl"}
+_CMD_SEPARATORS = {"&&", "||", ";", "|", "&", "|&"}
+_REGEX_META_RE = re.compile(r"[{}^$*()|]")
+
+# Secret-looking file names masked at the mount level at any depth under the workspace.
+_MASKED_NAME_RE = re.compile(
+    r"^(?:\.env(?:\..*)?|id_rsa|id_ed25519|authorized_keys|.*\.(?:pem|key))$"
+)
+_MASK_SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".tether"}
+_MASK_MAX_FILES = 200
+_MASK_MAX_DEPTH = 8
+
+# Host directories holding other users' data / service sockets, hidden behind empty tmpfs.
+_HIDDEN_HOST_DIRS = ("/home", "/media", "/mnt", "/srv", "/var/tmp")
+_SOCKET_ROOTS = ("/run",)
+
 _BWRAP_USABLE: bool | None = None
+
+
+@functools.lru_cache(maxsize=1)
+def _host_socket_masks() -> tuple[str, ...]:
+    """bwrap args hiding host unix sockets (docker.sock, containerd, dbus...) under /run.
+
+    ro-bind does not stop `connect()`, so a reachable docker.sock is a host escape.
+    """
+    args: list[str] = []
+    for root in _SOCKET_ROOTS:
+        try:
+            top = list(os.scandir(root))
+        except OSError:
+            continue
+        for entry in top:
+            subs = [entry]
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    subs = list(os.scandir(entry.path))
+            except OSError:
+                continue
+            for sub in subs:
+                try:
+                    if stat.S_ISSOCK(sub.stat(follow_symlinks=False).st_mode):
+                        args += ["--ro-bind", "/dev/null", sub.path]
+                except OSError:
+                    continue
+    return tuple(args)
 
 
 def _can_use_bwrap() -> bool:
@@ -122,6 +178,7 @@ class SandboxPolicy:
     timeout_seconds: float = 30.0
     max_output_chars: int = 12000
     use_kernel_sandbox: bool = True
+    network: bool = True
     verify_commands: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -136,6 +193,7 @@ class SandboxPolicy:
             "timeout_seconds": self.timeout_seconds,
             "max_output_chars": self.max_output_chars,
             "use_kernel_sandbox": self.use_kernel_sandbox,
+            "network": self.network,
             "verify_commands": list(self.verify_commands),
         }
 
@@ -150,10 +208,13 @@ class SandboxPolicy:
             timeout_seconds=float(data.get("timeout_seconds", 30.0)),
             max_output_chars=int(data.get("max_output_chars", 12000)),
             use_kernel_sandbox=bool(data.get("use_kernel_sandbox", True)),
+            network=bool(data.get("network", True)),
             verify_commands=[str(v) for v in raw_verify if str(v).strip()],
         )
 
-    def attenuate(self, child_profile: str | None = None) -> SandboxPolicy:
+    def attenuate(
+        self, child_profile: str | None = None, child_network: bool | None = None
+    ) -> SandboxPolicy:
         """Create a child SandboxPolicy that can only narrow (never escalate) privileges."""
         if self.profile == "read-only":
             effective_profile = "read-only"
@@ -166,6 +227,7 @@ class SandboxPolicy:
             timeout_seconds=self.timeout_seconds,
             max_output_chars=self.max_output_chars,
             use_kernel_sandbox=self.use_kernel_sandbox,
+            network=self.network and child_network is not False,
             verify_commands=list(self.verify_commands),
         )
 
@@ -205,13 +267,17 @@ class SandboxPolicy:
         return candidate
 
     def scrub_env(self, base_env: dict[str, str] | None = None) -> dict[str, str]:
-        """Return a sanitized environment dictionary with secrets stripped."""
+        """Return a sanitized environment: allowlist only, so unknown secrets never leak."""
         source = base_env if base_env is not None else dict(os.environ)
+        extra = {
+            n.strip() for n in source.get("TETHER_ENV_PASSTHROUGH", "").split(",") if n.strip()
+        }
         clean: dict[str, str] = {}
         for k, v in source.items():
-            if _SECRET_ENV_RE.search(k):
-                continue
-            clean[k] = v
+            if k in extra or k in _ENV_ALLOW_EXACT or k.startswith(_ENV_ALLOW_PREFIX):
+                if k not in extra and _SECRET_ENV_RE.search(k):
+                    continue
+                clean[k] = v
         clean["HOME"] = str(self.workspace_root)
         clean["PWD"] = str(self.workspace_root)
         clean["PAGER"] = "cat"
@@ -233,7 +299,25 @@ class SandboxPolicy:
         except ValueError:
             tokens = stripped.split()
 
+        cmd_start, cur_bin, pending, prev = True, "", False, ""
         for tok in tokens:
+            if tok in _CMD_SEPARATORS:
+                cmd_start = True
+                continue
+            is_program_arg = False
+            if cmd_start:
+                cmd_start, cur_bin = False, Path(tok).name
+                pending = cur_bin in _PROGRAM_ARG_BINARIES
+            elif cur_bin in _PROGRAM_ARG_BINARIES and not tok.startswith("-"):
+                # awk/sed/grep program or pattern (e.g. `/^## M/{n++}`) is not a filesystem path;
+                # `-f <file>` operands still are.
+                is_program_arg = prev not in ("-f", "--file") and (
+                    pending or (tok.startswith("/") and bool(_REGEX_META_RE.search(tok)))
+                )
+                pending = False
+            prev = tok
+            if is_program_arg:
+                continue
             if tok == ".." or tok.startswith("../") or "/../" in tok or tok.endswith("/.."):
                 raise SandboxViolationError(
                     "Sandbox violation: parent directory traversal (`..`) is blocked."
@@ -260,12 +344,19 @@ class SandboxPolicy:
                 )
 
     def _protected_mounts(self) -> list[str]:
-        """bwrap args masking sensitive workspace paths so globs/indirection cannot reach them."""
+        """bwrap args masking secret-looking workspace files (any depth) from globs/indirection."""
         ws = self.workspace_root
         args: list[str] = []
-        for env_file in sorted(ws.glob(".env*")):
-            if env_file.is_file():
-                args += ["--ro-bind", "/dev/null", str(env_file)]
+        found = 0
+        for root, dirs, files in os.walk(ws):
+            depth = len(Path(root).relative_to(ws).parts)
+            dirs[:] = (
+                [d for d in dirs if d not in _MASK_SKIP_DIRS] if depth < _MASK_MAX_DEPTH else []
+            )
+            for name in files:
+                if found < _MASK_MAX_FILES and _MASKED_NAME_RE.match(name):
+                    args += ["--ro-bind", "/dev/null", str(Path(root) / name)]
+                    found += 1
         for hidden in (ws / ".tether", ws / ".git" / "hooks"):
             if hidden.is_dir():
                 args += ["--tmpfs", str(hidden)]
@@ -278,6 +369,7 @@ class SandboxPolicy:
         """Wrap command in Linux `bwrap` kernel sandbox if available, else standard bash."""
         if self.use_kernel_sandbox and _can_use_bwrap():
             ws = str(self.workspace_root)
+            hidden = [d for d in _HIDDEN_HOST_DIRS if os.path.isdir(d)]
             bwrap_cmd = [
                 "bwrap",
                 "--ro-bind",
@@ -292,6 +384,8 @@ class SandboxPolicy:
                 "--tmpfs",
                 os.path.expanduser("~"),
                 *(["--tmpfs", "/run/user"] if os.path.isdir("/run/user") else []),
+                *[a for d in hidden for a in ("--tmpfs", d)],
+                *_host_socket_masks(),
                 "--bind" if self.profile == "workspace-write" else "--ro-bind",
                 ws,
                 ws,
@@ -300,6 +394,7 @@ class SandboxPolicy:
                 ws,
                 "--unshare-pid",
                 "--unshare-ipc",
+                *([] if self.network else ["--unshare-net"]),
                 "--die-with-parent",
                 "--new-session",
                 "--",
@@ -308,6 +403,11 @@ class SandboxPolicy:
                 cmd,
             ]
             return bwrap_cmd
+        if not self.network:
+            raise SandboxViolationError(
+                "Sandbox violation: network isolation (`--no-network`) requires `bwrap`, "
+                "which is unavailable; refusing to run un-isolated."
+            )
         return ["bash", "-c", cmd]
 
     async def execute_bash_with_code(self, cmd: str, stdin: str | None = None) -> tuple[int, str]:
