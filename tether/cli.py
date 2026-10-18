@@ -64,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["workspace-write", "read-only"],
         help="Deterministic sandbox profile",
     )
+    p_run.add_argument(
+        "--no-network",
+        action="store_true",
+        help="Disable network inside the bash sandbox (requires bwrap; fails closed without it)",
+    )
     p_run.add_argument("--max-steps", type=int, default=15, help="Max reasoning steps")
     p_run.add_argument(
         "--db", type=str, default=None, help="SQLite DB path (default .tether/tether.db)"
@@ -91,6 +96,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="workspace-write",
         choices=["workspace-write", "read-only"],
         help="Root deterministic sandbox profile (stages can only narrow)",
+    )
+    p_pipe.add_argument(
+        "--no-network",
+        action="store_true",
+        help="Disable network inside the bash sandbox (requires bwrap; fails closed without it)",
     )
     p_pipe.add_argument(
         "--max-steps", type=int, default=15, help="Default max reasoning steps per stage"
@@ -195,16 +205,22 @@ async def _async_main(argv: list[str]) -> int:
 
     if cmd == "run":
         goal = " ".join(ns.goal).strip()
-        sandbox = SandboxPolicy(profile=ns.sandbox, workspace_root=Path.cwd())
-        harness = Harness(
-            model=ns.model,
-            skill=ns.skill,
-            tools=ns.tools,
-            verify=ns.verify,
-            sandbox=sandbox,
-            db_path=ns.db,
-            max_steps=ns.max_steps,
+        sandbox = SandboxPolicy(
+            profile=ns.sandbox, workspace_root=Path.cwd(), network=not ns.no_network
         )
+        try:
+            harness = Harness(
+                model=ns.model,
+                skill=ns.skill,
+                tools=ns.tools,
+                verify=ns.verify,
+                sandbox=sandbox,
+                db_path=ns.db,
+                max_steps=ns.max_steps,
+            )
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 1
         if ns.headless:
             sid = harness.spawn(goal)
             print(sid)
@@ -216,7 +232,9 @@ async def _async_main(argv: list[str]) -> int:
 
     if cmd == "pipeline":
         goal = " ".join(ns.goal).strip()
-        sandbox = SandboxPolicy(profile=ns.sandbox, workspace_root=Path.cwd())
+        sandbox = SandboxPolicy(
+            profile=ns.sandbox, workspace_root=Path.cwd(), network=not ns.no_network
+        )
         harness = Harness(
             model=ns.model,
             sandbox=sandbox,

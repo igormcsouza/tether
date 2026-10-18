@@ -23,12 +23,8 @@ Even within `workspace_root`, Tether deterministically blocks access to sensitiv
 - `.tether/*` (the harness's own SQLite database)
 - `.ssh/*`, `id_rsa`, `id_ed25519`
 
-### 3. Secret Environment Scrubbing
-Before spawning any `bash` subprocess, Tether strips sensitive credentials from `os.environ`:
-
-- `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`
-- `TAVILY_API_KEY`, `BRAVE_API_KEY`, `GITHUB_TOKEN`, `GH_TOKEN`
-- Any variable matching `AWS_*`, `*_SECRET*`, `*_TOKEN*`, `*_PASSWORD*`, or `*_PRIVATE_KEY*`
+### 3. Environment Allowlist
+`bash` subprocesses receive only a small allowlist of variables (`PATH`, `LANG`, `LC_*`, `TERM`, `TZ`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `VIRTUAL_ENV`, `CI`, `PYTHONPATH`, ...) plus `HOME`/`PWD` set to the workspace. Everything else (`DATABASE_URL`, `STRIPE_*`, `*_WEBHOOK`, cloud and API keys, session variables) is dropped, so a secret with an unexpected name cannot leak. To pass something through deliberately, set `TETHER_ENV_PASSTHROUGH=NAME1,NAME2`.
 
 ### 4. Linux Bubblewrap (`bwrap`) Kernel Isolation
 On Linux, when `bwrap` is available and functional, `bash` subprocesses automatically execute inside an unprivileged user/mount/IPC/PID namespace:
@@ -36,8 +32,15 @@ On Linux, when `bwrap` is available and functional, `bash` subprocesses automati
 - `/` (`usr`, `bin`, `lib`, `etc`) is mounted **read-only** (`--ro-bind`).
 - `$HOME` is masked with an empty ephemeral `--tmpfs`.
 - `workspace_root` is bind-mounted (`--bind` in `workspace-write` mode, `--ro-bind` in `read-only` mode).
-- `.env*`, `.tether/`, `.git/config` and `.git/hooks` inside the workspace are masked (`/dev/null` bind or empty `--tmpfs`), so globbing or shell indirection cannot reach them; `/run/user` is hidden to block the ssh/gpg agent sockets.
+- Secret-looking files inside the workspace at any depth (`.env*`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`, `authorized_keys`), plus `.tether/`, `.git/config` and `.git/hooks`, are masked (`/dev/null` bind or empty `--tmpfs`), so globbing or shell indirection cannot reach them. Files with arbitrary names (for example `creds.json`) cannot be detected; keep them out of the workspace.
+- `/home`, `/media`, `/mnt`, `/srv` and `/var/tmp` are hidden behind empty tmpfs, `/run/user` is hidden, and every unix socket under `/run` (for example `docker.sock`) is masked. A read-only bind does not stop `connect()`, so an exposed `docker.sock` would be a host escape.
 - `--unshare-pid`, `--unshare-ipc` and `--die-with-parent` ensure runaway child processes are reaped immediately on timeout.
+
+### 5. Optional network isolation (`--no-network`)
+By default `bash` keeps network access. `tether run --no-network ...` (or `SandboxPolicy(network=False)`) adds `--unshare-net`, which also separates abstract unix sockets. Sub-agents and pipeline stages inherit it and can never re-enable it. Without `bwrap` the policy cannot be enforced, so `bash` refuses to run (fail closed) instead of running un-isolated. `web fetch` runs in the harness process and is not affected by `--no-network`.
+
+### 6. `web fetch` SSRF guard
+`web fetch` resolves the host (and every redirect hop) and refuses non-public addresses: loopback, RFC1918, link-local, and cloud metadata (`169.254.169.254`). Set `TETHER_WEB_ALLOW_PRIVATE=1` to fetch local services on purpose.
 
 ## Configuring `SandboxPolicy` in Python
 
@@ -50,6 +53,7 @@ policy = SandboxPolicy(
     workspace_root=Path("./my_repo"),
     timeout_seconds=15.0,
     max_output_chars=8000,
+    network=False,  # needs bwrap; sub-agents can only keep or narrow it
 )
 
 harness = Harness(
@@ -61,6 +65,9 @@ harness = Harness(
 
 ## Example: awk/sed programs that start with `/`
 
-The command guard (the non-`bwrap` fallback check on `bash` commands) tokenizes the command and treats any token starting with `/` as an absolute path (except `/dev/null` and `/tmp`). An inline awk or sed program such as `awk '/Módulo/ {n++}' plan.md` is one token starting with `/`, so it is rejected as "absolute path outside workspace" even though it is not a path ([#31](https://github.com/igormcsouza/tether/issues/31)). This also hit verification gates, which run under the same policy.
+The command guard (the non-`bwrap` fallback check on `bash` commands) treats tokens starting with `/` as absolute paths. Since v0.1.4 the program or pattern argument of `awk`, `sed`, `grep`, `rg` and `perl` (and `/regex{...}` tokens given to them) is not treated as a path, so `awk '/Módulo/ {n++}' plan.md` and `sed -n '/^## M/p' plan.md` work in `bash` and in `verify:` gates. File operands (`sed -n p /etc/hosts`, `awk -f /etc/passwd`) are still checked ([#31](https://github.com/igormcsouza/tether/issues/31)).
 
-Workaround: put the logic in a script file and call that. The [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) uses `python3 checks.py plan|videos|course` as gates instead of inline awk.
+## Known limits
+- Network is on unless you pass `--no-network`; with it on, `curl` can reach localhost services and the internet.
+- There is no process-count limit inside `bwrap` (a fork bomb is only stopped by the timeout).
+- Prompt injection still steers the model; the envelope only limits what an injected command can reach.

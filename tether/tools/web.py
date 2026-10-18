@@ -2,15 +2,44 @@
 
 from __future__ import annotations
 
+import asyncio
 import html
+import ipaddress
 import os
 import re
+import socket
 import urllib.parse
 from html.parser import HTMLParser
 
 import httpx
 
 from tether.decorator import ToolSpec, build_tool_spec
+
+
+class PrivateAddressError(PermissionError):
+    """Raised when `web fetch` targets a loopback/private/link-local address (SSRF guard)."""
+
+
+async def assert_public_url(request: httpx.Request) -> None:
+    """Block fetches that resolve to non-global IPs (localhost, RFC1918, cloud metadata).
+
+    Runs as an httpx request hook, so every redirect hop is checked too.
+    Opt out with TETHER_WEB_ALLOW_PRIVATE=1.
+    """
+    if os.environ.get("TETHER_WEB_ALLOW_PRIVATE") == "1":
+        return
+    host = request.url.host
+    # ponytail: resolve-then-connect leaves a DNS-rebinding window; pin the IP if that matters.
+    infos = await asyncio.get_running_loop().getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    for info in infos:
+        ip = ipaddress.ip_address(str(info[4][0]).split("%")[0])
+        if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        if not ip.is_global:
+            raise PrivateAddressError(
+                f"blocked: `{host}` resolves to non-public address {ip} "
+                "(set TETHER_WEB_ALLOW_PRIVATE=1 to allow)"
+            )
 
 
 class _HTMLToTextParser(HTMLParser):
@@ -199,9 +228,15 @@ def make_web_tool(max_fetch_chars: int = 8000) -> ToolSpec:
                 return "Error: URL must start with http:// or https://."
             headers = {"User-Agent": "Tether-MicroHarness/0.1"}
             async with httpx.AsyncClient(
-                timeout=20.0, follow_redirects=True, headers=headers
+                timeout=20.0,
+                follow_redirects=True,
+                headers=headers,
+                event_hooks={"request": [assert_public_url]},
             ) as client:
-                resp = await client.get(url)
+                try:
+                    resp = await client.get(url)
+                except PrivateAddressError as exc:
+                    return f"Error: {exc}"
                 resp.raise_for_status()
                 ctype = resp.headers.get("content-type", "")
                 if "html" in ctype.lower() or "<html" in resp.text[:500].lower():

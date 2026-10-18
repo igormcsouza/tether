@@ -1,5 +1,24 @@
 # Release Notes
 
+## v0.1.4 (2026-10-18)
+
+Security hardening from a red-team run of `ollama/qwen3.5:9b` against v0.1.3 (hidden prompt injection in a README exfiltrated a file; `docker.sock` was reachable inside `bwrap`).
+
+### Security
+- **Sandbox**: unix sockets under `/run` (including `docker.sock`, a host escape for docker-group users) are masked; `/home`, `/media`, `/mnt`, `/srv` and `/var/tmp` are hidden behind tmpfs. Previously python could read them and connect to the socket despite the command-string guard.
+- **Sandbox**: secret-looking files are masked at any depth (`.env*`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`, `authorized_keys`), not only `.env*` at the workspace root. `sub/.e''nv` and `server.pem` were readable through `bash`.
+- **Env**: `bash` now gets an allowlisted environment instead of a denylist. `DATABASE_URL`, `*_WEBHOOK`, `STRIPE_*` and custom `*_KEY` variables leaked before. Opt back in with `TETHER_ENV_PASSTHROUGH=A,B`.
+- **Web**: `web fetch` blocks loopback, private, link-local and cloud-metadata addresses, checked on every redirect hop (`TETHER_WEB_ALLOW_PRIVATE=1` to opt out).
+
+### Features
+- **Sandbox**: optional network isolation, `tether run|pipeline --no-network` / `SandboxPolicy(network=False)` mapping to `bwrap --unshare-net`. Sub-agents and stages can only keep or narrow it; without `bwrap` it fails closed. (#23)
+
+### Fixes
+- **Sandbox**: the fallback command guard no longer rejects awk/sed/grep/perl program or pattern arguments that start with `/`. (#31)
+- **Tools**: unknown names in `--tools` / `Harness(tools=...)` now raise `ValueError` (CLI prints `Error: ...`, exit 1) instead of silently loading nothing. (#22)
+
+---
+
 ## v0.1.3 (2026-10-18)
 
 ### Fixes

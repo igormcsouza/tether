@@ -10,7 +10,7 @@ Symptom, cause, fix. Most entries come from building the [course-builder example
 | Files contain a literal `\n` | Model sent escaped newlines in stdin | Fixed in v0.1.2 for `edit write`, `edit replace` and `done` |
 | Tool with multi-word argument fails (`unexpected keyword argument`, wrong value) | Unquoted words were not joined | Fixed in v0.1.2. See [argument parsing](tutorial/sdk-and-custom-tools.md#argument-parsing-v012) |
 | `Error: unknown command` for a tool defined in `tools.py` | The tool is not in the skill `tools:` list ([#24](https://github.com/igormcsouza/tether/issues/24)) | Add its name to `tools:`. See [Skills](tutorial/skills.md#tools-py-and-the-tools-list) |
-| Gate with inline `awk`/`sed` is blocked as "absolute path outside workspace" | The command guard sees a program starting with `/` as a path ([#31](https://github.com/igormcsouza/tether/issues/31)) | Move the logic into a script (`python3 checks.py ...`). See [Security and Sandbox](tutorial/security-and-sandbox.md#example-awksed-programs-that-start-with) |
+| Gate with inline `awk`/`sed` is blocked as "absolute path outside workspace" | Fixed in v0.1.4 ([#31](https://github.com/igormcsouza/tether/issues/31)); older versions saw a program starting with `/` as a path | Upgrade, or move the logic into a script (`python3 checks.py ...`). See [Security and Sandbox](tutorial/security-and-sandbox.md#example-awksed-programs-that-start-with) |
 | Gate exits 0 although work is missing | Missing input file means nothing to check | Make the gate fail closed. See [Gates](tutorial/workflows-and-telemetry.md#gates) |
 | Session `FAILED` after 3 gate failures, none of them real | A gate environment error counts as a failure ([#33](https://github.com/igormcsouza/tether/issues/33)) | Run the gate command by hand first |
 | Model repeats a tool call with a rejected value | Gate or tool message says what failed, not what to do | Return the valid options and the next call in the message. See [Custom Tools](tutorial/sdk-and-custom-tools.md#example-course-builder) |
@@ -22,7 +22,6 @@ Symptom, cause, fix. Most entries come from building the [course-builder example
 
 - [#24](https://github.com/igormcsouza/tether/issues/24) skill `tools.py` tools must also be listed in `tools:`.
 - [#27](https://github.com/igormcsouza/tether/issues/27) observation folding hurts small models.
-- [#31](https://github.com/igormcsouza/tether/issues/31) sandbox treats awk/sed programs starting with `/` as paths.
 - [#32](https://github.com/igormcsouza/tether/issues/32) model reasoning is not in the trace.
 - [#33](https://github.com/igormcsouza/tether/issues/33) gate infrastructure errors count toward the 3-failure abort.
 - [#34](https://github.com/igormcsouza/tether/issues/34) no `edit append`.

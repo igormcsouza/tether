@@ -138,6 +138,18 @@ class Harness:
             else:
                 self.register(item)
 
+        unknown = [
+            n
+            for n in self._enabled_tool_names
+            if n not in ALL_BUILTIN_TOOLS and n not in self._custom_tools
+        ]
+        if unknown:
+            self.store.close()
+            raise ValueError(
+                f"Unknown tool(s): {', '.join(unknown)}. "
+                f"Valid: {', '.join(ALL_BUILTIN_TOOLS)}, or a registered custom/skill tool."
+            )
+
     def register(self, fn_or_spec: ToolSpec | Callable[..., Any]) -> ToolSpec:
         """Register a custom Python function or ToolSpec with this Harness."""
         if isinstance(fn_or_spec, ToolSpec):
