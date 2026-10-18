@@ -187,7 +187,7 @@ Tether ran both through the same sandboxed `bash`/`edit` tools, the same gates a
 ### Where small models still need help (and how to give it)
 
 - **Non-obvious framework gotchas.** The unaided 30B model put the new route after `/items/{item_id}` every time and could not work out why its tests returned 422. One sentence of guidance fixed it in 2 of 3 runs, and a stronger model needed no hint. Route those steps to a stronger model with per-stage `model:`, or put the gotcha in the skill.
-- **Knowing when it is done.** Tether asks for an explicit `done` and caps steps; weaker models sometimes finish the work and keep tinkering, leaving backup files behind. Gates, a step budget sized to the work, and a short "when the tests pass, call `done`" line in the skill handle it.
+- **Knowing when it is done.** Tether asks for an explicit `done` and caps steps; weaker models sometimes finish the work and keep tinkering, leaving backup files behind. Gates, a step budget sized to the work, and a short "when the tests pass, call `done`" line in the skill are the levers to reach for first.
 - **Edits that need to be exact.** Whole-file rewrites and wrong line numbers are the usual failure. Prefer `edit replace` with a viewed range, atomic tools, and a verify gate that runs the tests.
 - **Sample size.** Three runs per cell on a tiny project are a strong signal, not a benchmark. The pattern held across both experiments: the shape of the harness mattered as much as the model.
 
