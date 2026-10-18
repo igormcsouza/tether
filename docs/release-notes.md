@@ -1,12 +1,11 @@
 # Release Notes
 
-## Unreleased (v0.1.3)
+## v0.1.3 (2026-10-18)
 
 ### Fixes
 - **Bash**: the `bash` tool now receives the original command text instead of a `shlex.split` then `" ".join` rebuild, so quotes survive (`sed -i 's/a b/c d/' f`, `grep -n "return list" f`, `python -c "print(1+1)"`) and pipelines, `&&` and `;` keep working. (#37)
 - **History replay**: past actions are now replayed to Ollama, OpenAI-compatible and Anthropic providers as real `tool_calls` plus `tool` results (`tool_use`/`tool_result` blocks on Anthropic) instead of `act('...')` assistant text and `Observation:` user text, which small tool-calling models copied into real arguments and corrupted files. Replayed `stdin` is a real prefix (first 400 chars, then `…`) rather than a copyable `<N chars>` placeholder. Custom providers keep the textual form unless they set `structured_history = True`. The system prompt and tools array are unchanged. (#38)
 
-### Docs
 ### Docs
 - New runnable example `examples/course/` (a plan, research and write pipeline on small local models), used as the running example across the tutorial, and a new Troubleshooting page (symptom, cause, fix, known limitations). Documents `@tool` argument parsing, the `tools.py` plus `tools:` requirement, gate and pipeline practices, observation-folding workarounds, Ollama in Docker, and the awk/sed sandbox false positive.
 
