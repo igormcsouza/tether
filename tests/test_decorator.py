@@ -69,7 +69,7 @@ async def test_decorator_parameter_types_and_edge_cases() -> None:
     var_spec = ToolSpec(
         name="var-cmd",
         description="Variadic command",
-        fn=lambda **kw: str(kw.get("items", "")),
+        fn=lambda *items: " ".join(items),
         params=[ParamSpec("items", "--items", "str", str, True, None, is_variadic=True)],
         accepts_stdin=False,
         is_async=False,
@@ -138,3 +138,34 @@ async def test_decorator_parameter_types_and_edge_cases() -> None:
     assert "expects float" in (await mux.execute("sample-cmd fast 5 bad")).output
     assert "expects bool" in (await mux.execute("sample-cmd fast 5 1.5 --flag=maybe")).output
     assert "expects int" in (await mux.execute("sample-cmd --count=bad fast 1.5")).output
+
+
+async def test_unquoted_words_join_into_last_str_param_and_varargs() -> None:
+    """Issue #25: extra words join into the str param despite later optional non-str params."""
+    mux = Multiplexer()
+
+    @tool(name="yt-search")
+    def yt_search(query: str, limit: int = 3) -> str:
+        return f"{query}|{limit}"
+
+    @tool(name="cat-all")
+    def cat_all(*names: str) -> str:
+        return "+".join(names)
+
+    @tool(name="mix")
+    def mix(prefix: str, *rest: str) -> str:
+        return f"{prefix}:{','.join(rest)}"
+
+    for t in (yt_search, cat_all, mix):
+        mux.register(t)
+
+    assert (await mux.execute("yt-search arquitetura em camadas")).output == (
+        "arquitetura em camadas|3"
+    )
+    assert (await mux.execute("yt-search arquitetura em camadas --limit 2")).output == (
+        "arquitetura em camadas|2"
+    )
+    assert (await mux.execute("yt-search --limit 2 solo")).output == "solo|2"
+    assert (await mux.execute("cat-all a b c")).output == "a+b+c"
+    assert (await mux.execute("cat-all")).output == ""
+    assert (await mux.execute("mix p a b")).output == "p:a,b"

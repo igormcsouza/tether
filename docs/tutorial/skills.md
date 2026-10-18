@@ -46,6 +46,8 @@ def calc_margin(revenue: float, cost: float) -> str:
     return f"{((revenue - cost) / revenue) * 100:.2f}%"
 ```
 
+Small models rarely quote arguments, so extra unquoted words join into the last `str` parameter (`yt-search arquitetura em camadas` with `def yt_search(query: str, limit: int = 3)` gives `query="arquitetura em camadas"`; set `limit` with `--limit 2`). A `*args: str` parameter receives the words as separate positional arguments.
+
 ## Using a Skill
 
 === "CLI"

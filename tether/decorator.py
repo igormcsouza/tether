@@ -77,7 +77,15 @@ class ToolSpec:
             # Validation error string with self-healing --help
             return f"Error: {parsed_kwargs}\n{self.help_text()}"
 
-        res = self.fn(**parsed_kwargs)
+        # Params before `*args` must be passed positionally (Python rejects them as keywords).
+        call_args: list[Any] = []
+        var = next((p for p in self.params if p.is_variadic), None)
+        if var:
+            for p in self.params[: self.params.index(var)]:
+                call_args.append(parsed_kwargs.pop(p.name))
+            words = parsed_kwargs.pop(var.name)
+            call_args += [words] if isinstance(words, str) else words
+        res = self.fn(*call_args, **parsed_kwargs)
         if inspect.isawaitable(res):
             res = await res
         return str(res) if res is not None else ""
@@ -121,15 +129,25 @@ class ToolSpec:
                 positionals.append(tok)
             i += 1
 
-        # Map remaining positional arguments in order
+        # Map remaining positional arguments in order. The last unfilled non-variadic `str`
+        # param swallows extra unquoted words (minus those reserved for later required params).
         unfilled = [p for p in self.params if p.name not in values]
+        greedy = None
+        if not any(p.is_variadic for p in unfilled):
+            greedy = next((p for p in reversed(unfilled) if p.type_name == "str"), None)
         pos_idx = 0
-        for p in unfilled:
+        past_greedy = False
+        for n, p in enumerate(unfilled):
+            past_greedy = past_greedy or p is greedy
             if p.is_variadic:
-                rem = positionals[pos_idx:]
+                values[p.name] = positionals[pos_idx:]
                 pos_idx = len(positionals)
-                values[p.name] = " ".join(rem)
-            elif pos_idx < len(positionals):
+            elif p is greedy and pos_idx < len(positionals):
+                reserve = sum(1 for q in unfilled[n + 1 :] if q.required)
+                end = max(len(positionals) - reserve, pos_idx + 1)
+                values[p.name] = " ".join(positionals[pos_idx:end])
+                pos_idx = end
+            elif pos_idx < len(positionals) and not (past_greedy and not p.required):
                 converted = _coerce_value(positionals[pos_idx], p)
                 if isinstance(converted, tuple):
                     return str(converted[1])
@@ -145,13 +163,7 @@ class ToolSpec:
                 return f"missing required argument `<{p.name}:{p.type_name}>`."
 
         if pos_idx < len(positionals):
-            # If the last parameter is a string and not set by flag, join trailing unquoted words
-            if self.params and self.params[-1].type_name == "str":
-                last_p = self.params[-1]
-                extra = " ".join(positionals[pos_idx:])
-                values[last_p.name] = f"{values[last_p.name]} {extra}".strip()
-            else:
-                return f"unexpected positional arguments: {' '.join(positionals[pos_idx:])}"
+            return f"unexpected positional arguments: {' '.join(positionals[pos_idx:])}"
 
         if self.accepts_stdin:
             values["stdin"] = stdin

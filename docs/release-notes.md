@@ -1,5 +1,12 @@
 # Release Notes
 
+## Unreleased (v0.1.2)
+
+### Fixes
+- **`@tool` argument parsing**: extra unquoted words now join into the last positional `str` parameter even when later parameters are optional non-`str` (`yt-search arquitetura em camadas` with `def yt_search(query: str, limit: int = 3)`); later optionals are set via `--flag`. `*args: str` parameters now receive the words splatted instead of failing with `unexpected keyword argument`.
+
+---
+
 ## v0.1.1 (2026-10-18)
 
 ### Fixes
