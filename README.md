@@ -160,6 +160,37 @@ xychart-beta
 
 ---
 
+## Field Notes: Tether on Small Local Models
+
+We put Tether through two real tasks with local models, scoring the results with deterministic checks instead of impressions. The runnable example lives in [`examples/course/`](examples/course/), and the [Troubleshooting](docs/troubleshooting.md) page lists the quirks we hit and their workarounds.
+
+### What it can do
+
+**A free 9B model built a course.** The task: a Portuguese software-architecture mini-course (at most 3 modules, free YouTube videos, a preferred channel) produced by a plan, search, write [pipeline](docs/tutorial/workflows-and-telemetry.md). With `qwen3.5:9b` running locally, the model designed 3 modules and 15 topics on its own, and **all 15 video links were verified to be real**. Verify gates stopped every invented link and every missing topic before a stage could finish, so no fake link ever reached the output.
+
+**A local coder fixed real bugs; a frontier model sailed through.** A small FastAPI project with a planted pagination bug, a planted code smell, and a feature request (`GET /items/search`). Each task ran 3 times on Tether v0.1.3:
+
+| Model | Fix the bug | Find the smell | Add the endpoint |
+|---|---|---|---|
+| `qwen3-coder:30b` (local) | 2/3 | 3/3 | 0/3 unaided; 2/3 working code with a one-line route-order hint |
+| `claude-sonnet-5-5` (through a `claude -p` provider with Claude's own tools disabled) | 3/3 | 3/3 | 3/3, finishing with `done` in 5-7 steps |
+
+Tether ran both through the same sandboxed `bash`/`edit` tools, the same gates and the same SQLite trace. Swapping the model was a provider change, nothing else.
+
+### What made small models work
+
+- **The model judges, code checks facts.** Let the model design the plan and choose between options; let tools copy exact values and gates verify them. A tool that lists numbered candidates and a `yt-save <n>` that copies the URL removed a whole class of mistakes.
+- **Messages are prompts.** Gate and tool errors that say what to do next (and refuse bad input with the valid options) let small models recover on their own.
+- **Small stages and compact views.** One module per stage, one joined view right before a write, tool output that ends with the exact next call, and in-place swaps instead of drop-then-save kept 4B-9B models on track.
+- **The trace makes it debuggable.** Every turn, tool call and gate result is in SQLite, so each failure we saw could be traced to a cause and fixed. The first round of runs exposed two harness-side problems (quoting in the `bash` tool, and how past actions were replayed to the model); both were fixed in v0.1.3, and the same bug-fix task went from 0 of 5 to 2 of 3 with the same local model.
+
+### Where small models still need help (and how to give it)
+
+- **Non-obvious framework gotchas.** The unaided 30B model put the new route after `/items/{item_id}` every time and could not work out why its tests returned 422. One sentence of guidance fixed it in 2 of 3 runs, and a stronger model needed no hint. Route those steps to a stronger model with per-stage `model:`, or put the gotcha in the skill.
+- **Knowing when it is done.** Tether asks for an explicit `done` and caps steps; weaker models sometimes finish the work and keep tinkering, leaving backup files behind. Gates, a step budget sized to the work, and a short "when the tests pass, call `done`" line in the skill are the levers to reach for first.
+- **Edits that need to be exact.** Whole-file rewrites and wrong line numbers are the usual failure. Prefer `edit replace` with a viewed range, atomic tools, and a verify gate that runs the tests.
+- **Sample size.** Three runs per cell on a tiny project are a strong signal, not a benchmark. The pattern held across both experiments: the shape of the harness mattered as much as the model.
+
 ## Quickstart
 
 ### Installation (PyPI)
