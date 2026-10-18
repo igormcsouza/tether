@@ -48,6 +48,7 @@ Tether implements the architectural principles from *"LLM-Native Applications as
   ```text
   [obs_3 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_3` to expand]
   ```
+- History is replayed as structured `tool_calls` + `tool` results (providers with `structured_history = True`; textual `act('...')` form only as fallback), with `stdin` replayed as a real 400-char prefix, never a `<N chars>` placeholder. A call and its result are trimmed together.
 
 ### Rule 6: Deterministic Security Envelope (Never Trust the LLM for Safety)
 - Safety boundaries around `bash` and `edit` are enforced **deterministically by `sandbox.py` and the OS kernel**, never by system prompt instructions.

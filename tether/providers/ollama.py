@@ -18,6 +18,8 @@ from tether.providers.base import (
 class OllamaProvider:
     """Thin async adapter for Ollama `/api/chat`."""
 
+    structured_history = True  # /api/chat accepts assistant tool_calls and role "tool"
+
     def __init__(
         self,
         model_name: str = "qwen3.5:9b",
@@ -69,7 +71,9 @@ class OllamaProvider:
     ) -> ModelResponse:
         payload: dict[str, Any] = {
             "model": self.model_name,
-            "messages": messages,
+            "messages": [
+                {**m, "tool_name": "act"} if m.get("role") == "tool" else m for m in messages
+            ],
             "tools": tools,
             "stream": False,
             "keep_alive": self.keep_alive,

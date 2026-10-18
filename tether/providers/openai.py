@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import Any
 
@@ -15,8 +16,21 @@ from tether.providers.base import (
 )
 
 
+def _to_openai(msg: dict[str, Any]) -> dict[str, Any]:
+    """OpenAI wants tool-call `arguments` as a JSON string, not an object."""
+    if not msg.get("tool_calls"):
+        return msg
+    calls = [
+        {**tc, "function": {**tc["function"], "arguments": json.dumps(tc["function"]["arguments"])}}
+        for tc in msg["tool_calls"]
+    ]
+    return {**msg, "tool_calls": calls}
+
+
 class OpenAIProvider:
     """Thin async adapter for OpenAI-compatible `/v1/chat/completions` endpoints."""
+
+    structured_history = True
 
     def __init__(
         self,
@@ -56,7 +70,7 @@ class OpenAIProvider:
 
         payload: dict[str, Any] = {
             "model": self.model_name,
-            "messages": messages,
+            "messages": [_to_openai(m) for m in messages],
             "tools": tools,
             "temperature": 0.2,
         }
