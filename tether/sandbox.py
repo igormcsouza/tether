@@ -356,7 +356,9 @@ class SandboxPolicy:
             combined = f"{stdout_str}\n[stderr]\n{stderr_str}".strip()
 
         if not combined:
-            combined = f"[exit {returncode}]"
+            combined = f"[exit {returncode}: no output]" + (
+                " Command succeeded." if returncode == 0 else ""
+            )
         elif returncode != 0:
             combined = f"{combined}\n[exit {returncode}]"
 
