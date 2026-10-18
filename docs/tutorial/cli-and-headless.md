@@ -88,3 +88,7 @@ tether send "$SESSION_ID" "Include a section on mmap_size performance"
 # Or resume in the background without blocking
 tether send --headless "$SESSION_ID" "Now export the comparison table to CSV"
 ```
+
+## Waiting for input, telemetry and retro
+
+If the agent calls `done --ask`, the session becomes `WAITING_INPUT`; `tether wait` returns and `tether send` resumes it. `tether stats` shows per-model pass rate, token cost and friction, and `tether retro <session_id>` distills a session's mistakes into at most 2 rules. See [Gates, Memory, Pipelines & Telemetry](workflows-and-telemetry.md).

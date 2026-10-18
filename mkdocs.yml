@@ -99,6 +99,7 @@ nav:
       - Built-in Tools: tutorial/built-in-tools.md
       - Progressive Skills: tutorial/skills.md
       - Async Multi-Agent Orchestration: tutorial/multi-agent.md
+      - Gates, Memory, Pipelines & Telemetry: tutorial/workflows-and-telemetry.md
       - Security and Sandbox: tutorial/security-and-sandbox.md
   - Advanced:
       - Architecture and Literature: architecture.md

@@ -9,6 +9,7 @@ from pathlib import Path
 
 import yaml
 
+from tether import __version__
 from tether.harness import Harness
 from tether.sandbox import SandboxPolicy
 from tether.store import SQLiteStore
@@ -33,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="tether",
         description="Tether: Headless-first LLM-Native Micro-Harness",
     )
+    parser.add_argument("--version", action="version", version=f"tether {__version__}")
     sub = parser.add_subparsers(dest="subcommand")
 
     # `tether run`
@@ -174,7 +176,7 @@ async def _async_main(argv: list[str]) -> int:
     if (
         effective_argv
         and effective_argv[0] not in _KNOWN_SUBCOMMANDS
-        and effective_argv[0] not in ("-h", "--help")
+        and effective_argv[0] not in ("-h", "--help", "--version")
     ):
         effective_argv.insert(0, "run")
 

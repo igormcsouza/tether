@@ -93,3 +93,13 @@ async def test_unknown_command_hints_bash_only_when_enabled() -> None:
     assert "bash" not in (await mux.execute("echo hi")).output
     mux.register(make_bash_tool(SandboxPolicy()))
     assert "`bash echo hi`" in (await mux.execute("echo hi")).output
+
+
+def test_cli_version_flag(capsys: pytest.CaptureFixture[str]) -> None:
+    import tether
+    from tether.cli import main
+
+    with pytest.raises(SystemExit) as exc:
+        main(["--version"])
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == f"tether {tether.__version__}"

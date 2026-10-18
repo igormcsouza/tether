@@ -8,3 +8,4 @@ This tutorial walks through every layer of **Tether**, from running your first l
 4. **[Progressive Skills](skills.md)** — Bundle domain instructions (`SKILL.md`) and custom Python tools (`tools.py`) into reusable skills discovered in `./skills/` or `~/.tether/skills/`.
 5. **[Async Multi-Agent Orchestration](multi-agent.md)** — Spawn parallel child sessions (`agent spawn`), wait for compact 50-token digests (`agent wait`), and run sub-millisecond BM25 RAG across sub-agent observations (`agent query`).
 6. **[Security and Sandbox](security-and-sandbox.md)** — Enforce deterministic path confinement, `.env`/`.git` protection, secret environment scrubbing, and Linux `bwrap` kernel isolation.
+7. **[Gates, Memory, Pipelines & Telemetry](workflows-and-telemetry.md)** — Verification gates (`--verify`), `done --ask`, project memory (`mem --project`), YAML pipelines, `tether stats` and `tether retro`.
