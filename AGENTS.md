@@ -70,7 +70,7 @@ Tether implements the architectural principles from *"LLM-Native Applications as
 ```text
 tether/
 ├── __init__.py          # Public SDK exports: Harness, Pipeline, Session, Skill, SandboxPolicy, tool
-├── cli.py               # Headless-capable CLI: `tether run|pipeline|status|read|query|send|list|wait|stats|retro|events|mcp` (`--json` + documented exit codes)
+├── cli.py               # Headless-capable CLI: `tether run|pipeline|status|read|query|send|list|wait|stats|retro|events|misses|mcp` (`--json` + documented exit codes)
 ├── harness.py           # Control Plane: bounded agent loop, pipelines, SQLite inbox, worker spawn
 ├── pipeline.py          # Workflow Plane: declarative multi-stage YAML pipelines & model routing
 ├── api.py               # Agent-facing JSON session view, exit codes, events (`--json`)

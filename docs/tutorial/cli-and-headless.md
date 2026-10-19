@@ -88,6 +88,10 @@ tether run --context-tokens 32000 --fold-after 8 "refactor the parser"
 
 `run`, `pipeline`, `status`, `list`, `read`, `wait`, `send` and `stats` accept `--json`. Exit codes: `0` completed, `1` usage error, `2` waiting for input, `3` gate failed, `4` max steps, `5` worker error. A failure reason goes to stderr, never stdout. `--result-file <path>` writes the deliverable to a file, `--output-schema <schema.json>` rejects a `done` whose JSON does not match, and `tether events <id> --follow` streams turns as JSONL. Details: [Agent Interface reference](../reference/agent-interface.md).
 
+### When a model's replies are not understood
+
+If a model keeps answering in a format Tether cannot parse into an action (many nudges in `tether stats`), run `tether misses [session_id] [--model M] [--limit N] [--json]`. It lists the unparsed replies; with `--json` each line is fixture-ready. Paste lines into `tests/fixtures/dialects.jsonl` after filling `expected`, or add a `dialects:` regex to `providers.yaml`.
+
 ## Live Inbox Injection & Auto-Resume (`tether send`)
 
 Every session has a persistent SQLite `inbox` queue:
