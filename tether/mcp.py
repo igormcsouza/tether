@@ -42,6 +42,8 @@ TOOLS: list[dict[str, Any]] = [
             "tools": {"type": "string", "description": "comma list, e.g. web,bash"},
             "verify": {"type": "array", "items": {"type": "string"}},
             "max_steps": {"type": "integer"},
+            "context_tokens": {"type": "integer"},
+            "fold_after": {"type": "integer"},
             "sandbox": {"type": "string", "enum": ["workspace-write", "read-only"]},
             "no_network": {"type": "boolean"},
             "output_schema": {"type": "object", "description": "JSON Schema for the deliverable"},
@@ -154,6 +156,8 @@ class TetherMCP:
                 db_path=self.db_path,
                 max_steps=int(a.get("max_steps") or 15),
                 output_schema=a.get("output_schema"),
+                max_context_tokens=a.get("context_tokens"),
+                fold_observations_after=a.get("fold_after"),
             )
         except ValueError as exc:
             raise ToolError(str(exc)) from exc

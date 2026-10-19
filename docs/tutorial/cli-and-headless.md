@@ -76,6 +76,14 @@ tether query "$SESSION_ID" "write-ahead log checkpointing" --top 3
 tether list
 ```
 
+## Context budget and fold window
+
+By default Tether keeps an 8192-token context budget and folds observations older than 2 turns. Tune both per run with `--context-tokens N` and `--fold-after N` (on `tether run` and `tether pipeline`), or per model in `providers.yaml` with `context_tokens` / `fold_after`. Flags override the provider entry, which overrides the defaults.
+
+```bash
+tether run --context-tokens 32000 --fold-after 8 "refactor the parser"
+```
+
 ## Scripting: `--json` and exit codes
 
 `run`, `pipeline`, `status`, `list`, `read`, `wait`, `send` and `stats` accept `--json`. Exit codes: `0` completed, `1` usage error, `2` waiting for input, `3` gate failed, `4` max steps, `5` worker error. A failure reason goes to stderr, never stdout. `--result-file <path>` writes the deliverable to a file, `--output-schema <schema.json>` rejects a `done` whose JSON does not match, and `tether events <id> --follow` streams turns as JSONL. Details: [Agent Interface reference](../reference/agent-interface.md).

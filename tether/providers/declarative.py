@@ -92,6 +92,14 @@ def load_declared() -> dict[str, dict[str, Any]]:
                 f"providers.yaml: entry `{name}` has unknown kind `{kind}`. "
                 f"Valid kinds: {', '.join(VALID_KINDS)}."
             )
+        for key in ("context_tokens", "fold_after"):
+            if key in cfg:
+                val = cfg[key]
+                if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
+                    raise ValueError(
+                        f"providers.yaml: entry `{name}` has invalid `{key}` "
+                        "(must be a positive integer)"
+                    )
         if kind == "command":
             _validate_command(name, cfg)
         result[str(name)] = cfg
