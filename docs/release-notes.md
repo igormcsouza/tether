@@ -1,6 +1,8 @@
 # Release Notes
 
-## v0.2.1 (unreleased)
+## v0.2.1 (2026-10-19)
+
+Add model backends without code.
 
 ### Features
 
