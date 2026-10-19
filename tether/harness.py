@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+import traceback
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from tether.multiplexer import Multiplexer
 from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
 from tether.providers import ModelProvider, resolve_provider
 from tether.sandbox import SandboxPolicy
+from tether.schema import validate_output
 from tether.skills import Skill, SkillLoader, make_skill_tool
 from tether.store import SessionRecord, SQLiteStore
 from tether.tools import (
@@ -45,7 +47,12 @@ def spawn_detached_worker(db_path: Path, session_id: str) -> int:
 
 
 class Harness:
-    """General-purpose LLM-Native Micro-Harness."""
+    """General-purpose LLM-Native Micro-Harness.
+
+    `output_schema` (JSON Schema subset) is a deterministic pre-`done` gate: the deliverable
+    must be JSON matching it. `tether.api.failure_info` classifies FAILED results by the
+    prefixes "Verification gate", "Max steps" and "Worker error" written in this module.
+    """
 
     def __init__(
         self,
@@ -63,6 +70,7 @@ class Harness:
         provider: ModelProvider | None = None,
         skill_search_dirs: list[str | Path] | None = None,
         worker_spawner: Callable[[str], int | None] | None = None,
+        output_schema: dict[str, Any] | None = None,
     ) -> None:
         self.model = model or os.environ.get("TETHER_MODEL") or "ollama/qwen3.5:9b"
         self.store = SQLiteStore(db_path=db_path)
@@ -74,6 +82,7 @@ class Harness:
         self._provider = provider
         self.skill_loader = SkillLoader(search_dirs=skill_search_dirs)
         self._worker_spawner = worker_spawner
+        self.output_schema = output_schema
 
         self._custom_tools: dict[str, ToolSpec] = {}
         self._enabled_tool_names: list[str] = []
@@ -284,12 +293,15 @@ class Harness:
 
     def create_session(self, goal: str, *, parent_id: str | None = None) -> SessionRecord:
         """Create a persisted session row in SQLite without executing it yet."""
+        sbox_dict = self.sandbox.to_dict()
+        if self.output_schema:
+            sbox_dict["output_schema"] = self.output_schema
         return self.store.create_session(
             goal=goal,
             model=self.model,
             skill=self.skill_name,
             tools=self._enabled_tool_names,
-            sandbox_config=self.sandbox.to_dict(),
+            sandbox_config=sbox_dict,
             parent_id=parent_id,
             max_steps=self.max_steps,
         )
@@ -505,6 +517,8 @@ class Harness:
             if sv not in verify_commands:
                 verify_commands.append(sv)
 
+        output_schema = rec.sandbox_config.get("output_schema") or None
+
         mux = self.build_multiplexer(
             session_id=session_id,
             enabled_tools=enabled_tools,
@@ -684,9 +698,18 @@ class Harness:
                         continue
 
                     # 4. Run deterministic pre-`done` verification gates if configured
-                    if verify_commands:
+                    schema_err = (
+                        validate_output(dispatch.final_result or "", output_schema)
+                        if output_schema
+                        else None
+                    )
+                    if schema_err or verify_commands:
                         t_gate_start = time.perf_counter()
-                        gate_failure = await self._run_verification_gates(sandbox, verify_commands)
+                        gate_failure = (
+                            ("output-schema", 1, schema_err)
+                            if schema_err
+                            else await self._run_verification_gates(sandbox, verify_commands)
+                        )
                         gate_duration_ms = int((time.perf_counter() - t_gate_start) * 1000)
                         if gate_failure is not None:
                             failed_cmd, exit_code, gate_out = gate_failure
@@ -778,10 +801,19 @@ class Harness:
                 result=f"Max steps ({rec.max_steps}) reached without calling `done`.",
             )
         except Exception as exc:
+            cur = self.store.get_session(session_id)
+            self.store.add_turn(
+                session_id=session_id,
+                step=cur.step_count if cur else 0,
+                role="tool",
+                content=traceback.format_exc()[-4000:],
+                event_type="tool_error",
+            )
+            detail = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
             self.store.update_session(
                 session_id,
                 status="FAILED",
-                result=f"Worker error: {exc}",
+                result=f"Worker error: {detail}",
             )
 
         final_rec = self.store.get_session(session_id)

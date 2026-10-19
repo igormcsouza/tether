@@ -11,6 +11,10 @@ Most agent frameworks drown small models in 3,000–8,000 tokens of nested JSON 
 
 ---
 
+## Works inside your harness
+
+Tether does not replace your TUI. Keep Claude Code, Codex, Cursor, Gemini CLI or Copilot as the cockpit and let Tether run as a subagent over MCP (`pip install "tether-sdk[mcp]"`), on a local model or any provider, so routine work costs fewer tokens. See [Use Tether Inside Your Harness](tutorial/agent-interface.md).
+
 ## Install from PyPI
 
 Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-sdk/)** (requires Python `3.12+`). Installing `tether-sdk` provides both the **`tether` CLI command** and the **`import tether` Python SDK**.
@@ -31,6 +35,12 @@ Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-
 
     ```sh
     uv tool install tether-sdk
+    ```
+
+=== "pip + MCP extra"
+
+    ```sh
+    pip install "tether-sdk[mcp]"   # adds `tether mcp` (optional; not needed for normal use)
     ```
 
 === "uvx (zero-install run)"

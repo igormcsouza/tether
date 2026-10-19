@@ -1,5 +1,21 @@
 # Release Notes
 
+## v0.2.0 (2026-10-19)
+
+Tether as a subagent for the harness you already use (Claude Code, Codex, Cursor, Gemini CLI, Copilot): MCP server, JSON output and exit codes (#46). See [Use Tether Inside Your Harness](tutorial/agent-interface.md).
+
+### Features
+
+- **MCP server** (optional extra, `pip install "tether-sdk[mcp]"`; without it `tether mcp` warns and exits 1): `tether mcp` over stdio with `tether_run|status|wait|read|send|list|stats|query`.
+- **`--json`** on `run`, `pipeline`, `status`, `list`, `read`, `wait`, `send`, `stats`; stable schema `v: 1`.
+- **Exit codes**: 0 completed, 1 usage, 2 waiting for input, 3 gate failed, 4 max steps, 5 worker error. Failure text now goes to stderr.
+- `Harness(output_schema=...)` / `--output-schema`, `--result-file` (JSON Schema subset enforced as a `done` gate), `tether events <id> [--follow]`.
+
+### Fixes
+
+- Worker errors keep the exception type and store the traceback as a `tool_error` turn (#41).
+- `ollama` no longer silently substitutes an installed model on 404; it fails with the installed list. Opt back in with `TETHER_OLLAMA_FALLBACK=1` (#21).
+
 ## v0.1.4 (2026-10-18)
 
 Security hardening from a red-team run of `ollama/qwen3.5:9b` against v0.1.3 (hidden prompt injection in a README exfiltrated a file; `docker.sock` was reachable inside `bwrap`).

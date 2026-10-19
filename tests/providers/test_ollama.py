@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import httpx
+import pytest
 
 from tether.providers.ollama import OllamaProvider
 
@@ -74,7 +75,7 @@ async def test_ollama_provider_and_connection_pooling() -> None:
         )
 
     client_ollama = httpx.AsyncClient(transport=httpx.MockTransport(ollama_handler))
-    op = OllamaProvider("missing:model", client=client_ollama)
+    op = OllamaProvider("missing:model", client=client_ollama, fallback=True)
     r1 = await op.generate([{"role": "user", "content": "hi"}], [])
     assert op.model_name == "qwen3.5:9b"
     assert r1.action is not None and r1.action.cmd == "done 'ok'"
@@ -96,3 +97,15 @@ async def test_ollama_provider_and_connection_pooling() -> None:
     r4 = await op.generate([{"role": "user", "content": "hi"}], [])
     assert r4.action is not None and r4.action.stdin == "from text"
     await op.aclose()
+
+
+async def test_ollama_unknown_model_fails_loudly_by_default() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": [{"name": "qwen3.5:9b"}]})
+        return httpx.Response(404)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    op = OllamaProvider("doesnotexist", client=client, fallback=False)
+    with pytest.raises(RuntimeError, match="doesnotexist.*installed: qwen3.5:9b"):
+        await op.generate([{"role": "user", "content": "hi"}], [])
