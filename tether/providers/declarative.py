@@ -30,6 +30,13 @@ _SYSTEM_SUFFIX = (
     '{"cmd": "<command>", "stdin": "<optional multiline payload or null>"}'
 )
 
+ACT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {"cmd": {"type": "string"}, "stdin": {"type": ["string", "null"]}},
+    "required": ["cmd"],
+}
+_SCHEMA_JSON = json.dumps(ACT_SCHEMA, separators=(",", ":"))
+
 
 def _build_dialects(entries: list[dict[str, Any]] | None) -> list[Dialect]:
     """Turn validated `dialects:` entries into extractor callables."""
@@ -188,6 +195,7 @@ class CommandProvider:
             template.replace("{model}", self.model_name)
             .replace("{system}", system)
             .replace("{conversation}", conversation)
+            .replace("{schema}", _SCHEMA_JSON)
         )
 
     async def generate(
@@ -237,8 +245,18 @@ class CommandProvider:
                 f"{(out_text or err_text)[:300]}"
             ) from None
         value = _lookup(payload, self.reply)
-        text = value if isinstance(value, str) else ""
-        action = extract_fallback_action(text, extra=self.dialects)
+        if not isinstance(value, str | dict) and isinstance(payload, dict):
+            value = payload.get("structured_output")
+        action: ActionCall | None
+        if isinstance(value, dict) and isinstance(value.get("cmd"), str):
+            stdin_val = value.get("stdin")
+            action = ActionCall(
+                cmd=value["cmd"], stdin=stdin_val if isinstance(stdin_val, str) else None
+            )
+            text = json.dumps(value)
+        else:
+            text = value if isinstance(value, str) else ""
+            action = extract_fallback_action(text, extra=self.dialects)
         prompt_paths = self.usage.get("prompt") or []
         if isinstance(prompt_paths, str):
             prompt_paths = [prompt_paths]

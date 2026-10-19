@@ -2,6 +2,10 @@
 
 ## v0.2.2 (unreleased)
 
+### Features
+
+- `{schema}` placeholder for `command` providers (#51): constrain output to the act schema (e.g. `claude -p --json-schema '{schema}'`); replies may be structured objects with `cmd`/`stdin`.
+
 ### Fixes
 
 - The context budget and observation fold window are now configurable (#54): `--context-tokens` / `--fold-after` on `tether run` and `tether pipeline`, `context_tokens` / `fold_after` on `tether_run`, and per-provider keys in `providers.yaml`.
