@@ -1,6 +1,6 @@
 # Agent Interface Reference
 
-Machine-readable surface for calling Tether from another agent. Code: `tether/api.py`, `tether/mcp.py`, `tether/schema.py`.
+Machine-readable surface for calling Tether from another agent. Setup per harness: [Use Tether Inside Your Harness](../tutorial/agent-interface.md). Code: `tether/api.py`, `tether/mcp.py`, `tether/schema.py`.
 
 ## Session JSON (schema version 1)
 

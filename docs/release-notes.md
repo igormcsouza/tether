@@ -1,8 +1,8 @@
 # Release Notes
 
-## v0.2.0 (unreleased)
+## v0.2.0 (2026-10-19)
 
-Tether as a drop-in subagent for other harnesses (#46).
+Tether as a subagent for the harness you already use (Claude Code, Codex, Cursor, Gemini CLI, Copilot): MCP server, JSON output and exit codes (#46). See [Use Tether Inside Your Harness](tutorial/agent-interface.md).
 
 ### Features
 

@@ -246,6 +246,18 @@ $ tether run --json --output-schema out.json "goal"
 $ claude mcp add tether -- tether mcp --workspace "$PWD"   # MCP server (needs: pip install "tether-sdk[mcp]")
 ```
 
+### Use Tether inside your existing harness (MCP)
+
+Tether does not replace your cockpit. Keep Claude Code, Codex, Cursor, Gemini CLI or Copilot as the main agent and let Tether work as a **subagent** (or main agent for narrow tasks) on a local model like `ollama/qwen3.5:9b`, or any provider you choose: cheap, fast, and the parent only reads a small structured result.
+
+```bash
+uv tool install "tether-sdk[mcp]"
+claude mcp add tether -- tether mcp --workspace "$PWD"     # Claude Code
+codex mcp add tether -- tether mcp --workspace "$PWD"      # Codex CLI
+```
+
+Cursor, Gemini CLI, VS Code and Claude Desktop configs, a "let your harness install it" prompt and a delegation rule for `CLAUDE.md`/`AGENTS.md` are in [Use Tether Inside Your Harness](docs/tutorial/agent-interface.md).
+
 ### Python SDK Usage
 
 ```python

@@ -9,6 +9,7 @@ This tutorial walks through every layer of **Tether**, from running your first l
 5. **[Async Multi-Agent Orchestration](multi-agent.md)** — Spawn parallel child sessions (`agent spawn`), wait for compact 50-token digests (`agent wait`), and run sub-millisecond BM25 RAG across sub-agent observations (`agent query`).
 6. **[Security and Sandbox](security-and-sandbox.md)** — Enforce deterministic path confinement, `.env`/`.git` protection, secret environment scrubbing, and Linux `bwrap` kernel isolation.
 7. **[Gates, Memory, Pipelines & Telemetry](workflows-and-telemetry.md)** — Verification gates (`--verify`), `done --ask`, project memory (`mem --project`), YAML pipelines, `tether stats` and `tether retro`.
+8. **[Use Tether Inside Your Harness](agent-interface.md)** — Run Tether as a subagent of Claude Code, Codex, Cursor, Gemini CLI or Copilot over MCP (`tether-sdk[mcp]`), with `--json` and exit codes for scripts.
 
 
 Throughout the tutorial, the [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) (`examples/course/`, a three-stage pipeline that plans, researches and writes a small course with `ollama/qwen3.5:9b`) is the running example: each page shows the piece of it that illustrates that feature, plus the limits we hit. Problems are collected in [Troubleshooting](../troubleshooting.md).
