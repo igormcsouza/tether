@@ -328,14 +328,12 @@ async def _async_main(argv: list[str]) -> int:
             return api.EXIT_USAGE
         last = 0
         while True:
+            cur = store.get_session(ns.session_id)  # status first: no event is missed at the end
             for ev in api.events(store, ns.session_id, after_turn=last):
                 last = ev["turn"]
                 print(json.dumps(ev), flush=True)
-            cur = store.get_session(ns.session_id)
             if not ns.follow or cur is None or cur.status not in ("PENDING", "RUNNING"):
-                if ns.follow:  # final drain after the terminal status was observed
-                    for ev in api.events(store, ns.session_id, after_turn=last):
-                        print(json.dumps(ev), flush=True)
+                if ns.follow:
                     print(json.dumps({"event": "status", "status": cur.status if cur else None}))
                 return 0
             await asyncio.sleep(0.5)
