@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.2.1 (unreleased)
+
+### Features
+
+- Declarative providers (#49): add model backends without code via `~/.tether/providers.yaml` (override with `TETHER_PROVIDERS`, never read from the workspace). Kinds `openai`, `ollama`, `anthropic` and `command` (wrap any CLI that prints JSON, run without a shell). Works in `tether run`, `tether pipeline`, the SDK and `tether mcp`. See [Declarative providers](reference/providers.md#declarative-providers).
+
 ## v0.2.0 (2026-10-19)
 
 Tether as a subagent for the harness you already use (Claude Code, Codex, Cursor, Gemini CLI, Copilot): MCP server, JSON output and exit codes (#46). See [Use Tether Inside Your Harness](tutorial/agent-interface.md).
