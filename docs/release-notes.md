@@ -1,6 +1,8 @@
 # Release Notes
 
-## v0.2.2 (unreleased)
+## v0.2.2 (2026-10-19)
+
+Dogfooding fixes: Tether implemented most of this release itself through the CLI and a `claude -p` provider.
 
 ### Features
 
