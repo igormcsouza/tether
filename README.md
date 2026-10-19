@@ -207,6 +207,9 @@ uv add tether-sdk
 # Or install the `tether` CLI globally as an isolated tool
 uv tool install tether-sdk
 
+# Optional: MCP server support (use Tether as a subagent of Claude Code, Codex, ...)
+pip install "tether-sdk[mcp]"
+
 # Or run the CLI directly without installing
 uvx --from tether-sdk tether "Explain the CAP theorem in 3 bullet points"
 ```

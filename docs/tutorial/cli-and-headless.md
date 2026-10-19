@@ -26,6 +26,8 @@ Install the `tether-sdk` package from PyPI using `pip` or `uv` to make the `teth
     uvx --from tether-sdk tether "Summarize the CAP theorem"
     ```
 
+Need to call Tether from another agent or script? Add the optional MCP extra with `pip install "tether-sdk[mcp]"` and see [Use Tether Inside Your Harness](agent-interface.md). Normal CLI and SDK use never needs it.
+
 ## Foreground Execution
 
 When you pass a goal directly to `tether` (or `tether run`), the session runs in the foreground and prints the final deliverable when the agent calls `done`:
@@ -73,6 +75,10 @@ tether query "$SESSION_ID" "write-ahead log checkpointing" --top 3
 # List recent sessions in .tether/tether.db
 tether list
 ```
+
+## Scripting: `--json` and exit codes
+
+`run`, `pipeline`, `status`, `list`, `read`, `wait`, `send` and `stats` accept `--json`. Exit codes: `0` completed, `1` usage error, `2` waiting for input, `3` gate failed, `4` max steps, `5` worker error. A failure reason goes to stderr, never stdout. `--result-file <path>` writes the deliverable to a file, `--output-schema <schema.json>` rejects a `done` whose JSON does not match, and `tether events <id> --follow` streams turns as JSONL. Details: [Agent Interface reference](../reference/agent-interface.md).
 
 ## Live Inbox Injection & Auto-Resume (`tether send`)
 

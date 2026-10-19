@@ -70,7 +70,7 @@ Tether implements the architectural principles from *"LLM-Native Applications as
 ```text
 tether/
 ├── __init__.py          # Public SDK exports: Harness, Pipeline, Session, Skill, SandboxPolicy, tool
-├── cli.py               # Headless-capable CLI: `tether run|pipeline|status|read|send|list|wait`
+├── cli.py               # Headless-capable CLI: `tether run|pipeline|status|read|query|send|list|wait|stats|retro|events|mcp` (`--json` + documented exit codes)
 ├── harness.py           # Control Plane: bounded agent loop, pipelines, SQLite inbox, worker spawn
 ├── pipeline.py          # Workflow Plane: declarative multi-stage YAML pipelines & model routing
 ├── api.py               # Agent-facing JSON session view, exit codes, events (`--json`)
@@ -149,7 +149,7 @@ tether/
 - If no provider prefix is given, defaults to `ollama/<model>`.
 - Custom SDK transports (e.g., internal corporate gateways, custom local runners, or test harnesses) can be injected via `Harness(provider=...)` or registered under a custom `<prefix>/<model>` via `register_provider(prefix, factory)`.
 - Environment variables:
-  - `OLLAMA_HOST` (default `http://localhost:11434`)
+  - `OLLAMA_HOST` (default `http://localhost:11434`); `TETHER_OLLAMA_FALLBACK=1` opts in to substituting an installed model when the requested one 404s (default: fail loudly with the installed list)
   - `OPENAI_API_KEY`, `OPENAI_BASE_URL` (default `https://api.openai.com/v1` — works with OpenRouter, vLLM, Groq, etc.)
   - `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` (default `https://api.anthropic.com`)
 

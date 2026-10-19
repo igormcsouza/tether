@@ -9,7 +9,7 @@ Tether as a subagent for the harness you already use (Claude Code, Codex, Cursor
 - **MCP server** (optional extra, `pip install "tether-sdk[mcp]"`; without it `tether mcp` warns and exits 1): `tether mcp` over stdio with `tether_run|status|wait|read|send|list|stats|query`.
 - **`--json`** on `run`, `pipeline`, `status`, `list`, `read`, `wait`, `send`, `stats`; stable schema `v: 1`.
 - **Exit codes**: 0 completed, 1 usage, 2 waiting for input, 3 gate failed, 4 max steps, 5 worker error. Failure text now goes to stderr.
-- `--result-file`, `--output-schema` (JSON Schema subset enforced as a `done` gate), `tether events <id> [--follow]`.
+- `Harness(output_schema=...)` / `--output-schema`, `--result-file` (JSON Schema subset enforced as a `done` gate), `tether events <id> [--follow]`.
 
 ### Fixes
 

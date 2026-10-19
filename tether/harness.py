@@ -47,7 +47,12 @@ def spawn_detached_worker(db_path: Path, session_id: str) -> int:
 
 
 class Harness:
-    """General-purpose LLM-Native Micro-Harness."""
+    """General-purpose LLM-Native Micro-Harness.
+
+    `output_schema` (JSON Schema subset) is a deterministic pre-`done` gate: the deliverable
+    must be JSON matching it. `tether.api.failure_info` classifies FAILED results by the
+    prefixes "Verification gate", "Max steps" and "Worker error" written in this module.
+    """
 
     def __init__(
         self,

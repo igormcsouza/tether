@@ -18,6 +18,8 @@ The harness passes neutral messages (assistant `tool_calls` with `id` and dict `
       show_root_heading: false
       members_order: source
 
+Ollama: an unknown model fails with `Ollama model … not found; installed: …`. Set `TETHER_OLLAMA_FALLBACK=1` (or `OllamaProvider(fallback=True)`) to substitute an installed model instead; a warning is printed to stderr and `tether stats` records the substitute ([#21](https://github.com/igormcsouza/tether/issues/21)).
+
 ## `tether.providers.ollama`
 
 ::: tether.providers.ollama

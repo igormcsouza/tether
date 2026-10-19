@@ -37,6 +37,12 @@ Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-
     uv tool install tether-sdk
     ```
 
+=== "pip + MCP extra"
+
+    ```sh
+    pip install "tether-sdk[mcp]"   # adds `tether mcp` (optional; not needed for normal use)
+    ```
+
 === "uvx (zero-install run)"
 
     ```sh
