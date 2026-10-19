@@ -17,6 +17,7 @@ from tether.providers import (
     ModelResponse,
     ProviderResponse,
     extract_fallback_action,
+    register_dialect,
     register_provider,
 )
 from tether.sandbox import SandboxPolicy, SandboxViolationError
@@ -55,6 +56,7 @@ __all__ = [
     "extract_fallback_action",
     "load_pipeline",
     "parse_pipeline_yaml",
+    "register_dialect",
     "register_provider",
     "tool",
 ]

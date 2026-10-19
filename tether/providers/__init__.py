@@ -12,6 +12,7 @@ from tether.providers.base import (
     ProviderResponse,
     extract_fallback_action,
     parse_tool_arguments,
+    register_dialect,
 )
 from tether.providers.declarative import build_declared, load_declared
 from tether.providers.ollama import OllamaProvider
@@ -67,6 +68,7 @@ __all__ = [
     "ProviderResponse",
     "extract_fallback_action",
     "parse_tool_arguments",
+    "register_dialect",
     "register_provider",
     "resolve_provider",
 ]

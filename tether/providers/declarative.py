@@ -12,7 +12,13 @@ from typing import Any
 import yaml
 
 from tether.providers.anthropic import AnthropicProvider
-from tether.providers.base import ActionCall, ModelProvider, ModelResponse, extract_fallback_action
+from tether.providers.base import (
+    ActionCall,
+    Dialect,
+    ModelProvider,
+    ModelResponse,
+    extract_fallback_action,
+)
 from tether.providers.ollama import OllamaProvider
 from tether.providers.openai import OpenAIProvider
 
@@ -23,8 +29,29 @@ _SYSTEM_SUFFIX = (
     "\n\nReply with ONLY one JSON object, no prose, no code fence: "
     '{"cmd": "<command>", "stdin": "<optional multiline payload or null>"}'
 )
-_XML_CMD_RE = re.compile(r'<parameter name="cmd">(?P<v>.*?)</parameter>', re.DOTALL)
-_XML_STDIN_RE = re.compile(r'<parameter name="stdin">(?P<v>.*?)</parameter>', re.DOTALL)
+
+
+def _build_dialects(entries: list[dict[str, Any]] | None) -> list[Dialect]:
+    """Turn validated `dialects:` entries into extractor callables."""
+    built: list[Dialect] = []
+    for entry in entries or []:
+        pattern = re.compile(entry["regex"], re.DOTALL)
+        built.append(_make_dialect(pattern))
+    return built
+
+
+def _make_dialect(pattern: re.Pattern[str]) -> Dialect:
+    def extract(text: str) -> ActionCall | None:
+        match = pattern.search(text)
+        if not match:
+            return None
+        cmd = (match.group("cmd") or "").strip()
+        if not cmd:
+            return None
+        stdin = match.group("stdin") if "stdin" in pattern.groupindex else None
+        return ActionCall(cmd=cmd, stdin=stdin)
+
+    return extract
 
 
 def providers_path() -> Path:
@@ -57,6 +84,19 @@ def _validate_command(name: Any, cfg: dict[str, Any]) -> None:
         isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
     ):
         raise _bad(name, "has invalid `timeout` (must be a positive number)")
+    dialects = cfg.get("dialects")
+    if dialects is not None:
+        if not isinstance(dialects, list):
+            raise _bad(name, "has invalid `dialects` (must be a list of mappings)")
+        for item in dialects:
+            if not isinstance(item, dict) or not isinstance(item.get("regex"), str):
+                raise _bad(name, "has invalid `dialects` item (mapping with `regex` required)")
+            try:
+                compiled = re.compile(item["regex"], re.DOTALL)
+            except re.error as exc:
+                raise _bad(name, f"has invalid `dialects` regex ({exc})") from exc
+            if "cmd" not in compiled.groupindex:
+                raise _bad(name, "has `dialects` regex without a named group `cmd`")
     usage = cfg.get("usage")
     if usage is None:
         return
@@ -133,6 +173,7 @@ class CommandProvider:
         stdin: str | None = None,
         usage: dict[str, Any] | None = None,
         timeout: float = 300,
+        dialects: list[Dialect] | None = None,
     ) -> None:
         self.model_name = model_name
         self.argv = argv
@@ -140,6 +181,7 @@ class CommandProvider:
         self.stdin = stdin if stdin is not None else "{conversation}"
         self.usage = usage or {}
         self.timeout = timeout
+        self.dialects = dialects or []
 
     def _render(self, template: str, system: str, conversation: str) -> str:
         return (
@@ -196,15 +238,7 @@ class CommandProvider:
             ) from None
         value = _lookup(payload, self.reply)
         text = value if isinstance(value, str) else ""
-        action = extract_fallback_action(text)
-        if action is None:
-            cmd_match = _XML_CMD_RE.search(text)
-            if cmd_match:
-                stdin_match = _XML_STDIN_RE.search(text)
-                action = ActionCall(
-                    cmd=cmd_match.group("v").strip(),
-                    stdin=stdin_match.group("v") if stdin_match else None,
-                )
+        action = extract_fallback_action(text, extra=self.dialects)
         prompt_paths = self.usage.get("prompt") or []
         if isinstance(prompt_paths, str):
             prompt_paths = [prompt_paths]
@@ -228,6 +262,7 @@ def build_declared(cfg: dict[str, Any], model_name: str, *, num_ctx: int) -> Mod
             stdin=cfg.get("stdin"),
             usage=cfg.get("usage"),
             timeout=cfg.get("timeout", 300),
+            dialects=_build_dialects(cfg.get("dialects")),
         )
     api_key_env = cfg.get("api_key_env")
     api_key = os.environ.get(api_key_env) if api_key_env else None

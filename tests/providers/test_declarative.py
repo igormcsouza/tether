@@ -300,3 +300,49 @@ def test_command_validation_errors(
     _write(monkeypatch, tmp_path, f"cli:\n  kind: command\n  {body}")
     with pytest.raises(ValueError, match=f"providers.yaml: entry `cli`.*{message}"):
         load_declared()
+
+
+def test_command_custom_dialect_end_to_end() -> None:
+    from tether.providers.declarative import _build_dialects
+
+    text = "RUN[ls -la]WITH[body]"
+    code = f"import json; print(json.dumps({{'r': {text!r}}}))"
+    dialects = _build_dialects([{"regex": r"RUN\[(?P<cmd>.*?)\]WITH\[(?P<stdin>.*?)\]"}])
+    resp = _run(CommandProvider("m", argv=_script(code), reply="r", dialects=dialects))
+    assert resp.action is not None
+    assert resp.action.cmd == "ls -la"
+    assert resp.action.stdin == "body"
+
+
+def test_command_custom_dialect_no_match_and_empty_cmd() -> None:
+    from tether.providers.declarative import _build_dialects
+
+    dialects = _build_dialects([{"regex": r"RUN\[(?P<cmd>.*?)\]"}])
+    assert dialects[0]("nothing here") is None
+    assert dialects[0]("RUN[   ]") is None
+    call = dialects[0]("RUN[ pwd ]")
+    assert call is not None
+    assert call.cmd == "pwd"
+    assert call.stdin is None
+
+
+@pytest.mark.parametrize(
+    ("dialects", "message"),
+    [
+        ("dialects: nope", "invalid `dialects`"),
+        ("dialects: [1]", "`regex` required"),
+        ("dialects: [{foo: bar}]", "`regex` required"),
+        ("dialects: [{regex: '('}]", "invalid `dialects` regex"),
+        ("dialects: [{regex: 'abc'}]", "named group `cmd`"),
+    ],
+)
+def test_command_dialects_validation_errors(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, dialects: str, message: str
+) -> None:
+    _write(
+        monkeypatch,
+        tmp_path,
+        f"cli:\n  kind: command\n  argv: [echo]\n  reply: r\n  {dialects}\n",
+    )
+    with pytest.raises(ValueError, match=f"providers.yaml: entry `cli`.*{message}"):
+        load_declared()

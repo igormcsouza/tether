@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -78,63 +79,105 @@ def parse_tool_arguments(raw_args: str | dict[str, Any]) -> ActionCall | None:
     return None
 
 
-def extract_fallback_action(text: str) -> ActionCall | None:
-    """Extract an ActionCall when a small 9B model emits tool syntax inside plain text."""
-    if not text:
+_PARAM_CMD_RE = re.compile(r'<parameter\s+name="cmd"\s*>(?P<value>.*?)</parameter>', re.DOTALL)
+_PARAM_STDIN_RE = re.compile(r'<parameter\s+name="stdin"\s*>(?P<value>.*?)</parameter>', re.DOTALL)
+
+Dialect = Callable[[str], "ActionCall | None"]
+
+
+def _dialect_tool_call_json(text: str) -> ActionCall | None:
+    """`<tool_call>{json}</tool_call>` blocks (common in Qwen models)."""
+    match = _TOOL_XML_RE.search(text)
+    if not match:
         return None
+    try:
+        payload = json.loads(match.group("body").strip())
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    args = payload.get("arguments") or payload.get("parameters") or payload
+    return parse_tool_arguments(args)
 
-    # 1. Check <tool_call>...</tool_call> XML blocks (common in Qwen models)
-    xml_match = _TOOL_XML_RE.search(text)
-    if xml_match:
-        body = xml_match.group("body").strip()
-        try:
-            payload = json.loads(body)
-            if isinstance(payload, dict):
-                args = payload.get("arguments") or payload.get("parameters") or payload
-                call = parse_tool_arguments(args)
-                if call:
-                    return call
-        except Exception:
-            pass
 
-    # 2. Check raw JSON object containing "cmd"
-    if '"cmd"' in text:
-        start = text.find("{")
-        end = text.rfind("}")
-        if 0 <= start < end:
-            call = parse_tool_arguments(text[start : end + 1])
-            if call:
-                return call
+def _dialect_raw_json(text: str) -> ActionCall | None:
+    """A raw JSON object containing `"cmd"` somewhere in the text."""
+    if '"cmd"' not in text:
+        return None
+    start = text.find("{")
+    end = text.rfind("}")
+    if 0 <= start < end:
+        return parse_tool_arguments(text[start : end + 1])
+    return None
 
-    # 3. Check multiline-tolerant `act("...", stdin="...")` call in text
+
+def _dialect_parameter_tags(text: str) -> ActionCall | None:
+    """`<parameter name="cmd">X</parameter>` with optional `stdin` parameter."""
+    cmd_match = _PARAM_CMD_RE.search(text)
+    if not cmd_match:
+        return None
+    cmd = cmd_match.group("value").strip()
+    if not cmd:
+        return None
+    stdin_match = _PARAM_STDIN_RE.search(text)
+    return ActionCall(cmd=cmd, stdin=stdin_match.group("value") if stdin_match else None)
+
+
+def _act_from_ast(args: str) -> ActionCall | None:
+    try:
+        tree = ast.parse(f"f({args})", mode="eval")
+    except SyntaxError:
+        return None
+    if not isinstance(tree.body, ast.Call):
+        return None
+    call = tree.body
+    cmd_val: str | None = None
+    stdin_val: str | None = None
+    if call.args and isinstance(call.args[0], ast.Constant):
+        cmd_val = str(call.args[0].value)
+    if len(call.args) > 1 and isinstance(call.args[1], ast.Constant):
+        stdin_val = str(call.args[1].value)
+    for kw in call.keywords:
+        if kw.arg in ("cmd", "command") and isinstance(kw.value, ast.Constant):
+            cmd_val = str(kw.value.value)
+        elif kw.arg == "stdin" and isinstance(kw.value, ast.Constant):
+            stdin_val = str(kw.value.value)
+    return ActionCall(cmd=cmd_val, stdin=stdin_val) if cmd_val else None
+
+
+def _dialect_act_text(text: str) -> ActionCall | None:
+    """Python-style `act("...", stdin="...")` call written in plain text."""
     ml_match = _MULTILINE_ACT_RE.search(text)
     if ml_match:
         cmd_str = ml_match.group("cmd").strip()
-        stdin_str = ml_match.group("stdin")
         if cmd_str:
-            return ActionCall(cmd=cmd_str, stdin=stdin_str)
-
-    # 4. Fallback to AST parse for single-line Python-style `act(...)`
+            return ActionCall(cmd=cmd_str, stdin=ml_match.group("stdin"))
     act_match = _ACT_CALL_RE.search(text)
     if act_match:
-        expr = f"f({act_match.group('args')})"
-        try:
-            tree = ast.parse(expr, mode="eval")
-            if isinstance(tree.body, ast.Call):
-                cmd_val: str | None = None
-                stdin_val: str | None = None
-                if tree.body.args and isinstance(tree.body.args[0], ast.Constant):
-                    cmd_val = str(tree.body.args[0].value)
-                if len(tree.body.args) > 1 and isinstance(tree.body.args[1], ast.Constant):
-                    stdin_val = str(tree.body.args[1].value)
-                for kw in tree.body.keywords:
-                    if kw.arg in ("cmd", "command") and isinstance(kw.value, ast.Constant):
-                        cmd_val = str(kw.value.value)
-                    elif kw.arg == "stdin" and isinstance(kw.value, ast.Constant):
-                        stdin_val = str(kw.value.value)
-                if cmd_val:
-                    return ActionCall(cmd=cmd_val, stdin=stdin_val)
-        except Exception:
-            pass
+        return _act_from_ast(act_match.group("args"))
+    return None
 
+
+DIALECTS: list[Dialect] = [
+    _dialect_tool_call_json,
+    _dialect_raw_json,
+    _dialect_parameter_tags,
+    _dialect_act_text,
+]
+
+
+def register_dialect(fn: Dialect) -> Dialect:
+    """Append a custom tool-call dialect extractor to `DIALECTS`."""
+    DIALECTS.append(fn)
+    return fn
+
+
+def extract_fallback_action(text: str, extra: Iterable[Dialect] = ()) -> ActionCall | None:
+    """Extract an ActionCall when a small 9B model emits tool syntax inside plain text."""
+    if not text:
+        return None
+    for dialect in (*DIALECTS, *extra):
+        call = dialect(text)
+        if call:
+            return call
     return None
