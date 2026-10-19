@@ -148,6 +148,7 @@ tether/
 - Model identifier format: `<provider>/<model_name>` (e.g., `ollama/qwen3.5:9b`, `openai/gpt-4o-mini`, `anthropic/claude-3-7-sonnet-latest`).
 - If no provider prefix is given, defaults to `ollama/<model>`.
 - Custom SDK transports (e.g., internal corporate gateways, custom local runners, or test harnesses) can be injected via `Harness(provider=...)` or registered under a custom `<prefix>/<model>` via `register_provider(prefix, factory)`.
+- Declarative providers: `~/.tether/providers.yaml` (override with `TETHER_PROVIDERS`, never read from the workspace) maps a model-id prefix to a `kind` (`openai`, `ollama`, `anthropic` or `command`); `claude-cli/sonnet` uses the entry `claude-cli`. The `command` kind runs `argv` directly (never through a shell) with `{model}`, `{system}` and `{conversation}` placeholders, and reads the reply and usage from JSON paths. Built-in prefixes (`ollama`, `openai`, `anthropic`, `claude`) cannot be shadowed, keys are env var names (never values), and an invalid file raises `ValueError: providers.yaml: ...`. Implementation in `tether/providers/declarative.py`; docs in `docs/reference/providers.md`.
 - Environment variables:
   - `OLLAMA_HOST` (default `http://localhost:11434`); `TETHER_OLLAMA_FALLBACK=1` opts in to substituting an installed model when the requested one 404s (default: fail loudly with the installed list)
   - `OPENAI_API_KEY`, `OPENAI_BASE_URL` (default `https://api.openai.com/v1` — works with OpenRouter, vLLM, Groq, etc.)

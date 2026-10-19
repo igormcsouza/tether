@@ -261,6 +261,28 @@ codex mcp add tether -- tether mcp --workspace "$PWD"      # Codex CLI
 
 Cursor, Gemini CLI, VS Code and Claude Desktop configs, a "let your harness install it" prompt and a delegation rule for `CLAUDE.md`/`AGENTS.md` are in [Use Tether Inside Your Harness](docs/tutorial/agent-interface.md).
 
+### Any model, no code: providers.yaml
+
+Declare extra providers in `~/.tether/providers.yaml` (override the path with `TETHER_PROVIDERS`). The entry key is the model-id prefix, so `claude-cli/sonnet` uses the entry `claude-cli`. It works in `tether run`, `tether pipeline`, the SDK and `tether mcp`, and the file is never read from the workspace.
+
+Kinds: `openai`, `ollama`, `anthropic` and `command`. The `command` kind wraps any program that takes a prompt and prints JSON (a `claude -p`, `codex exec` or `gemini -p` style command), and runs `argv` directly, never through a shell. Keys are given as env var names, never values.
+
+```yaml
+claude-cli:
+  kind: command
+  argv: [claude, -p, --model, "{model}", --tools, "", --system-prompt, "{system}", --output-format, json, --no-session-persistence, --setting-sources, "", --disable-slash-commands, --strict-mcp-config]
+  stdin: "{conversation}"
+  reply: result
+  usage: {prompt: [usage.input_tokens, usage.cache_creation_input_tokens, usage.cache_read_input_tokens], completion: usage.output_tokens}
+  timeout: 180
+```
+
+```bash
+tether run --model claude-cli/sonnet "fix the failing test"
+```
+
+On one small bug-fix task (v0.2.0 test), this backend used about 15x fewer tokens than plain `claude -p` (21k vs 330k). That is a single small task, not a benchmark. See [Declarative providers](docs/reference/providers.md#declarative-providers).
+
 ### Python SDK Usage
 
 ```python

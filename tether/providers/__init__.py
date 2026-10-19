@@ -13,6 +13,7 @@ from tether.providers.base import (
     extract_fallback_action,
     parse_tool_arguments,
 )
+from tether.providers.declarative import build_declared, load_declared
 from tether.providers.ollama import OllamaProvider
 from tether.providers.openai import OpenAIProvider
 
@@ -45,6 +46,9 @@ def resolve_provider(model: str, *, num_ctx: int = 8192) -> ModelProvider:
         return OpenAIProvider(model_name=name)
     if provider in ("anthropic", "claude"):
         return AnthropicProvider(model_name=name)
+    declared = load_declared()
+    if provider in declared:
+        return build_declared(declared[provider], name, num_ctx=num_ctx)
     supported = ["ollama/", "openai/", "anthropic/", *[f"{k}/" for k in _CUSTOM_PROVIDERS]]
     raise ValueError(
         f"Unknown model provider `{prefix}` in `{model}`. "
