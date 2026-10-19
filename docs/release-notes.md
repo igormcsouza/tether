@@ -5,6 +5,7 @@
 ### Fixes
 
 - The context budget and observation fold window are now configurable (#54): `--context-tokens` / `--fold-after` on `tether run` and `tether pipeline`, `context_tokens` / `fold_after` on `tether_run`, and per-provider keys in `providers.yaml`.
+- Tool-call dialect extraction is now table-driven (#52): built-in extractors for `<tool_call>` JSON, raw JSON, `<parameter name="cmd">` blocks and text `act(...)`, extendable with `tether.register_dialect` or a `dialects:` key on `command` entries in `providers.yaml`.
 
 ## v0.2.1 (2026-10-19)
 

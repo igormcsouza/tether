@@ -65,7 +65,18 @@ A `command` entry wraps any program that takes a prompt and prints JSON.
 - **No shell**: `argv` is executed directly, never through a shell.
 - **Reply**: `reply` is a dotted path into the JSON the command prints (`result` in the example).
 - **Usage**: `usage.prompt` is a path or a list of paths (their values are summed); `usage.completion` is a path. Both are optional.
-- **Protocol**: the model must answer with a single JSON `{"cmd", "stdin"}` object. The `{system}` placeholder already contains that instruction.
+- **Protocol**: the model should answer with a single JSON `{"cmd", "stdin"}` object. The `{system}` placeholder already contains that instruction.
+- **Dialects**: when the reply is not that JSON, Tether tries table-driven extractors in order, first match wins: `<tool_call>` JSON, raw JSON containing `"cmd"`, `<parameter name="cmd">X</parameter>` with optional `<parameter name="stdin">Y</parameter>` (inside any wrapper such as `<invoke>`), and text `act(...)`.
+- **`dialects:`** (optional): a list of mappings, each with a `regex` (compiled with `re.DOTALL`) that defines the named group `cmd` and optionally `stdin`. Custom dialects are tried after the built-in ones. Python users can also call `tether.register_dialect(fn)` with a `(str) -> ActionCall | None` function.
+
+```yaml
+mycli:
+  kind: command
+  argv: [mycli, "{conversation}"]
+  reply: result
+  dialects:
+    - regex: 'RUN\[(?P<cmd>.*?)\]WITH\[(?P<stdin>.*?)\]'
+```
 
 ### Rules
 

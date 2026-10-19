@@ -1,0 +1,6 @@
+{"reply": "<tool_call>{\"name\": \"act\", \"arguments\": {\"cmd\": \"ls -la\"}}</tool_call>", "cmd": "ls -la", "stdin": null}
+{"reply": "Sure: {\"cmd\": \"echo hi\"}", "cmd": "echo hi", "stdin": null}
+{"reply": "act(\"done\", stdin=\"x\")", "cmd": "done", "stdin": "x"}
+{"reply": "<invoke name=\"act\">\n<parameter name=\"cmd\">  pytest -q  </parameter>\n</invoke>", "cmd": "pytest -q", "stdin": null}
+{"reply": "<invoke name=\"act\">\n<parameter name=\"cmd\">edit write a.txt</parameter>\n<parameter name=\"stdin\">line1\nline2\n</parameter>\n</invoke>", "cmd": "edit write a.txt", "stdin": "line1\nline2\n"}
+{"reply": "I will think about this and answer in plain prose.", "cmd": null, "stdin": null}
