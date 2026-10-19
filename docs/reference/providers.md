@@ -34,11 +34,17 @@ claude-cli:
   reply: result
   usage: {prompt: [usage.input_tokens, usage.cache_creation_input_tokens, usage.cache_read_input_tokens], completion: usage.output_tokens}
   timeout: 180
+  context_tokens: 32000
+  fold_after: 8
 ```
 
 ```bash
 tether run --model claude-cli/sonnet "fix the failing test"
 ```
+
+### Context budget
+
+Every entry, of any kind, may set two optional positive integers: `context_tokens` (the context budget, default 8192) and `fold_after` (how many recent turns keep full observations, default 2). The `--context-tokens` / `--fold-after` flags and the Harness arguments override them.
 
 ### Kinds
 

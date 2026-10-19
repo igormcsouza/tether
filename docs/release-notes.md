@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.2.2 (unreleased)
+
+### Fixes
+
+- The context budget and observation fold window are now configurable (#54): `--context-tokens` / `--fold-after` on `tether run` and `tether pipeline`, `context_tokens` / `fold_after` on `tether_run`, and per-provider keys in `providers.yaml`.
+
 ## v0.2.1 (2026-10-19)
 
 Add model backends without code.

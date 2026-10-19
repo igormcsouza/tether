@@ -78,6 +78,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument("--max-steps", type=int, default=15, help="Max reasoning steps")
     p_run.add_argument(
+        "--context-tokens", type=int, default=None, help="Context token budget (default 8192)"
+    )
+    p_run.add_argument(
+        "--fold-after",
+        type=int,
+        default=None,
+        help="Fold observations older than N turns (default 2)",
+    )
+    p_run.add_argument(
         "--db", type=str, default=None, help="SQLite DB path (default .tether/tether.db)"
     )
     p_run.add_argument(
@@ -124,6 +133,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_pipe.add_argument(
         "--db", type=str, default=None, help="SQLite DB path (default .tether/tether.db)"
+    )
+    p_pipe.add_argument(
+        "--context-tokens", type=int, default=None, help="Context token budget (default 8192)"
+    )
+    p_pipe.add_argument(
+        "--fold-after",
+        type=int,
+        default=None,
+        help="Fold observations older than N turns (default 2)",
     )
     p_pipe.add_argument(
         "--result-file", type=str, default=None, help="Write the deliverable here, not to stdout"
@@ -274,6 +292,8 @@ async def _async_main(argv: list[str]) -> int:
                 db_path=ns.db,
                 max_steps=ns.max_steps,
                 output_schema=schema,
+                max_context_tokens=ns.context_tokens,
+                fold_observations_after=ns.fold_after,
             )
         except (OSError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
@@ -294,6 +314,8 @@ async def _async_main(argv: list[str]) -> int:
             sandbox=sandbox,
             db_path=ns.db,
             max_steps=ns.max_steps,
+            max_context_tokens=ns.context_tokens,
+            fold_observations_after=ns.fold_after,
         )
         try:
             if ns.headless:

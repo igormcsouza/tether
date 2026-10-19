@@ -155,6 +155,7 @@ tether/
   - `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` (default `https://api.anthropic.com`)
 
 ---
+- **Context config (#54):** `max_context_tokens` / `fold_observations_after` resolve as explicit argument (`--context-tokens` / `--fold-after`, MCP `context_tokens` / `fold_after`) > `providers.yaml` entry keys `context_tokens` / `fold_after` > defaults 8192 / 2.
 
 ## 4. Development Workflow & Commands
 

@@ -16,6 +16,7 @@ from tether.decorator import ToolSpec, build_tool_spec
 from tether.multiplexer import Multiplexer
 from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
 from tether.providers import ModelProvider, resolve_provider
+from tether.providers.declarative import load_declared
 from tether.sandbox import SandboxPolicy
 from tether.schema import validate_output
 from tether.skills import Skill, SkillLoader, make_skill_tool
@@ -65,8 +66,8 @@ class Harness:
         sandbox: SandboxPolicy | None = None,
         db_path: str | Path | None = None,
         max_steps: int = 15,
-        max_context_tokens: int = 8192,
-        fold_observations_after: int = 2,
+        max_context_tokens: int | None = None,
+        fold_observations_after: int | None = None,
         provider: ModelProvider | None = None,
         skill_search_dirs: list[str | Path] | None = None,
         worker_spawner: Callable[[str], int | None] | None = None,
@@ -77,8 +78,17 @@ class Harness:
         self.sandbox = sandbox or SandboxPolicy()
         self.max_steps = max_steps
         self.max_verify_failures = max_verify_failures
-        self.max_context_tokens = max_context_tokens
-        self.fold_observations_after = fold_observations_after
+        declared: dict[str, Any] = {}
+        try:
+            declared = load_declared().get(self.model.split("/")[0], {})
+        except ValueError:
+            declared = {}
+        self.max_context_tokens: int = int(
+            max_context_tokens or declared.get("context_tokens") or 8192
+        )
+        self.fold_observations_after: int = int(
+            fold_observations_after or declared.get("fold_after") or 2
+        )
         self._provider = provider
         self.skill_loader = SkillLoader(search_dirs=skill_search_dirs)
         self._worker_spawner = worker_spawner
