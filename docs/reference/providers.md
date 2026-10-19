@@ -61,10 +61,13 @@ Every entry, of any kind, may set two optional positive integers: `context_token
 
 A `command` entry wraps any program that takes a prompt and prints JSON.
 
-- **Placeholders**: `{model}`, `{system}` and `{conversation}` are substituted in `argv` items and in the `stdin` template. If `stdin` is omitted it defaults to `{conversation}`.
+- **Placeholders**: `{model}`, `{system}`, `{conversation}` and `{schema}` (the act JSON schema, compact) are substituted in `argv` items and in the `stdin` template. If `stdin` is omitted it defaults to `{conversation}`.
 - **No shell**: `argv` is executed directly, never through a shell.
 - **Reply**: `reply` is a dotted path into the JSON the command prints (`result` in the example).
 - **Usage**: `usage.prompt` is a path or a list of paths (their values are summed); `usage.completion` is a path. Both are optional.
+- **Constrained output**: use `{schema}` to make the CLI constrain its reply to the act schema, for example `argv: [claude, -p, --json-schema, "{schema}", --output-format, json]`. The reply may then be an object with `cmd` and optional `stdin` instead of a string; if the `reply` path gives no string or object, a top-level `structured_output` object is used.
+
+  Measured cost (v0.2.2, one small task): with `claude -p`, `--json-schema` adds about 2k prompt tokens to every call (the CLI wraps the schema in a hidden tool), so the same 5-step task used ~26k prompt tokens instead of ~7k. Use it when a model's plain replies are not being understood, not as a default.
 - **Protocol**: the model should answer with a single JSON `{"cmd", "stdin"}` object. The `{system}` placeholder already contains that instruction.
 - **Dialects**: when the reply is not that JSON, Tether tries table-driven extractors in order, first match wins: `<tool_call>` JSON, raw JSON containing `"cmd"`, `<parameter name="cmd">X</parameter>` with optional `<parameter name="stdin">Y</parameter>` (inside any wrapper such as `<invoke>`), and text `act(...)`.
 - **`dialects:`** (optional): a list of mappings, each with a `regex` (compiled with `re.DOTALL`) that defines the named group `cmd` and optionally `stdin`. Custom dialects are tried after the built-in ones. Python users can also call `tether.register_dialect(fn)` with a `(str) -> ActionCall | None` function.
