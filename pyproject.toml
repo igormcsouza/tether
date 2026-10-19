@@ -30,8 +30,14 @@ Homepage = "https://github.com/igormcsouza/tether"
 Repository = "https://github.com/igormcsouza/tether"
 Documentation = "https://igormcsouza.github.io/tether/"
 
+[project.optional-dependencies]
+mcp = [
+    "mcp>=2.0,<3",
+]
+
 [dependency-groups]
 dev = [
+    "mcp>=2.0,<3",
     "mypy>=1.10.0",
     "pytest>=8.2.0",
     "pytest-asyncio>=0.23.7",

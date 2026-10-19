@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from typing import Any
 
 import httpx
@@ -29,8 +30,14 @@ class OllamaProvider:
         keep_alive: str = "10m",
         timeout: float = 120.0,
         client: httpx.AsyncClient | None = None,
+        fallback: bool | None = None,
     ) -> None:
         self.model_name = model_name
+        self.fallback = (
+            os.environ.get("TETHER_OLLAMA_FALLBACK", "") not in ("", "0")
+            if fallback is None
+            else fallback
+        )
         self.host = (host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
         self.num_ctx = num_ctx
         self.keep_alive = keep_alive
@@ -49,20 +56,23 @@ class OllamaProvider:
 
     async def _resolve_installed_model(self, client: httpx.AsyncClient) -> str | None:
         """Query Ollama `/api/tags` to find an installed Qwen (or fallback) model if 404."""
+        models = await self._installed_models(client)
+        if not models:
+            return None
+        # Prefer any installed Qwen model first
+        for m in models:
+            if "qwen" in m.lower():
+                return m
+        return models[0]
+
+    async def _installed_models(self, client: httpx.AsyncClient) -> list[str]:
         try:
             resp = await client.get(f"{self.host}/api/tags")
             resp.raise_for_status()
-            models = [str(m.get("name") or "") for m in (resp.json().get("models") or [])]
-            models = [m for m in models if m]
-            if not models:
-                return None
-            # Prefer any installed Qwen model first
-            for m in models:
-                if "qwen" in m.lower():
-                    return m
-            return models[0]
+            names = [str(m.get("name") or "") for m in (resp.json().get("models") or [])]
+            return [n for n in names if n]
         except Exception:
-            return None
+            return []
 
     async def generate(
         self,
@@ -82,8 +92,19 @@ class OllamaProvider:
         client = self._get_client()
         resp = await client.post(f"{self.host}/api/chat", json=payload)
         if resp.status_code == 404:
+            if not self.fallback:
+                raise RuntimeError(
+                    f"Ollama model `{self.model_name}` not found; installed: "
+                    f"{', '.join(await self._installed_models(client)) or 'none'} "
+                    "(set TETHER_OLLAMA_FALLBACK=1 to substitute an installed model)"
+                )
             fallback = await self._resolve_installed_model(client)
             if fallback and fallback != self.model_name:
+                print(
+                    f"tether: warning: ollama model `{self.model_name}` not found, "
+                    f"using `{fallback}`",
+                    file=sys.stderr,
+                )
                 self.model_name = fallback
                 payload["model"] = fallback
                 resp = await client.post(f"{self.host}/api/chat", json=payload)

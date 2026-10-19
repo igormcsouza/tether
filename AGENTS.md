@@ -73,6 +73,9 @@ tether/
 ├── cli.py               # Headless-capable CLI: `tether run|pipeline|status|read|send|list|wait`
 ├── harness.py           # Control Plane: bounded agent loop, pipelines, SQLite inbox, worker spawn
 ├── pipeline.py          # Workflow Plane: declarative multi-stage YAML pipelines & model routing
+├── api.py               # Agent-facing JSON session view, exit codes, events (`--json`)
+├── mcp.py               # Optional (`tether-sdk[mcp]`) stdio MCP server (`tether mcp`): tether_run/status/wait/read/send/list/stats/query
+├── schema.py            # JSON Schema subset validator for `--output-schema` (a `done` gate)
 ├── retro.py             # Offline post-mortem: friction trace -> ≤2 Learned Rules (`tether retro`)
 ├── store.py             # SQLite WAL + FTS5 RAG (.tether/tether.db): sessions, turns, inbox, obs, chunks_fts
 ├── sandbox.py           # Security Plane: workspace-write jail, env scrubbing, Linux bwrap/unshare
@@ -105,6 +108,7 @@ tether/
   - `chunks_fts` *(SQLite FTS5 Virtual Table)*: `session_id`, `source_type` (`result` | `observation` | `pin`), `source_id`, `chunk_index`, `content` — automatically indexes ~150-token paragraph/heading chunks of all observations, pins, and final `done` deliverables for sub-millisecond BM25 RAG (including cross-session project search via `mem search --project <query>`).
   - `pins`: `session_id`, `key`, `value` (supports session-scoped working memory and workspace-wide semantic facts under `GLOBAL_SESSION_ID = "__project__"` via `mem pin --project <key> <val>`).
   - `inbox`: `id`, `session_id`, `message`, `consumed` (`0` or `1`), `created_at`.
+- **Agent-to-Agent Interface (`api.py`, `mcp.py`):** `--json` outputs (schema `v: 1`), exit codes `0` completed / `1` usage / `2` waiting / `3` gate / `4` max steps / `5` worker error, failure text on stderr, `--result-file`, `--output-schema`, `tether events`. `tether mcp` serves the same JSON over stdio and requires the optional `tether-sdk[mcp]` extra (official `mcp` SDK, imported lazily so core stays dependency-light; Rule 7 allows it as an extra only); its sandbox is always rooted at `--workspace` and callers can only narrow it. Details: `docs/reference/agent-interface.md`.
 - **Telemetry & Failure-Mode Inspector (`tether stats`):**
   - `tether stats [--model <m>] [--skill <s>] [--limit <n>]` aggregates per-model pass rates, cumulative token economy (`total_prompt_tokens + total_completion_tokens`), step latency, and self-healing ACI friction (`nudge`, `loop_stall`, `syntax_error`, `tool_error`, `gate_fail`), plus a top-offenders breakdown by tool command.
 - **Post-Mortem Distillation (`tether retro <session_id> [--apply] [--model <m>]`):** offline only (never mutates a live prompt). `store.extract_friction_trace` pulls `inbox` corrections and `loop_stall`/`syntax_error`/`tool_error`/`gate_fail` turns (+ the fixing command); one bounded LLM pass yields ≤2 rules (≤30 tokens each, deduped against existing rules). Prints a unified diff of `SKILL.md`; `--apply` appends under `## Learned Rules` (or pins to project memory when no skill was used).

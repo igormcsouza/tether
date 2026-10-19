@@ -101,6 +101,7 @@ nav:
       - Async Multi-Agent Orchestration: tutorial/multi-agent.md
       - Gates, Memory, Pipelines & Telemetry: tutorial/workflows-and-telemetry.md
       - Security and Sandbox: tutorial/security-and-sandbox.md
+      - Calling Tether from Another Agent: tutorial/agent-interface.md
   - Advanced:
       - Architecture and Literature: architecture.md
       - Extending Tether: extending.md
@@ -113,6 +114,7 @@ nav:
       - Sandbox and Skills: reference/sandbox-and-skills.md
       - Model Providers: reference/providers.md
       - Built-in Tools: reference/tools.md
+      - Agent Interface (JSON, MCP): reference/agent-interface.md
   - Project:
       - Troubleshooting: troubleshooting.md
       - Release Notes: release-notes.md
