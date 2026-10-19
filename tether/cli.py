@@ -27,6 +27,7 @@ _KNOWN_SUBCOMMANDS = {
     "stats",
     "retro",
     "events",
+    "misses",
     "mcp",
     "_worker",
 }
@@ -223,6 +224,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_events.add_argument("--follow", action="store_true", help="Stream until the session ends")
     p_events.add_argument("--db", type=str, default=None)
 
+    # `tether misses`
+    p_miss = sub.add_parser("misses", help="List unparsed model replies as fixture-ready JSONL")
+    p_miss.add_argument("session_id", nargs="?", default=None, help="Limit to one session")
+    p_miss.add_argument("--model", type=str, default=None, help="Only sessions of this model")
+    p_miss.add_argument("--limit", type=int, default=20, help="Max replies (default 20)")
+    p_miss.add_argument("--db", type=str, default=None)
+    _add_json(p_miss)
+
     # `tether mcp`
     p_mcp = sub.add_parser("mcp", help="Serve Tether as an MCP server over stdio")
     p_mcp.add_argument("--db", type=str, default=None)
@@ -343,6 +352,30 @@ async def _async_main(argv: list[str]) -> int:
         return 0
 
     store = SQLiteStore(db_path=getattr(ns, "db", None))
+
+    if cmd == "misses":
+        if ns.session_id and not store.get_session(ns.session_id):
+            print(f"Error: session `{ns.session_id}` not found.", file=sys.stderr)
+            return api.EXIT_USAGE
+        misses = store.list_nudges(ns.session_id, ns.model, ns.limit)
+        if not misses:
+            if not ns.json:
+                print("No unparsed replies.")
+            return 0
+        for miss_sess, turn in misses:
+            if ns.json:
+                miss_rec = {
+                    "session": miss_sess.id,
+                    "model": miss_sess.model,
+                    "step": turn.step,
+                    "reply": turn.content,
+                    "expected": None,
+                }
+                print(json.dumps(miss_rec))
+            else:
+                print(f"[{miss_sess.id} step {turn.step} {miss_sess.model}]")
+                print(turn.content[:300])
+        return 0
 
     if cmd == "events":
         if not store.get_session(ns.session_id):

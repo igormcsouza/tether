@@ -565,6 +565,32 @@ class SQLiteStore:
             ).fetchall()
             return [self._row_to_turn(r) for r in rows]
 
+    def list_nudges(
+        self, session_id: str | None = None, model: str | None = None, limit: int = 20
+    ) -> list[tuple[SessionRecord, TurnRecord]]:
+        """Most recent assistant replies the harness could not parse (newest first)."""
+        sql = (
+            "SELECT t.* FROM turns t JOIN sessions s ON s.id = t.session_id "
+            "WHERE t.role = 'assistant' AND t.event_type = 'nudge'"
+        )
+        params: list[Any] = []
+        if session_id is not None:
+            sql += " AND t.session_id = ?"
+            params.append(session_id)
+        if model is not None:
+            sql += " AND s.model = ?"
+            params.append(model)
+        sql += " ORDER BY t.id DESC LIMIT ?"
+        params.append(limit)
+        out: list[tuple[SessionRecord, TurnRecord]] = []
+        with self._connect() as conn:
+            for row in conn.execute(sql, tuple(params)).fetchall():
+                srow = conn.execute(
+                    "SELECT * FROM sessions WHERE id = ?", (row["session_id"],)
+                ).fetchone()
+                out.append((self._row_to_session(srow), self._row_to_turn(row)))
+        return out
+
     def add_observation(
         self,
         session_id: str,

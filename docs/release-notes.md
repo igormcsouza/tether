@@ -1,10 +1,13 @@
 # Release Notes
 
-## v0.2.2 (unreleased)
+## v0.2.2 (2026-10-19)
+
+Dogfooding fixes: Tether implemented most of this release itself through the CLI and a `claude -p` provider.
 
 ### Features
 
 - `{schema}` placeholder for `command` providers (#51): constrain output to the act schema (e.g. `claude -p --json-schema '{schema}'`); replies may be structured objects with `cmd`/`stdin`.
+- `tether misses [session_id] [--model M] [--limit N] [--json]` (#53): list unparsed model replies (nudges) as fixture-ready JSONL; paste lines into `tests/fixtures/dialects.jsonl` after filling `expected`.
 
 ### Fixes
 
