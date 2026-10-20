@@ -10,7 +10,7 @@ A gate is a shell command that must exit `0` before `done` can complete the sess
 tether run --tools bash,edit --verify "pytest -q" --verify "ruff check ." "Fix the failing test"
 ```
 
-If a gate fails, `done` is rejected and a `[VERIFICATION GATE FAILED: ...]` observation is injected so the model can fix the problem and retry. After repeated consecutive failures the session ends `FAILED`. Gates can also come from `Harness(verify=[...])` or a Skill's `verify:` frontmatter list.
+If a gate fails, `done` is rejected and a `[VERIFICATION GATE FAILED: ...]` observation is injected so the model can fix the problem and retry. After repeated consecutive failures the session ends `FAILED`. A gate that is itself broken (sandbox violation, command not found, exit 126/127, timeout) is not retried: the session ends `FAILED` immediately with a `Verification gate ... misconfigured: <reason>` result, the turn is recorded as `gate_error`, and the exit code is still `3`. Gates can also come from `Harness(verify=[...])` or a Skill's `verify:` frontmatter list.
 
 ## Asking for input (`done --ask`)
 
@@ -70,7 +70,7 @@ Each stage needs a `goal`. Invalid manifests print `Error: invalid pipeline ...`
 tether stats [--model <m>] [--skill <s>] [--limit <n>]
 ```
 
-Prints per-model runs, pass rate, average steps, peak and total tokens, and friction counts (`nudge`, `loop_stall`, `cycle_stall`, `syntax_error`, `tool_error`, `gate_fail`), followed by the commands that cause the most friction. Pipeline root sessions are excluded so tokens are not double-counted.
+Prints per-model runs, pass rate, average steps, peak and total tokens, and friction counts (`nudge`, `loop_stall`, `cycle_stall`, `syntax_error`, `tool_error`, `gate_fail`, `gate_error`), followed by the commands that cause the most friction. Pipeline root sessions are excluded so tokens are not double-counted.
 
 ## Post-mortem rules (`tether retro`)
 
@@ -126,4 +126,4 @@ sqlite3 .tether/tether.db \
   "select step, event_type, tool_cmd from turns where session_id='$SID' and tool_cmd is not null order by step"
 ```
 
-`turns.event_type` is one of `ok`, `nudge`, `loop_stall`, `cycle_stall`, `syntax_error`, `tool_error`, `gate_fail`, `completed`; the non-`ok` ones are what `tether stats` counts as friction. Model **reasoning is not recorded** (only the action and its output), so a "thinking" model that loops shows no visible cause ([#32](https://github.com/igormcsouza/tether/issues/32)).
+`turns.event_type` is one of `ok`, `nudge`, `loop_stall`, `cycle_stall`, `syntax_error`, `tool_error`, `gate_fail`, `gate_error`, `completed`; the non-`ok` ones are what `tether stats` counts as friction. Model **reasoning is not recorded** (only the action and its output), so a "thinking" model that loops shows no visible cause ([#32](https://github.com/igormcsouza/tether/issues/32)).

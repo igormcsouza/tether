@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Verification gate errors (sandbox violation, exit 124/126/127) are now told apart from gate failures: the session fails immediately with a `Verification gate ... misconfigured: <reason>` result (exit code 3) instead of burning the 3-failure abort budget, and `tether stats` shows a `GATE_ERR` column (#33).
 - `edit write` over an existing file now returns a deterministic summary (`Replaced N lines with M (X removed, Y added; first removed: ...)`) and, when the file shrank, points to `edit replace --lines a:b` (#40).
 - Skills now warn (`UserWarning`, 0 prompt tokens) at load when `tools.py` defines a `@tool` not listed in the skill `tools:` (#24).
 - Repeated multi-command cycles (e.g. `cat` / `sed` / `pytest`, or two alternating `sed -n` ranges) now trigger a deterministic `[CYCLE DETECTED]` nudge and a new `cycle_stall` event type, shown in `tether stats` as `CYCLES` (#39).

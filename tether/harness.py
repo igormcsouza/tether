@@ -375,13 +375,19 @@ class Harness:
         sandbox: SandboxPolicy,
         verify_commands: list[str],
         max_gate_output_chars: int = 2000,
-    ) -> tuple[str, int, str] | None:
-        """Run deterministic verification gates in order; return (cmd, code, output) on failure."""
+    ) -> tuple[str, int, str, bool] | None:
+        """Run gates in order; return (cmd, code, output, is_error) on the first problem.
+
+        `is_error` means the gate itself is broken (sandbox violation, command not found,
+        timeout), not that the agent's work was rejected.
+        """
         for vcmd in verify_commands:
+            is_error = False
             try:
                 code, out = await sandbox.execute_bash_with_code(vcmd)
+                is_error = code in (124, 126, 127)
             except Exception as exc:
-                code, out = 1, str(exc)
+                code, out, is_error = 1, str(exc), True
 
             if code != 0:
                 compact_out = out.strip()
@@ -393,7 +399,7 @@ class Harness:
                         f"... [truncated {omitted:,} chars] ...\n"
                         f"{compact_out[-half:]}"
                     )
-                return vcmd, code, compact_out
+                return vcmd, code, compact_out, is_error
         return None
 
     async def _execute_pipeline_session(self, rec: SessionRecord) -> SessionRecord:
@@ -755,13 +761,41 @@ class Harness:
                     if schema_err or verify_commands:
                         t_gate_start = time.perf_counter()
                         gate_failure = (
-                            ("output-schema", 1, schema_err)
+                            ("output-schema", 1, schema_err, False)
                             if schema_err
                             else await self._run_verification_gates(sandbox, verify_commands)
                         )
                         gate_duration_ms = int((time.perf_counter() - t_gate_start) * 1000)
                         if gate_failure is not None:
-                            failed_cmd, exit_code, gate_out = gate_failure
+                            failed_cmd, exit_code, gate_out, gate_broken = gate_failure
+                            if gate_broken:
+                                # Environment problem the model cannot fix: fail fast, no retries.
+                                self.store.update_turn_telemetry(
+                                    assistant_turn_id, event_type="gate_error"
+                                )
+                                self.store.add_turn(
+                                    session_id=session_id,
+                                    step=step,
+                                    role="tool",
+                                    content=(
+                                        f"[VERIFICATION GATE BROKEN: `{failed_cmd}` "
+                                        f"(exit {exit_code})] {gate_out}\n"
+                                        "The gate itself is misconfigured, not your work."
+                                    ),
+                                    duration_ms=tool_duration_ms + gate_duration_ms,
+                                )
+                                self.store.update_session(
+                                    session_id,
+                                    status="FAILED",
+                                    result=(
+                                        f"Verification gate `{failed_cmd}` misconfigured: "
+                                        f"{gate_out}"
+                                    ),
+                                    step_count=step,
+                                )
+                                broken_rec = self.store.get_session(session_id)
+                                assert broken_rec is not None
+                                return broken_rec
                             consecutive_verify_failures += 1
                             self.store.update_turn_telemetry(
                                 assistant_turn_id, event_type="gate_fail"
