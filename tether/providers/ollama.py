@@ -13,6 +13,7 @@ from tether.providers.base import (
     ModelResponse,
     extract_fallback_action,
     parse_tool_arguments,
+    post_with_retry,
 )
 
 
@@ -65,6 +66,16 @@ class OllamaProvider:
                 return m
         return models[0]
 
+    async def _chat(self, client: httpx.AsyncClient, payload: dict[str, Any]) -> httpx.Response:
+        return await post_with_retry(
+            client,
+            f"{self.host}/api/chat",
+            provider="ollama",
+            model=self.model_name,
+            timeout=self.timeout,
+            json=payload,
+        )
+
     async def _installed_models(self, client: httpx.AsyncClient) -> list[str]:
         try:
             resp = await client.get(f"{self.host}/api/tags")
@@ -90,7 +101,7 @@ class OllamaProvider:
             "options": {"num_ctx": self.num_ctx, "temperature": 0.2},
         }
         client = self._get_client()
-        resp = await client.post(f"{self.host}/api/chat", json=payload)
+        resp = await self._chat(client, payload)
         if resp.status_code == 404:
             if not self.fallback:
                 raise RuntimeError(
@@ -107,7 +118,7 @@ class OllamaProvider:
                 )
                 self.model_name = fallback
                 payload["model"] = fallback
-                resp = await client.post(f"{self.host}/api/chat", json=payload)
+                resp = await self._chat(client, payload)
         resp.raise_for_status()
         data = resp.json()
 

@@ -13,6 +13,7 @@ from tether.providers.base import (
     ModelResponse,
     extract_fallback_action,
     parse_tool_arguments,
+    post_with_retry,
 )
 
 
@@ -75,8 +76,12 @@ class OpenAIProvider:
             "temperature": 0.2,
         }
         client = self._get_client()
-        resp = await client.post(
+        resp = await post_with_retry(
+            client,
             f"{self.base_url}/chat/completions",
+            provider="openai",
+            model=self.model_name,
+            timeout=self.timeout,
             headers=headers,
             json=payload,
         )

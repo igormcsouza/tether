@@ -86,11 +86,6 @@ def _validate_command(name: Any, cfg: dict[str, Any]) -> None:
     stdin = cfg.get("stdin")
     if stdin is not None and not isinstance(stdin, str):
         raise _bad(name, "has invalid `stdin` (must be a string template)")
-    timeout = cfg.get("timeout")
-    if timeout is not None and (
-        isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
-    ):
-        raise _bad(name, "has invalid `timeout` (must be a positive number)")
     dialects = cfg.get("dialects")
     if dialects is not None:
         if not isinstance(dialects, list):
@@ -147,6 +142,11 @@ def load_declared() -> dict[str, dict[str, Any]]:
                         f"providers.yaml: entry `{name}` has invalid `{key}` "
                         "(must be a positive integer)"
                     )
+        timeout = cfg.get("timeout")
+        if timeout is not None and (
+            isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
+        ):
+            raise _bad(name, "has invalid `timeout` (must be a positive number)")
         if kind == "command":
             _validate_command(name, cfg)
         result[str(name)] = cfg
@@ -282,10 +282,15 @@ def build_declared(cfg: dict[str, Any], model_name: str, *, num_ctx: int) -> Mod
             timeout=cfg.get("timeout", 300),
             dialects=_build_dialects(cfg.get("dialects")),
         )
+    http_timeout = {"timeout": cfg["timeout"]} if "timeout" in cfg else {}
     api_key_env = cfg.get("api_key_env")
     api_key = os.environ.get(api_key_env) if api_key_env else None
     if kind == "openai":
-        return OpenAIProvider(model_name, api_key=api_key, base_url=cfg.get("base_url"))
+        return OpenAIProvider(
+            model_name, api_key=api_key, base_url=cfg.get("base_url"), **http_timeout
+        )
     if kind == "ollama":
-        return OllamaProvider(model_name, host=cfg.get("host"), num_ctx=num_ctx)
-    return AnthropicProvider(model_name, api_key=api_key, base_url=cfg.get("base_url"))
+        return OllamaProvider(model_name, host=cfg.get("host"), num_ctx=num_ctx, **http_timeout)
+    return AnthropicProvider(
+        model_name, api_key=api_key, base_url=cfg.get("base_url"), **http_timeout
+    )

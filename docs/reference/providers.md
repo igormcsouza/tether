@@ -46,13 +46,17 @@ tether run --model claude-cli/sonnet "fix the failing test"
 
 Every entry, of any kind, may set two optional positive integers: `context_tokens` (the context budget, default 8192) and `fold_after` (how many recent turns keep full observations, default 2). The `--context-tokens` / `--fold-after` flags and the Harness arguments override them.
 
+### Timeout and retry
+
+Every entry may set `timeout` (positive seconds). It applies to the HTTP kinds (`openai`, `ollama`, `anthropic`; defaults 120 / 120 / 180 s) and to `command` (default 300 s). The HTTP providers retry automatically, at most 2 times with 1 s then 2 s backoff, on timeouts, network errors and HTTP 429/500/502/503/504. Other 4xx responses are never retried. When retries run out the call raises `ProviderError`, so the session fails with a readable `Worker error: ProviderError: openai model `gpt-4o` unavailable after 3 attempts (timeout 120s, last error: ReadTimeout)`. The retry is invisible to the prompt (0 tokens, no prefix change).
+
 ### Kinds
 
 | `kind` | Fields |
 |---|---|
-| `openai` | `base_url`, `api_key_env` |
-| `ollama` | `host` |
-| `anthropic` | `base_url`, `api_key_env` |
+| `openai` | `base_url`, `api_key_env`, optional `timeout` |
+| `ollama` | `host`, optional `timeout` |
+| `anthropic` | `base_url`, `api_key_env`, optional `timeout` |
 | `command` | `argv` (list), `reply` (JSON path), optional `stdin` template, optional `usage`, optional `timeout` (seconds, default 300) |
 
 `api_key_env` is the **name** of an environment variable, never the key itself.

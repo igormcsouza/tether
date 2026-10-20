@@ -12,6 +12,7 @@ from tether.providers.base import (
     ModelResponse,
     extract_fallback_action,
     parse_tool_arguments,
+    post_with_retry,
 )
 
 
@@ -136,8 +137,12 @@ class AnthropicProvider:
             ]
 
         client = self._get_client()
-        resp = await client.post(
+        resp = await post_with_retry(
+            client,
             f"{self.base_url}/v1/messages",
+            provider="anthropic",
+            model=self.model_name,
+            timeout=self.timeout,
             headers=headers,
             json=payload,
         )
