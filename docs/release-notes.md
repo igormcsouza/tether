@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.2.3 (unreleased)
+
+### Fixes
+
+- `edit write` over an existing file now returns a deterministic summary (`Replaced N lines with M (X removed, Y added; first removed: ...)`) and, when the file shrank, points to `edit replace --lines a:b` (#40).
+
 ## v0.2.2 (2026-10-19)
 
 Dogfooding fixes: Tether implemented most of this release itself through the CLI and a `claude -p` provider.
