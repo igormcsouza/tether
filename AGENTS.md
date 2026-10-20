@@ -48,6 +48,7 @@ Tether implements the architectural principles from *"LLM-Native Applications as
   ```text
   [obs_3 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_3` to expand]
   ```
+- Exception: the latest read of a file (`edit view <p>`, `bash cat/head/tail/sed -n <p>`) is not folded until `<p>` is edited or the same command re-run, so the model does not re-read it forever. The `mem recall` hint is only shown when `mem` is enabled (else "re-run the command").
 - History is replayed as structured `tool_calls` + `tool` results (providers with `structured_history = True`; textual `act('...')` form only as fallback), with `stdin` replayed as a real 400-char prefix, never a `<N chars>` placeholder. A call and its result are trimmed together.
 
 ### Rule 6: Deterministic Security Envelope (Never Trust the LLM for Safety)

@@ -58,6 +58,7 @@ Tether implements a deterministic three-tier memory hierarchy backed by `.tether
    ```text
    [obs_1 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_1` or `mem search <query>`]
    ```
+   Exception: the latest unedited read of a file is not folded (small models otherwise re-read it in a loop), and the `mem recall` hint appears only when `mem` is enabled.
 3. **Sub-Millisecond SQLite FTS5 BM25 RAG**: Every raw observation and final deliverable is automatically chunked (~150 tokens per paragraph/section) and indexed into an FTS5 virtual table (`chunks_fts`) so the agent (or a parent agent) can retrieve exact passages via `mem search` or `agent query`.
 
 ---

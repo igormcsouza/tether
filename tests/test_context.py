@@ -148,3 +148,81 @@ def test_context_assembler_edge_cases() -> None:
         current_step=3,
     )
     assert "[PINNED MEMORY]" in assembled[-1]["content"]
+
+
+def _fold_setup(tmp_path: Path, cmds: list[str], outputs: list[str]):  # type: ignore[no-untyped-def]
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    rec = store.create_session("goal")
+    observations = {}
+    for i, (cmd, out) in enumerate(zip(cmds, outputs, strict=True), start=1):
+        step = i
+        if cmd.startswith("edit write") or cmd.startswith("edit replace"):
+            store.add_turn(rec.id, step=step, role="assistant", content="", tool_cmd=cmd)
+            store.add_turn(rec.id, step=step, role="tool", content=out)
+            continue
+        obs = store.add_observation(rec.id, step=step, cmd=cmd, raw_output=out)
+        observations[obs.id] = obs
+        store.add_turn(rec.id, step=step, role="assistant", content="", tool_cmd=cmd)
+        store.add_turn(rec.id, step=step, role="tool", content=out, obs_id=obs.id)
+    return store, rec, observations
+
+
+def _render(store, rec, observations, step: int, **kw) -> str:  # type: ignore[no-untyped-def]
+    msgs = ContextAssembler(fold_after_turns=2, **kw).assemble(
+        system_prompt="S",
+        goal=rec.goal,
+        turns=store.get_turns(rec.id),
+        observations=observations,
+        pins={},
+        current_step=step,
+    )
+    return "\n".join(str(m["content"]) for m in msgs)
+
+
+def test_unedited_file_read_is_not_folded(tmp_path: Path) -> None:
+    body = "line\n" * 100
+    for cmd in ("edit view a.py", "bash sed -n '1,55p' a.py", "bash cat a.py"):
+        store, rec, obs = _fold_setup(tmp_path / cmd.split()[1], [cmd, "bash ls"], [body, body])
+        text = _render(store, rec, obs, step=20)
+        assert "obs_1 folded" not in text and "[obs_1] line" in text
+        assert "obs_2 folded" in text  # non-read output still folds
+
+
+def test_read_folds_after_edit_or_reread(tmp_path: Path) -> None:
+    body = "line\n" * 100
+    store, rec, obs = _fold_setup(
+        tmp_path / "e",
+        ["edit view a.py", "edit replace a.py", "edit view b.py"],
+        [body, "ok", body],
+    )
+    text = _render(store, rec, obs, step=20)
+    assert "obs_1 folded" in text  # edited since: folds
+    assert "[obs_2] line" in text  # other path untouched
+
+    store, rec, obs = _fold_setup(
+        tmp_path / "r", ["edit view a.py", "edit view a.py"], [body, body]
+    )
+    text = _render(store, rec, obs, step=20)
+    assert "obs_1 folded" in text and "[obs_2] line" in text  # superseded by same re-read
+
+
+def test_read_path_ignores_non_reads() -> None:
+    from tether.context import _read_path
+
+    assert _read_path("bash cat a.py | head") is None
+    assert _read_path("bash grep x a.py") is None
+    assert _read_path("bash cat -n") is None
+    assert _read_path("bash cat 'unclosed") is None
+    assert _read_path("edit view") is None
+
+
+def test_tombstone_hint_follows_mem_availability(tmp_path: Path) -> None:
+    big = "x" * 5000
+    store, rec, obs = _fold_setup(tmp_path, ["bash ls", "bash pwd"], [big, big])
+    with_mem = _render(store, rec, obs, step=20)
+    assert "mem recall obs_1" in with_mem
+    no_mem = _render(store, rec, obs, step=20, mem_enabled=False)
+    assert "mem recall" not in no_mem and "re-run the command if needed]" in no_mem
+    # active (not yet folded) head+tail elision marker follows the same rule
+    active = _render(store, rec, obs, step=2, mem_enabled=False)
+    assert "mem recall" not in active and "re-run the command for the full output" in active
