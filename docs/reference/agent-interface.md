@@ -15,7 +15,7 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 - `failure` is `{"kind": "gate|max_steps|worker_error", "gate": "<cmd>|output-schema|null", "message": "…"}`.
 - Keys are stable; new keys may be added.
 
-`--json` is available on `run`, `pipeline`, `status`, `list`, `read` (also `--digest`, `--steps`), `wait`, `send` and `stats`. With `--headless` it prints `{"v":1,"id":"ses_…"}`.
+`--json` is available on `run`, `pipeline`, `status`, `list`, `read` (also `--digest`, `--steps`, `--full`), `wait`, `send` and `stats`. With `--headless` it prints `{"v":1,"id":"ses_…"}`.
 
 ## Exit codes
 
