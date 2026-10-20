@@ -1,7 +1,7 @@
 # v0.2 bugs
 - Slug: v0-2-bugs
-- Status: active
-- Started: 2026-10-20   Updated: 2026-10-20   Closed: —
+- Status: done
+- Started: 2026-10-20   Updated: 2026-10-20   Closed: 2026-10-20
 - Branches / PRs: branch `claude/keep-feature-context-resume-0ec918` (worktree); base `main` at 125b386 (release v0.2.2)
 
 ## Goal
@@ -67,6 +67,13 @@ Track and fix bugs found in Tether v0.2.x. Exact bug list not yet given by PO.
 - [ ] Relay docs review report to PO
 - [ ] PO to list the v0.2 bugs
 - [ ] Commit AGENTS.md + feature-context log on this branch
+
+## Wrap-up
+- Outcome: v0.2.2 closed; v0.2.3 (8 issues: cycle_stall, gate_error, provider retry/backoff, clearer 401/403 and disabled-command errors, edit write summary, live file reads, `read --full`) implemented via swe agents, reviewed, released to GitHub and PyPI (tag v0.2.3). Installed tether upgraded to 0.2.3.
+- Decisions: milestone convention = v0.X.0 features (many issues), v0.X.Y small bug releases (3-4 issues by impact); all 13 features in v0.3; AGENTS.md holds only permanent facts and now has a Philosophy Gate; swe uses tether with `nvidia/nvidia/nemotron-3-ultra-550b-a55b` (smoke test passed).
+- PRs: v0.2.3 PRs merged incl. release #94; docs PR #95 (Philosophy Gate + this log) opened, merge blocked by auto-mode classifier, needs PO to merge or add `Bash(gh pr merge:*)` to settings.
+- Follow-ups (tracked as GitHub milestones, not here): v0.2.4 (#85 #88 #75 #74), v0.2.5 (#86 #81 #92 #60), v0.2.6 (#76 #93 #27 #77), v0.2.7 (#79 #61 #62 #64), v0.2.8 (#63 #65 #66), v0.3 features (13). Open: reconnect tether MCP in a new session (old process lacks key, runs 0.2.2); controlled comparison of tether vs Claude on identical tasks to measure real token savings.
+- Lessons: GLM-5.3 via tether contributed 0-30% of code (re-read loops, timeouts, no `done`), mostly model-side; classifier blocks self-modifying settings and bare merges, so get PO approval and merge separately; merge origin/main into branches to resolve release-notes conflicts, no force push.
 
 ## Sessions
 | Date | Session note |
