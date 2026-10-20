@@ -73,6 +73,9 @@ async def test_cli_subcommands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert await _async_main(["read", s_done.id, "--steps", "--db", db_arg]) == 0
     assert await _async_main(["read", s_done.id, "--digest", "--db", db_arg]) == 0
     assert await _async_main(["read", s_done.id, "--db", db_arg]) == 0
+    assert await _async_main(["read", s_done.id, "--full", "--db", db_arg]) == 0
+    assert await _async_main(["read", s_done.id, "--full", "--json", "--db", db_arg]) == 0
+    assert await _async_main(["read", "ses_nope", "--full", "--db", db_arg]) == 1
 
     assert await _async_main(["query", s_done.id, "Final", "--db", db_arg]) == 0
     assert await _async_main(["query", s_done.id, "nonexistent_xyz", "--db", db_arg]) == 0
