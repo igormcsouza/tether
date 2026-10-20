@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 import pytest
 
 from tether.providers.base import ProviderError, post_with_retry
-from tether.providers.declarative import build_declared
+from tether.providers.declarative import build_declared, load_declared
 from tether.providers.openai import OpenAIProvider
 
 
@@ -99,3 +101,27 @@ def test_declared_http_kinds_honour_timeout() -> None:
     for kind in ("openai", "ollama", "anthropic"):
         built = build_declared({"kind": kind, "timeout": 7}, "m", num_ctx=1024)
         assert built.timeout == 7  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("kind", ["openai", "ollama", "anthropic"])
+def test_bad_timeout_on_http_kind_rejected(
+    kind: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    f = tmp_path / "p.yaml"
+    f.write_text(f"x:\n  kind: {kind}\n  timeout: -1\n")
+    monkeypatch.setenv("TETHER_PROVIDERS", str(f))
+    with pytest.raises(ValueError, match="providers.yaml: .*timeout"):
+        load_declared()
+
+
+async def test_cancelled_error_passes_through() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise asyncio.CancelledError
+
+    with pytest.raises(asyncio.CancelledError):
+        await _post(_client(handler), [])
+
+
+async def test_exhausted_error_includes_body_snippet() -> None:
+    with pytest.raises(ProviderError, match="overloaded"):
+        await _post(_client(lambda r: httpx.Response(503, text="overloaded")), [])

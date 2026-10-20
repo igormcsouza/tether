@@ -57,7 +57,7 @@ async def post_with_retry(
     timeout: float,
     retries: int = 2,
     backoff: float = 1.0,
-    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    sleep: Callable[[float], Awaitable[None]] | None = None,
     **kwargs: Any,
 ) -> httpx.Response:
     """POST with bounded retry on timeouts, network errors and 429/5xx.
@@ -66,6 +66,7 @@ async def post_with_retry(
     are exhausted a `ProviderError` names the provider, model and timeout, so `Worker error:`
     is readable. Extend `RETRY_STATUS` / `_TRANSIENT` to change what counts as transient.
     """
+    sleep = sleep or asyncio.sleep  # resolved at call time so tests can patch it
     last = ""
     for attempt in range(retries + 1):
         if attempt:
@@ -77,7 +78,7 @@ async def post_with_retry(
             continue
         if resp.status_code not in RETRY_STATUS:
             return resp
-        last = f"HTTP {resp.status_code}"
+        last = f"HTTP {resp.status_code}: {resp.text[:120]!r}"
     raise ProviderError(
         f"{provider} model `{model}` unavailable after {retries + 1} attempts "
         f"(timeout {timeout:g}s, last error: {last})"
