@@ -227,6 +227,7 @@ def test_telemetry_migration_and_stats_aggregation(tmp_path: Path) -> None:
     assert m.cycle_stalls == 1
     assert m.tool_errors == 1
     assert len(report.offenders) == 3
+    assert {o.command: o.cycle_stalls for o in report.offenders}["bash"] == 1
 
     formatted = store.format_stats_report()
     assert "MODEL" in formatted

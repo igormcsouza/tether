@@ -106,6 +106,7 @@ class ToolOffender:
     command: str
     syntax_errors: int
     loop_stalls: int
+    cycle_stalls: int
     tool_errors: int
     total_friction: int
 
@@ -1014,7 +1015,7 @@ class SQLiteStore:
 
         offenders_by_cmd: dict[str, ToolOffender] = {}
         for t in turns:
-            if t.event_type in ("syntax_error", "loop_stall", "tool_error"):
+            if t.event_type in ("syntax_error", "loop_stall", "cycle_stall", "tool_error"):
                 cmd_key = canonical_tool_command(t.tool_cmd)
                 off = offenders_by_cmd.get(cmd_key)
                 if off is None:
@@ -1022,6 +1023,7 @@ class SQLiteStore:
                         command=cmd_key,
                         syntax_errors=0,
                         loop_stalls=0,
+                        cycle_stalls=0,
                         tool_errors=0,
                         total_friction=0,
                     )
@@ -1030,6 +1032,8 @@ class SQLiteStore:
                     off.syntax_errors += 1
                 elif t.event_type == "loop_stall":
                     off.loop_stalls += 1
+                elif t.event_type == "cycle_stall":
+                    off.cycle_stalls += 1
                 else:
                     off.tool_errors += 1
                 off.total_friction += 1
@@ -1070,11 +1074,12 @@ class SQLiteStore:
             lines.append("")
             lines.append("Top Friction Offenders (by command):")
             lines.append(
-                f"{'COMMAND':<21} {'SYNTAX_ERR':>10} {'LOOPS':>5} {'TOOL_ERR':>8} {'TOTAL':>5}"
+                f"{'COMMAND':<21} {'SYNTAX_ERR':>10} {'LOOPS':>5} {'CYCLES':>6} "
+                f"{'TOOL_ERR':>8} {'TOTAL':>5}"
             )
             for off in report.offenders:
                 lines.append(
                     f"{off.command:<21} {off.syntax_errors:>10} {off.loop_stalls:>5} "
-                    f"{off.tool_errors:>8} {off.total_friction:>5}"
+                    f"{off.cycle_stalls:>6} {off.tool_errors:>8} {off.total_friction:>5}"
                 )
         return "\n".join(lines)

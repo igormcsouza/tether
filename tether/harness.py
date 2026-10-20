@@ -33,18 +33,17 @@ from tether.tools import (
 
 
 def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
-    """Repeated n-gram (n=2..3) at the tail of the last `window` actions, else None.
+    """Repeated n-gram at the tail of the last `window` actions, else None.
 
-    Identical-command runs are `loop_stall`'s job, so they are not a cycle here.
+    A 2-gram must repeat 3 times and a 3-gram 2 times (6 actions either way), so a
+    legitimate `test / view / test / view` pair is not flagged. Identical-command runs are
+    `loop_stall`'s job, so they are not a cycle here.
     """
     recent = history[-window:]
-    for n in (2, 3):
-        if (
-            len(recent) >= 2 * n
-            and recent[-n:] == recent[-2 * n : -n]
-            and len(set(recent[-n:])) > 1
-        ):
-            return [cmd for cmd, _ in recent[-n:]]
+    for n, reps in ((2, 3), (3, 2)):
+        tail = recent[-n:]
+        if len(recent) >= n * reps and recent[-n * reps :] == tail * reps and len(set(tail)) > 1:
+            return [cmd for cmd, _ in tail]
     return None
 
 
@@ -686,7 +685,7 @@ class Harness:
                     cycle_msg = (
                         f"[CYCLE DETECTED] You are repeating the commands "
                         f"{' -> '.join(f'`{c}`' for c in cycle)} "
-                        "and the output/file did not change. Stop: re-read the last output, "
+                        "and the output/file may not have changed. Stop: re-read the last output, "
                         "change your approach (for example a different pattern or a whole-file "
                         'edit), or call `act("done", stdin="...")`.'
                     )
