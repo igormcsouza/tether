@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- `edit write` over an existing file now returns a deterministic summary (`Replaced N lines with M (X removed, Y added; first removed: ...)`) and, when the file shrank, points to `edit replace --lines a:b` (#40).
 - Skills now warn (`UserWarning`, 0 prompt tokens) at load when `tools.py` defines a `@tool` not listed in the skill `tools:` (#24).
 
 ## v0.2.2 (2026-10-19)

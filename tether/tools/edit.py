@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import difflib
+
 from tether.decorator import ToolSpec, build_tool_spec
 from tether.sandbox import SandboxPolicy
 
@@ -28,7 +30,7 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
     help_str = (
         "Usage: edit view <path> [--lines a:b] | edit write <path> [stdin] | "
         "edit replace <path> --lines a:b [stdin]\n"
-        "Desc : View numbered lines, write file from stdin, or replace line range."
+        "Desc : View lines, write file from stdin (overwrite shows diff), or replace line range."
     )
 
     def _edit(args: list[str], stdin: str | None = None) -> str:
@@ -62,10 +64,33 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
             if stdin is None:
                 return f"Error: `edit write` requires file content in `stdin`.\n{help_str}"
             target = sandbox.resolve_safe_path(args[1], write=True)
+            old_text = (
+                target.read_text(encoding="utf-8", errors="replace") if target.is_file() else None
+            )
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(stdin, encoding="utf-8")
-            line_cnt = len(stdin.splitlines())
-            return f"Wrote {len(stdin):,} chars ({line_cnt} lines) to `{args[1]}`."
+            if old_text is None:
+                line_cnt = len(stdin.splitlines())
+                return f"Wrote {len(stdin):,} chars ({line_cnt} lines) to `{args[1]}`."
+            old_lines = old_text.splitlines()
+            new_lines = stdin.splitlines()
+            ops = difflib.SequenceMatcher(a=old_lines, b=new_lines, autojunk=False).get_opcodes()
+            removed = sum(i2 - i1 for tag, i1, i2, _, _ in ops if tag != "equal")
+            added = sum(j2 - j1 for tag, _, _, j1, j2 in ops if tag != "equal")
+            first = next(
+                (old_lines[i1] for tag, i1, i2, _, _ in ops if tag != "equal" and i2 > i1),
+                "none",
+            )
+            n_old, n_new = len(old_lines), len(new_lines)
+            tail = f"{removed} removed, {added} added; first removed: {str(first).strip()[:60]}"
+            if removed == added == 0 and old_text != stdin:
+                tail = "only whitespace/newline changes"
+            summary = f"Replaced {n_old} line{'s' * (n_old != 1)} with {n_new} ({tail})"
+            if len(new_lines) < len(old_lines):
+                summary += (
+                    " File shrank; for partial changes use `edit replace <path> --lines a:b`."
+                )
+            return summary
 
         if sub == "replace":
             if len(args) < 2 or "--lines" not in args:
