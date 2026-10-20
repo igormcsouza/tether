@@ -81,11 +81,11 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
                 (old_lines[i1] for tag, i1, i2, _, _ in ops if tag != "equal" and i2 > i1),
                 "none",
             )
-            summary = (
-                f"Replaced {len(old_lines)} lines with {len(new_lines)} "
-                f"({removed} removed, {added} added; "
-                f"first removed: {str(first).strip()[:60]})"
-            )
+            n_old, n_new = len(old_lines), len(new_lines)
+            tail = f"{removed} removed, {added} added; first removed: {str(first).strip()[:60]}"
+            if removed == added == 0 and old_text != stdin:
+                tail = "only whitespace/newline changes"
+            summary = f"Replaced {n_old} line{'s' * (n_old != 1)} with {n_new} ({tail})"
             if len(new_lines) < len(old_lines):
                 summary += (
                     " File shrank; for partial changes use `edit replace <path> --lines a:b`."

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
+
+import pytest
 
 from tether import Harness, SandboxPolicy, SkillLoader
 from tether.multiplexer import Multiplexer
@@ -78,3 +81,32 @@ async def test_skill_loader_and_companion_tools(tmp_path: Path) -> None:
 
     assert _load_tools_module(tmp_path / "nonexistent_file.xyz") == []
     assert SkillLoader().search_dirs
+
+
+def _write_tool_skill(root: Path, tools_line: str) -> None:
+    skill_dir = root / "skills" / "analyst"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text(
+        f"---\nname: analyst\ndescription: d\n{tools_line}---\nBody.", encoding="utf-8"
+    )
+    (skill_dir / "tools.py").write_text(
+        "from tether import tool\n\n"
+        "@tool(name='calc-margin', description='Margin')\n"
+        "def calc_margin(revenue: float) -> str:\n"
+        "    return str(revenue)\n",
+        encoding="utf-8",
+    )
+
+
+def test_unlisted_skill_tool_warns(tmp_path: Path) -> None:
+    """A @tool in tools.py missing from `tools:` emits a load-time UserWarning (#24)."""
+    _write_tool_skill(tmp_path, "tools: [edit]\n")
+    with pytest.warns(UserWarning, match="calc-margin"):
+        SkillLoader(search_dirs=[tmp_path / "skills"]).load("analyst")
+
+
+def test_listed_skill_tool_does_not_warn(tmp_path: Path) -> None:
+    _write_tool_skill(tmp_path, "tools: [calc-margin]\n")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert SkillLoader(search_dirs=[tmp_path / "skills"]).load("analyst") is not None

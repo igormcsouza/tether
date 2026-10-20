@@ -91,7 +91,7 @@ verify:
 
 ### <a id="tools-py-and-the-tools-list"></a>`tools.py` and the `tools:` list
 
-Defining a tool in `tools.py` is not enough: name it in the skill `tools:` as well, or the model gets `unknown command` ([#24](https://github.com/igormcsouza/tether/issues/24)). See [Python SDK and Custom Tools](sdk-and-custom-tools.md).
+Defining a tool in `tools.py` is not enough: name it in the skill `tools:` as well, or the model gets `unknown command` ([#24](https://github.com/igormcsouza/tether/issues/24)). A skill's own custom tools are opt-in like built-in ones, so list them in `tools:`. Loading a skill whose `tools.py` defines an unlisted `@tool` emits a `UserWarning` naming it (costs no prompt tokens). See [Python SDK and Custom Tools](sdk-and-custom-tools.md).
 
 ### Let the model decide, let code enforce hard requirements
 

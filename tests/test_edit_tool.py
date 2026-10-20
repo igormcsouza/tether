@@ -38,7 +38,7 @@ async def test_overwrite_growth_has_no_pointer(tmp_path: Path) -> None:
     mux = _mux(tmp_path)
     await mux.execute("edit write a.txt", stdin="a\n")
     out = (await mux.execute("edit write a.txt", stdin="a\nb\nc\n")).output
-    assert out == "Replaced 1 lines with 3 (0 removed, 2 added; first removed: none)"
+    assert out == "Replaced 1 line with 3 (0 removed, 2 added; first removed: none)"
 
 
 async def test_identical_overwrite(tmp_path: Path) -> None:
@@ -58,3 +58,24 @@ async def test_first_removed_truncated(tmp_path: Path) -> None:
 async def test_edit_help_within_budget(tmp_path: Path) -> None:
     help_text = (await _mux(tmp_path).execute("edit --help")).output
     assert estimate_tokens(help_text) <= 60
+
+
+async def test_overwrite_empty_old_file(tmp_path: Path) -> None:
+    (tmp_path / "e.txt").write_text("")
+    out = (await _mux(tmp_path).execute("edit write e.txt", stdin="a\n")).output
+    assert out == "Replaced 0 lines with 1 (0 removed, 1 added; first removed: none)"
+
+
+async def test_trailing_newline_only_change(tmp_path: Path) -> None:
+    mux = _mux(tmp_path)
+    await mux.execute("edit write a.txt", stdin="a\nb\n")
+    out = (await mux.execute("edit write a.txt", stdin="a\nb")).output
+    assert "only whitespace/newline changes" in out
+    assert "0 removed" not in out
+
+
+async def test_overwrite_non_utf8_old_content(tmp_path: Path) -> None:
+    (tmp_path / "b.bin").write_bytes(b"ok\n\xff\xfe\n")
+    out = (await _mux(tmp_path).execute("edit write b.bin", stdin="ok\n")).output
+    assert out.startswith("Replaced 2 lines with 1 (1 removed, 0 added;")
+    assert "File shrank" in out

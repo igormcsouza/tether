@@ -88,7 +88,7 @@ Every Tether execution is a stateful session persisted in `.tether/tether.db` (S
   - If **`WAITING_INPUT` / `COMPLETED` / `IDLE`**: appends the message and automatically spawns a worker to resume the session with its pinned memory and folded context intact.
 
 ### 3. Progressive Skills (`skills/`)
-Skills are portable capability bundles stored in `./skills/<name>/SKILL.md` (or `./skills/<name>.md`) with YAML frontmatter (including optional `verify` gates) and an optional sibling `tools.py`:
+Skills are portable capability bundles stored in `./skills/<name>/SKILL.md` (or `./skills/<name>.md`) with YAML frontmatter (including optional `verify` gates) and an optional sibling `tools.py` (every `@tool` in it must also be listed in `tools:`, otherwise it is unavailable and loading the skill emits a `UserWarning`):
 ```markdown
 ---
 name: researcher
