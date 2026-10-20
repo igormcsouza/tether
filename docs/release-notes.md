@@ -6,6 +6,7 @@
 
 - `edit write` over an existing file now returns a deterministic summary (`Replaced N lines with M (X removed, Y added; first removed: ...)`) and, when the file shrank, points to `edit replace --lines a:b` (#40).
 - Skills now warn (`UserWarning`, 0 prompt tokens) at load when `tools.py` defines a `@tool` not listed in the skill `tools:` (#24).
+- Repeated multi-command cycles (e.g. `cat` / `sed` / `pytest`, or two alternating `sed -n` ranges) now trigger a deterministic `[CYCLE DETECTED]` nudge and a new `cycle_stall` event type, shown in `tether stats` as `CYCLES` (#39).
 
 ## v0.2.2 (2026-10-19)
 

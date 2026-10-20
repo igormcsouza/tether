@@ -74,7 +74,7 @@ Local inference engines (`Ollama`, `llama.cpp`, `vLLM`) and cloud providers (`An
 ### Deterministic Loop-Stall Breaker & Pre-`done` Verification Gates
 Small 8B/9B models occasionally fall into a probability trap where they emit the exact same command (`web search "..."` or `bash ...`) twice in a row, or prematurely call `done` while tests or linters are failing:
 
-- **Loop-Stall Breaker:** `Harness.execute_session` tracks the `(cmd, stdin)` signature of the previous step and intercepts consecutive duplicates before executing the tool, returning a `[LOOP DETECTED]` nudge that forces the model to advance.
+- **Loop-Stall Breaker:** `Harness.execute_session` tracks the `(cmd, stdin)` signature of the previous step and intercepts consecutive duplicates before executing the tool, returning a `[LOOP DETECTED]` nudge that forces the model to advance. A companion cycle detector (`detect_cycle`) catches a 2-command cycle repeated 3 times or a 3-command cycle repeated twice (6 actions, within the last 8), skips the repeated command, nudges with `[CYCLE DETECTED]` naming the commands, and records `cycle_stall`.
 - **Pre-`done` Verification Gates:** When configured via `Harness(verify=[...])`, CLI `--verify`, or Skill YAML `verify: [...]`, Tether intercepts `done` and runs each verification command inside the session's `SandboxPolicy`. It consumes **0 static prompt tokens** unless a gate exits non-zero—at which point termination is rejected and a compact `[VERIFICATION GATE FAILED]` observation is injected so the model can self-heal.
 
 ### Connection Pooling & Thread-Local SQLite WAL Reuse

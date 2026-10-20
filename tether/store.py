@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 GLOBAL_SESSION_ID = "__project__"
-_FRICTION_EVENTS = ("loop_stall", "syntax_error", "tool_error", "gate_fail")
+_FRICTION_EVENTS = ("loop_stall", "cycle_stall", "syntax_error", "tool_error", "gate_fail")
 
 
 @dataclass(slots=True)
@@ -92,6 +92,7 @@ class ModelStats:
     avg_duration_ms: int
     nudges: int
     loop_stalls: int
+    cycle_stalls: int
     syntax_errors: int
     tool_errors: int
     gate_fails: int
@@ -105,6 +106,7 @@ class ToolOffender:
     command: str
     syntax_errors: int
     loop_stalls: int
+    cycle_stalls: int
     tool_errors: int
     total_friction: int
 
@@ -978,6 +980,7 @@ class SQLiteStore:
             avg_dur = int(round(tot_dur / runs))
             nudges = sum(1 for t in mturns if t.event_type == "nudge")
             loops = sum(1 for t in mturns if t.event_type == "loop_stall")
+            cycles = sum(1 for t in mturns if t.event_type == "cycle_stall")
             syn_err = sum(1 for t in mturns if t.event_type == "syntax_error")
             tool_err = sum(1 for t in mturns if t.event_type == "tool_error")
             gate_fail = sum(1 for t in mturns if t.event_type == "gate_fail")
@@ -998,6 +1001,7 @@ class SQLiteStore:
                     avg_duration_ms=avg_dur,
                     nudges=nudges,
                     loop_stalls=loops,
+                    cycle_stalls=cycles,
                     syntax_errors=syn_err,
                     tool_errors=tool_err,
                     gate_fails=gate_fail,
@@ -1011,7 +1015,7 @@ class SQLiteStore:
 
         offenders_by_cmd: dict[str, ToolOffender] = {}
         for t in turns:
-            if t.event_type in ("syntax_error", "loop_stall", "tool_error"):
+            if t.event_type in ("syntax_error", "loop_stall", "cycle_stall", "tool_error"):
                 cmd_key = canonical_tool_command(t.tool_cmd)
                 off = offenders_by_cmd.get(cmd_key)
                 if off is None:
@@ -1019,6 +1023,7 @@ class SQLiteStore:
                         command=cmd_key,
                         syntax_errors=0,
                         loop_stalls=0,
+                        cycle_stalls=0,
                         tool_errors=0,
                         total_friction=0,
                     )
@@ -1027,6 +1032,8 @@ class SQLiteStore:
                     off.syntax_errors += 1
                 elif t.event_type == "loop_stall":
                     off.loop_stalls += 1
+                elif t.event_type == "cycle_stall":
+                    off.cycle_stalls += 1
                 else:
                     off.tool_errors += 1
                 off.total_friction += 1
@@ -1051,25 +1058,28 @@ class SQLiteStore:
 
         lines = [
             f"{'MODEL':<21} {'RUNS':>4} {'PASS%':>6} {'AVG_STEPS':>9} "
-            f"{'PEAK_TOK':>8} {'TOTAL_TOK':>9} {'NUDGES':>6} {'LOOPS':>5} {'SYNTAX_ERR':>10}"
+            f"{'PEAK_TOK':>8} {'TOTAL_TOK':>9} {'NUDGES':>6} {'LOOPS':>5} "
+            f"{'CYCLES':>6} {'SYNTAX_ERR':>10}"
         ]
         for m in report.models:
             pass_str = f"{m.pass_rate:.1f}%"
             lines.append(
                 f"{m.model:<21} {m.runs:>4} {pass_str:>6} {m.avg_steps:>9.1f} "
                 f"{m.avg_peak_tokens:>8} {m.avg_total_tokens:>9} "
-                f"{m.avg_nudges:>6.1f} {m.avg_loop_stalls:>5.1f} {m.avg_syntax_errors:>10.1f}"
+                f"{m.avg_nudges:>6.1f} {m.avg_loop_stalls:>5.1f} {m.cycle_stalls:>6} "
+                f"{m.avg_syntax_errors:>10.1f}"
             )
 
         if report.offenders:
             lines.append("")
             lines.append("Top Friction Offenders (by command):")
             lines.append(
-                f"{'COMMAND':<21} {'SYNTAX_ERR':>10} {'LOOPS':>5} {'TOOL_ERR':>8} {'TOTAL':>5}"
+                f"{'COMMAND':<21} {'SYNTAX_ERR':>10} {'LOOPS':>5} {'CYCLES':>6} "
+                f"{'TOOL_ERR':>8} {'TOTAL':>5}"
             )
             for off in report.offenders:
                 lines.append(
                     f"{off.command:<21} {off.syntax_errors:>10} {off.loop_stalls:>5} "
-                    f"{off.tool_errors:>8} {off.total_friction:>5}"
+                    f"{off.cycle_stalls:>6} {off.tool_errors:>8} {off.total_friction:>5}"
                 )
         return "\n".join(lines)

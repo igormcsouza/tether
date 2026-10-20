@@ -10,7 +10,7 @@ import pytest
 from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse, register_provider, tool
 from tether.decorator import ToolSpec
-from tether.harness import spawn_detached_worker
+from tether.harness import detect_cycle, spawn_detached_worker
 from tether.store import SQLiteStore
 
 
@@ -348,3 +348,101 @@ async def test_waiting_input_and_interactive_inquiry(tmp_path: Path) -> None:
     done_late = await h_late.execute_session(s_late.id)
     assert done_late.status == "COMPLETED"
     assert done_late.result == "Used Python 3.12"
+
+
+def test_detect_cycle_patterns() -> None:
+    a, b, c, d = ("a", None), ("b", None), ("c", None), ("d", None)
+    assert detect_cycle([a, b, a, b, a, b]) == ["a", "b"]
+    assert detect_cycle([d, a, b, c, a, b, c]) == ["a", "b", "c"]
+    assert detect_cycle([a, b, a, b]) is None  # test/view/test/view is normal work
+    assert detect_cycle([a, b, c, a, b]) is None
+    assert detect_cycle([a, a, a, a, a, a]) is None  # identical run is loop_stall's job
+    assert detect_cycle([a, b, c, d]) is None
+    assert detect_cycle([a, b, a, b, a, b], window=5) is None  # window cuts the history
+
+
+class _Run:
+    def __init__(self, session: Any, provider: Any, events: list[str], calls: list[str]) -> None:
+        self.session, self.provider, self.events, self.calls = session, provider, events, calls
+
+
+class _InboxOnCall(FakeScriptedProvider):
+    """Enqueues a follow-up message while generating the `at`-th reply."""
+
+    def __init__(self, responses: list[ModelResponse], store: SQLiteStore, at: int) -> None:
+        super().__init__(responses)
+        self.store, self.at, self.session_id = store, at, ""
+
+    async def generate(self, messages: Any, tools: Any) -> ModelResponse:
+        if len(self.recorded_calls) + 1 == self.at:
+            self.store.enqueue_inbox(self.session_id, "keep going")
+        return await super().generate(messages, tools)
+
+
+async def _run_commands(tmp_path: Path, cmds: list[str], inbox_at: int = 0) -> _Run:
+    calls: list[str] = []
+
+    @tool(name="ping", description="Ping a host")
+    def ping(host: str) -> str:
+        calls.append(host)
+        return "pong"
+
+    script = [
+        ModelResponse(content="", action=ActionCall(cmd=c), prompt_tokens=10, completion_tokens=5)
+        for c in cmds
+    ]
+    script.append(
+        ModelResponse(content="", action=ActionCall(cmd="done", stdin="ok"), prompt_tokens=10)
+    )
+    db = tmp_path / "tether.db"
+    provider = _InboxOnCall(script, SQLiteStore(db_path=db), inbox_at)
+    harness = Harness(db_path=db, tools=[ping], provider=provider)
+    rec = harness.create_session("goal")
+    provider.session_id = rec.id
+    session = await harness.execute_session(rec.id)
+    events = [t.event_type for t in harness.store.get_turns(session.id) if t.role == "assistant"]
+    return _Run(session, provider, events, calls)
+
+
+async def test_cycle_stall_three_command_cycle(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, [f"ping {h}.com" for h in "abcabc"])
+    assert run.session.status == "COMPLETED"
+    assert run.events == ["ok"] * 5 + ["cycle_stall", "completed"]
+    assert run.calls == ["a.com", "b.com", "c.com", "a.com", "b.com"]
+    nudge = "\n".join(m["content"] for m in run.provider.recorded_calls[6])
+    assert "[CYCLE DETECTED]" in nudge
+    assert "`ping a.com` -> `ping b.com` -> `ping c.com`" in nudge
+    assert "may not have changed" in nudge
+
+
+async def test_cycle_stall_two_command_cycle(tmp_path: Path) -> None:
+    cmds = ["ping 1,40p", "ping 40,100p"] * 3
+    run = await _run_commands(tmp_path, cmds)
+    assert run.events == ["ok"] * 5 + ["cycle_stall", "completed"]
+
+
+async def test_test_view_pairs_twice_do_not_cycle_stall(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, ["ping t", "ping v", "ping t", "ping v"])
+    assert run.events == ["ok"] * 4 + ["completed"]
+    assert len(run.calls) == 4
+
+
+async def test_varied_commands_do_not_cycle_stall(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, [f"ping h{i}" for i in range(6)])
+    assert "cycle_stall" not in run.events
+
+
+async def test_identical_run_stays_loop_stall(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, ["ping x"] * 4)
+    assert run.events == ["ok", "loop_stall", "loop_stall", "loop_stall", "completed"]
+
+
+async def test_cycle_history_resets_on_inbox_message(tmp_path: Path) -> None:
+    # Message consumed before step 5: a,b,a,b | a,b must not fire as a 6-action cycle.
+    run = await _run_commands(tmp_path, ["ping a", "ping b"] * 3, inbox_at=4)
+    assert "cycle_stall" not in run.events
+
+
+async def test_cycle_history_resets_after_nudge(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, [f"ping {h}" for h in "abcabc" * 2])
+    assert run.events == ["ok"] * 5 + ["cycle_stall"] + ["ok"] * 5 + ["cycle_stall", "completed"]

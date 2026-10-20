@@ -194,6 +194,9 @@ def test_telemetry_migration_and_stats_aggregation(tmp_path: Path) -> None:
     )
     assert t3 > 0
     store.add_turn(
+        s1.id, step=3, role="assistant", content="", tool_cmd="bash ls", event_type="cycle_stall"
+    )
+    store.add_turn(
         s1.id,
         step=3,
         role="assistant",
@@ -221,11 +224,14 @@ def test_telemetry_migration_and_stats_aggregation(tmp_path: Path) -> None:
     assert m.nudges == 1
     assert m.syntax_errors == 1
     assert m.loop_stalls == 1
+    assert m.cycle_stalls == 1
     assert m.tool_errors == 1
     assert len(report.offenders) == 3
+    assert {o.command: o.cycle_stalls for o in report.offenders}["bash"] == 1
 
     formatted = store.format_stats_report()
     assert "MODEL" in formatted
+    assert "CYCLES" in formatted
     assert "ollama/qwen3.5:9b" in formatted
     assert "openai/gpt-4o-mini" in formatted
     assert "Top Friction Offenders (by command):" in formatted
