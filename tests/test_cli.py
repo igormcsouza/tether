@@ -13,7 +13,9 @@ from tether import ActionCall, Harness, ModelResponse, SQLiteStore, register_pro
 from tether.cli import _async_main, main
 
 
-async def test_cli_subcommands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_cli_subcommands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     """Verify all CLI subcommands and options end-to-end."""
     monkeypatch.setattr(
         "tether.harness.subprocess.Popen",
@@ -73,7 +75,16 @@ async def test_cli_subcommands(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     assert await _async_main(["read", s_done.id, "--steps", "--db", db_arg]) == 0
     assert await _async_main(["read", s_done.id, "--digest", "--db", db_arg]) == 0
     assert await _async_main(["read", s_done.id, "--db", db_arg]) == 0
+    capsys.readouterr()
+    assert await _async_main(["read", s_done.id, "--db", db_arg]) == 0
+    default_out = capsys.readouterr().out
     assert await _async_main(["read", s_done.id, "--full", "--db", db_arg]) == 0
+    assert capsys.readouterr().out == default_out
+    assert await _async_main(["read", s_done.id, "--digest", "--db", db_arg]) == 0
+    assert capsys.readouterr().out != default_out
+    with pytest.raises(SystemExit) as exc:
+        await _async_main(["read", s_done.id, "--full", "--digest", "--db", db_arg])
+    assert exc.value.code == 2
     assert await _async_main(["read", s_done.id, "--full", "--json", "--db", db_arg]) == 0
     assert await _async_main(["read", "ses_nope", "--full", "--db", db_arg]) == 1
 
