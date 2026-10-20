@@ -16,6 +16,18 @@ Tether implements the architectural principles from *"LLM-Native Applications as
 2. **Explicit Context Governance:** Context is treated as a bounded L1 working memory backed by an ACID SQLite store (`.tether/tether.db` in WAL mode)—never an unbounded append-only transcript.
 3. **First-Class AI Quality Attributes:** Every change must be evaluated against **Token Economy**, **KV-Cache Prefix Immutability**, **Self-Healing Probabilistic Execution**, and **Observability**.
 
+### Philosophy Gate (every issue, PR and review is judged against this)
+Tether stays **lightweight, reliable, extensible, model-agnostic, easy to use, resourceful and a token saver**. A change that fails any line below is rejected or reworked, however useful it looks:
+1. **Lightweight:** no new heavy dependency (Rule 7); prefer stdlib and existing modules over new ones; no code for hypothetical needs.
+2. **Token saver:** no growth of the static prompt (< 150 tokens, Rule 1/4); new per-turn prompt content must be bounded and justified with a token-budget test.
+3. **Reliable:** failures self-heal or fail loudly with an actionable message, never hang or crash silently; the deterministic envelope (loop, SQLite, sandbox, `done`) never relies on the LLM.
+4. **Extensible:** new behaviour comes through providers, skills, `@tool` or config, not hardcoded special cases in the harness core.
+5. **Model-agnostic:** no behaviour tied to one vendor or model; small local models and frontier models take the same code path.
+6. **Easy to use:** zero-config defaults, short CLI/SDK surface, errors that say what to do next, docs in the same PR (5.4).
+7. **Resourceful:** reuse existing primitives (`act`, SQLite store, FTS5 recall) before adding a new one.
+
+Reviewers and the Team Leader cite the failing line when they reject a change.
+
 ---
 
 ## 2. The Golden Rules (Non-Negotiable Invariants)
@@ -193,3 +205,13 @@ uv run mypy tether/
 4. **Documentation Integrity:**
    - Keep `README.md` and `AGENTS.md` synchronized whenever architectural interfaces or built-in tool signatures change.
    - **Always update documentation in the same PR** when introducing a new feature, changing an existing behavior, or altering a CLI/SDK interface. This covers `README.md`, `AGENTS.md`, the MkDocs pages under `docs/` (including `docs/reference/*` for new modules), and a `docs/release-notes.md` entry. A change without matching docs is incomplete.
+
+## Dev team specifics
+- Stack: Python 3.12+, package `tether/`, tests in `tests/`, docs in `docs/` (MkDocs); `uv`, ruff, mypy
+- Checks: lint `uv run ruff check . && uv run ruff format --check .`; types `uv run mypy tether/`; tests `uv run pytest --cov=tether --cov-report=term-missing --cov-fail-under=100` (CI enforces 100% coverage)
+- E2E / QA: none beyond pytest; no shared single-instance resources
+- Branches/commits/PRs: Conventional Commits (`feat(scope): ... (#N)`, `release: vX.Y.Z ...`); PR per task, squash-merged to `main`; docs updated in the same PR (see section 5.4)
+- Delivery: PR per task
+- Hard stops (ask first): force push / history rewrite
+- Design docs: `AGENTS.md` sections 1-3, `docs/architecture.md`, `docs/reference/*`
+- feature-context store: .claude/feature-context/
