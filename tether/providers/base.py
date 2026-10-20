@@ -44,6 +44,13 @@ class ProviderError(RuntimeError):
     """A provider call failed after retries; the message names provider, model and timeout."""
 
 
+def auth_message(provider: str, key_env: str | None, status: int | None = None) -> str:
+    """Name the credential that failed (never its value) so 401/403 is actionable."""
+    cred = f"`{key_env}`" if key_env else "the API key"
+    code = f"HTTP {status}: " if status else ""
+    return f"{provider} {code}{cred} is missing or rejected; set it to a valid key"
+
+
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 _TRANSIENT = (httpx.TimeoutException, httpx.NetworkError)
 
@@ -55,6 +62,7 @@ async def post_with_retry(
     provider: str,
     model: str,
     timeout: float,
+    key_env: str | None = None,
     retries: int = 2,
     backoff: float = 1.0,
     sleep: Callable[[float], Awaitable[None]] | None = None,
@@ -64,7 +72,9 @@ async def post_with_retry(
 
     Other responses (incl. 4xx) are returned untouched for the caller to handle. When retries
     are exhausted a `ProviderError` names the provider, model and timeout, so `Worker error:`
-    is readable. Extend `RETRY_STATUS` / `_TRANSIENT` to change what counts as transient.
+    is readable. A 401/403 raises a `ProviderError` naming `key_env` (the variable, never its
+    value) as missing or rejected. Extend `RETRY_STATUS` / `_TRANSIENT` to change what is
+    transient.
     """
     sleep = sleep or asyncio.sleep  # resolved at call time so tests can patch it
     last = ""
@@ -76,6 +86,8 @@ async def post_with_retry(
         except _TRANSIENT as exc:
             last = type(exc).__name__
             continue
+        if resp.status_code in (401, 403):
+            raise ProviderError(auth_message(provider, key_env, resp.status_code))
         if resp.status_code not in RETRY_STATUS:
             return resp
         last = f"HTTP {resp.status_code}: {resp.text[:120]!r}"

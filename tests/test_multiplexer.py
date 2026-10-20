@@ -93,3 +93,22 @@ async def test_bash_preserves_quotes_and_shell_syntax(tmp_path: Path) -> None:
     assert "Usage: bash" in (await mux.execute("bash --help")).output
     assert "Usage: bash" in (await mux.execute("bash -h")).output
     assert "missing" in (await mux.execute("bash")).output
+
+
+async def test_disabled_builtin_vs_unknown_command() -> None:
+    mux = Multiplexer()
+
+    @tool(name="ping")
+    def ping() -> str:
+        return "pong"
+
+    mux.register(ping)
+    disabled = await mux.execute("mem recall obs_3")
+    assert disabled.is_error and disabled.error_kind == "unknown_cmd"
+    assert disabled.output.startswith("Error: `mem` is disabled.")
+    assert "Enabled tools: ping." in disabled.output and "--tools" in disabled.output
+    assert "tools=[...]" in disabled.output and "`tools:`" in disabled.output
+    unknown = await mux.execute("frobnicate now")
+    assert unknown.output.startswith("Error: unknown command `frobnicate`.")
+    assert "Enabled tools: ping." in unknown.output and "disabled" not in unknown.output
+    assert (await mux.execute("ping")).output == "pong"

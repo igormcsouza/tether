@@ -40,6 +40,7 @@ Tether implements the architectural principles from *"LLM-Native Applications as
 - Full parameter signatures, defaults, and docstrings are revealed **Just-In-Time (JIT)** when:
   1. The model explicitly runs `<cmd> --help`, OR
   2. The model invokes `<cmd>` with missing/invalid arguments (self-healing error response, never an unhandled Python exception).
+  3. The model invokes a built-in tool that is not enabled: the error says it is disabled, lists the enabled tools and how to enable more (error responses are history, never prefix).
 - Auto-generated `--help` output must remain ultra-compact (**≤ 60 tokens** per command).
 
 ### Rule 5: Ephemeral Observation Folding

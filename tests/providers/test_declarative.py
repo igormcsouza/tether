@@ -5,6 +5,7 @@ import json
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 
 from tether.providers import (
@@ -13,7 +14,7 @@ from tether.providers import (
     OpenAIProvider,
     resolve_provider,
 )
-from tether.providers.base import ModelResponse
+from tether.providers.base import ModelResponse, ProviderError
 from tether.providers.declarative import (
     ACT_SCHEMA,
     CommandProvider,
@@ -94,6 +95,25 @@ def test_build_openai_with_api_key_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert isinstance(provider, OpenAIProvider)
     assert provider.api_key == "secret"
     assert provider.base_url.startswith("http://x/v1")
+
+
+def test_build_declared_empty_key_env_fails_early(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MY_KEY", "")
+    with pytest.raises(ProviderError, match="`MY_KEY` is missing or rejected"):
+        build_declared({"kind": "openai", "api_key_env": "MY_KEY"}, "m", num_ctx=1024)
+    monkeypatch.delenv("MY_KEY")
+    with pytest.raises(ProviderError, match="`MY_KEY`"):
+        build_declared({"kind": "anthropic", "api_key_env": "MY_KEY"}, "m", num_ctx=1024)
+
+
+async def test_declared_401_names_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MY_KEY", "sk-SECRET")
+    prov = build_declared({"kind": "openai", "api_key_env": "MY_KEY"}, "m", num_ctx=1024)
+    assert isinstance(prov, OpenAIProvider)
+    prov._client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(401)))
+    with pytest.raises(ProviderError) as ei:
+        await prov.generate([{"role": "user", "content": "x"}], [])
+    assert "`MY_KEY` is missing or rejected" in str(ei.value) and "sk-SECRET" not in str(ei.value)
 
 
 def test_build_ollama(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -38,11 +38,13 @@ class OpenAIProvider:
         model_name: str = "gpt-4o-mini",
         *,
         api_key: str | None = None,
+        api_key_env: str = "OPENAI_API_KEY",
         base_url: str | None = None,
         timeout: float = 120.0,
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.model_name = model_name
+        self.api_key_env = api_key_env
         self.api_key = api_key or os.environ.get("OPENAI_API_KEY") or ""
         self.base_url = (
             base_url or os.environ.get("OPENAI_BASE_URL") or "https://api.openai.com/v1"
@@ -82,6 +84,7 @@ class OpenAIProvider:
             provider="openai",
             model=self.model_name,
             timeout=self.timeout,
+            key_env=self.api_key_env,
             headers=headers,
             json=payload,
         )

@@ -61,11 +61,11 @@ async def test_4xx_not_retried() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(401)
+        return httpx.Response(404)
 
     sleeps: list[float] = []
     resp = await _post(_client(handler), sleeps)
-    assert resp.status_code == 401 and calls == 1 and sleeps == []
+    assert resp.status_code == 404 and calls == 1 and sleeps == []
 
 
 async def test_5xx_retried_then_success() -> None:
@@ -120,6 +120,35 @@ async def test_cancelled_error_passes_through() -> None:
 
     with pytest.raises(asyncio.CancelledError):
         await _post(_client(handler), [])
+
+
+@pytest.mark.parametrize("status", [401, 403])
+async def test_auth_failure_names_env_var_not_value(status: int) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(status, text="bad key sk-SECRET")
+
+    with pytest.raises(ProviderError) as ei:
+        await post_with_retry(
+            _client(handler),
+            "http://x/y",
+            provider="openai",
+            model="m",
+            timeout=5.0,
+            key_env="NVIDIA_API_KEY",
+            json={},
+        )
+    msg = str(ei.value)
+    assert f"HTTP {status}" in msg and "`NVIDIA_API_KEY` is missing or rejected" in msg
+    assert "sk-SECRET" not in msg and calls == 1
+
+
+async def test_auth_failure_without_env_var_name() -> None:
+    with pytest.raises(ProviderError, match="the API key is missing or rejected"):
+        await _post(_client(lambda r: httpx.Response(401)), [])
 
 
 async def test_exhausted_error_includes_body_snippet() -> None:

@@ -48,7 +48,7 @@ Every entry, of any kind, may set two optional positive integers: `context_token
 
 ### Timeout and retry
 
-Every entry may set `timeout` (positive seconds). It applies to the HTTP kinds (`openai`, `ollama`, `anthropic`; defaults 120 / 120 / 180 s) and to `command` (default 300 s). The HTTP providers retry automatically, at most 2 times with 1 s then 2 s backoff, on timeouts, network errors and HTTP 429/500/502/503/504. Other 4xx responses are never retried. When retries run out the call raises `ProviderError`, so the session fails with a readable `Worker error: ProviderError: openai model `gpt-4o` unavailable after 3 attempts (timeout 120s, last error: ReadTimeout)`. The retry is invisible to the prompt (0 tokens, no prefix change).
+Every entry may set `timeout` (positive seconds). It applies to the HTTP kinds (`openai`, `ollama`, `anthropic`; defaults 120 / 120 / 180 s) and to `command` (default 300 s). The HTTP providers retry automatically, at most 2 times with 1 s then 2 s backoff, on timeouts, network errors and HTTP 429/500/502/503/504. A 401/403 is never retried: it raises `ProviderError` naming the provider and the credential variable (`openai: HTTP 401: `NVIDIA_API_KEY` is missing or rejected; set it to a valid key`; the value is never printed), and a declared `api_key_env` that is unset or empty fails the session before any request with the same message. Other 4xx responses are never retried. When retries run out the call raises `ProviderError`, so the session fails with a readable `Worker error: ProviderError: openai model `gpt-4o` unavailable after 3 attempts (timeout 120s, last error: ReadTimeout)`. The retry is invisible to the prompt (0 tokens, no prefix change).
 
 ### Kinds
 

@@ -17,6 +17,8 @@ from tether.providers.base import (
     Dialect,
     ModelProvider,
     ModelResponse,
+    ProviderError,
+    auth_message,
     extract_fallback_action,
 )
 from tether.providers.ollama import OllamaProvider
@@ -285,12 +287,15 @@ def build_declared(cfg: dict[str, Any], model_name: str, *, num_ctx: int) -> Mod
     http_timeout = {"timeout": cfg["timeout"]} if "timeout" in cfg else {}
     api_key_env = cfg.get("api_key_env")
     api_key = os.environ.get(api_key_env) if api_key_env else None
+    if api_key_env and kind != "ollama" and not api_key:
+        raise ProviderError(auth_message(f"{kind} provider", api_key_env))
+    key = {"api_key_env": api_key_env} if api_key_env else {}
     if kind == "openai":
         return OpenAIProvider(
-            model_name, api_key=api_key, base_url=cfg.get("base_url"), **http_timeout
+            model_name, api_key=api_key, base_url=cfg.get("base_url"), **key, **http_timeout
         )
     if kind == "ollama":
         return OllamaProvider(model_name, host=cfg.get("host"), num_ctx=num_ctx, **http_timeout)
     return AnthropicProvider(
-        model_name, api_key=api_key, base_url=cfg.get("base_url"), **http_timeout
+        model_name, api_key=api_key, base_url=cfg.get("base_url"), **key, **http_timeout
     )

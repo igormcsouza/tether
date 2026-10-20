@@ -16,6 +16,7 @@ from tether.decorator import ToolSpec, build_tool_spec
 from tether.multiplexer import Multiplexer
 from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
 from tether.providers import ModelProvider, resolve_provider
+from tether.providers.base import ProviderError
 from tether.providers.declarative import load_declared
 from tether.sandbox import SandboxPolicy
 from tether.schema import validate_output
@@ -557,7 +558,17 @@ class Harness:
             model=rec.model,
         )
 
-        provider = self._provider or resolve_provider(rec.model, num_ctx=self.max_context_tokens)
+        try:
+            provider = self._provider or resolve_provider(
+                rec.model, num_ctx=self.max_context_tokens
+            )
+        except ProviderError as exc:  # e.g. empty api_key_env: fail early, name the variable
+            self.store.update_session(
+                session_id, status="FAILED", result=f"Worker error: ProviderError: {exc}"
+            )
+            failed = self.store.get_session(session_id)
+            assert failed is not None
+            return failed
         assembler = ContextAssembler(
             fold_after_turns=self.fold_observations_after,
             max_context_tokens=self.max_context_tokens,
