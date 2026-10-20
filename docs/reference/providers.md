@@ -59,7 +59,7 @@ Every entry may set `timeout` (positive seconds). It applies to the HTTP kinds (
 | `anthropic` | `base_url`, `api_key_env`, optional `timeout` |
 | `command` | `argv` (list), `reply` (JSON path), optional `stdin` template, optional `usage`, optional `timeout` (seconds, default 300) |
 
-`api_key_env` is the **name** of an environment variable, never the key itself.
+`api_key_env` is the **name** of an environment variable, never the key itself. A declared `api_key_env` must be set and non-empty (otherwise the session fails before any request); omit it to declare a keyless local server. A 403 reads `access denied (HTTP 403)` with the first 120 characters of the response body instead of "missing or rejected".
 
 ### The `command` kind
 

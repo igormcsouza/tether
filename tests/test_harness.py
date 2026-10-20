@@ -511,10 +511,28 @@ async def test_empty_api_key_env_fails_session_naming_variable(
         encoding="utf-8",
     )
     monkeypatch.setenv("TETHER_PROVIDERS", str(cfg))
-    monkeypatch.setenv("ACME_KEY", "")
+    for value in ("", None):  # empty and unset behave the same
+        if value is None:
+            monkeypatch.delenv("ACME_KEY", raising=False)
+        else:
+            monkeypatch.setenv("ACME_KEY", value)
+        harness = Harness(db_path=tmp_path / "t.db", model="acme/m")
+        rec = harness.create_session("goal")
+        done = await harness.execute_session(rec.id)
+        assert done.status == "FAILED" and done.result is not None
+        assert done.result.startswith("Worker error: ProviderError:")
+        assert "`ACME_KEY`" in done.result
+
+
+async def test_resolve_value_error_fails_session_with_tool_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = tmp_path / "providers.yaml"
+    cfg.write_text("acme: [not, a, mapping]\n", encoding="utf-8")
+    monkeypatch.setenv("TETHER_PROVIDERS", str(cfg))
     harness = Harness(db_path=tmp_path / "t.db", model="acme/m")
     rec = harness.create_session("goal")
     done = await harness.execute_session(rec.id)
-    assert done.status == "FAILED"
-    assert done.result is not None
-    assert done.result.startswith("Worker error: ProviderError:") and "`ACME_KEY`" in done.result
+    assert done.status == "FAILED" and done.result is not None
+    assert done.result.startswith("Worker error: ValueError: providers.yaml")
+    assert [t.event_type for t in harness.store.get_turns(rec.id)] == ["tool_error"]

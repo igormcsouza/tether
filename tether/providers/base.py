@@ -44,9 +44,16 @@ class ProviderError(RuntimeError):
     """A provider call failed after retries; the message names provider, model and timeout."""
 
 
-def auth_message(provider: str, key_env: str | None, status: int | None = None) -> str:
-    """Name the credential that failed (never its value) so 401/403 is actionable."""
+def auth_message(
+    provider: str, key_env: str | None, status: int | None = None, body: str = ""
+) -> str:
+    """Name the credential that failed (never its value) so 401/403 is actionable.
+
+    403 means authenticated but denied, so it reports access denied plus the body start.
+    """
     cred = f"`{key_env}`" if key_env else "the API key"
+    if status == 403:
+        return f"{provider} access denied (HTTP 403) for {cred}: {body[:120]!r}"
     code = f"HTTP {status}: " if status else ""
     return f"{provider} {code}{cred} is missing or rejected; set it to a valid key"
 
@@ -87,7 +94,7 @@ async def post_with_retry(
             last = type(exc).__name__
             continue
         if resp.status_code in (401, 403):
-            raise ProviderError(auth_message(provider, key_env, resp.status_code))
+            raise ProviderError(auth_message(provider, key_env, resp.status_code, resp.text))
         if resp.status_code not in RETRY_STATUS:
             return resp
         last = f"HTTP {resp.status_code}: {resp.text[:120]!r}"

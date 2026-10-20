@@ -129,7 +129,7 @@ async def test_auth_failure_names_env_var_not_value(status: int) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(status, text="bad key sk-SECRET")
+        return httpx.Response(status, text="bad key")
 
     with pytest.raises(ProviderError) as ei:
         await post_with_retry(
@@ -142,8 +142,12 @@ async def test_auth_failure_names_env_var_not_value(status: int) -> None:
             json={},
         )
     msg = str(ei.value)
-    assert f"HTTP {status}" in msg and "`NVIDIA_API_KEY` is missing or rejected" in msg
-    assert "sk-SECRET" not in msg and calls == 1
+    assert f"HTTP {status}" in msg and "`NVIDIA_API_KEY`" in msg and calls == 1
+    if status == 401:
+        assert "is missing or rejected" in msg and "bad key" not in msg
+    else:
+        assert "access denied (HTTP 403)" in msg and "bad key" in msg
+        assert "missing or rejected" not in msg
 
 
 async def test_auth_failure_without_env_var_name() -> None:

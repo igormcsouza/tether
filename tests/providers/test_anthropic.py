@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 
 import httpx
+import pytest
 
 from tether.providers.anthropic import AnthropicProvider
+from tether.providers.base import ProviderError
 
 
 async def test_anthropic_provider_and_ephemeral_cache() -> None:
@@ -60,3 +62,13 @@ async def test_anthropic_provider_and_ephemeral_cache() -> None:
     c_anth_new = anth._get_client()
     assert not c_anth_new.is_closed
     await anth.aclose()
+
+
+async def test_anthropic_401_names_env_var(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-SECRET")
+    prov = AnthropicProvider("m")
+    prov._client = httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(401)))
+    with pytest.raises(ProviderError) as ei:
+        await prov.generate([{"role": "user", "content": "x"}], [])
+    assert "`ANTHROPIC_API_KEY` is missing or rejected" in str(ei.value)
+    assert "sk-SECRET" not in str(ei.value)
