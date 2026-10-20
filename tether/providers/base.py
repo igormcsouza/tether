@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import json
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
 from typing import Any, Protocol
+
+import httpx
 
 
 @dataclass(slots=True)
@@ -35,6 +38,50 @@ class ModelProvider(Protocol):
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
     ) -> ModelResponse: ...
+
+
+class ProviderError(RuntimeError):
+    """A provider call failed after retries; the message names provider, model and timeout."""
+
+
+RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+_TRANSIENT = (httpx.TimeoutException, httpx.NetworkError)
+
+
+async def post_with_retry(
+    client: httpx.AsyncClient,
+    url: str,
+    *,
+    provider: str,
+    model: str,
+    timeout: float,
+    retries: int = 2,
+    backoff: float = 1.0,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+    **kwargs: Any,
+) -> httpx.Response:
+    """POST with bounded retry on timeouts, network errors and 429/5xx.
+
+    Other responses (incl. 4xx) are returned untouched for the caller to handle. When retries
+    are exhausted a `ProviderError` names the provider, model and timeout, so `Worker error:`
+    is readable. Extend `RETRY_STATUS` / `_TRANSIENT` to change what counts as transient.
+    """
+    last = ""
+    for attempt in range(retries + 1):
+        if attempt:
+            await sleep(backoff * 2 ** (attempt - 1))
+        try:
+            resp = await client.post(url, **kwargs)
+        except _TRANSIENT as exc:
+            last = type(exc).__name__
+            continue
+        if resp.status_code not in RETRY_STATUS:
+            return resp
+        last = f"HTTP {resp.status_code}"
+    raise ProviderError(
+        f"{provider} model `{model}` unavailable after {retries + 1} attempts "
+        f"(timeout {timeout:g}s, last error: {last})"
+    )
 
 
 _ACT_CALL_RE = re.compile(
