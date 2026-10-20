@@ -32,6 +32,22 @@ from tether.tools import (
 )
 
 
+def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
+    """Repeated n-gram (n=2..3) at the tail of the last `window` actions, else None.
+
+    Identical-command runs are `loop_stall`'s job, so they are not a cycle here.
+    """
+    recent = history[-window:]
+    for n in (2, 3):
+        if (
+            len(recent) >= 2 * n
+            and recent[-n:] == recent[-2 * n : -n]
+            and len(set(recent[-n:])) > 1
+        ):
+            return [cmd for cmd, _ in recent[-n:]]
+    return None
+
+
 def spawn_detached_worker(db_path: Path, session_id: str) -> int:
     """Spawn a detached OS background worker (`python -m tether.cli _worker <session_id>`)."""
     env = dict(os.environ)
@@ -552,6 +568,7 @@ class Harness:
         step_start = rec.step_count
         step_limit = step_start + rec.max_steps
         last_action_sig: tuple[str, str | None] | None = None
+        action_history: list[tuple[str, str | None]] = []
         consecutive_verify_failures = 0
 
         try:
@@ -560,6 +577,7 @@ class Harness:
                 inbox_msgs = self.store.consume_inbox(session_id)
                 if inbox_msgs:
                     last_action_sig = None
+                    action_history.clear()
                 for imsg in inbox_msgs:
                     self.store.add_turn(
                         session_id=session_id,
@@ -631,6 +649,11 @@ class Harness:
                 stdin = resp.action.stdin
                 action_sig = (cmd.strip(), stdin)
                 is_loop_stall = action_sig == last_action_sig and not cmd.strip().startswith("done")
+                cycle = (
+                    None
+                    if is_loop_stall or cmd.strip().startswith("done")
+                    else detect_cycle([*action_history, action_sig])
+                )
 
                 assistant_turn_id = self.store.add_turn(
                     session_id=session_id,
@@ -642,7 +665,7 @@ class Harness:
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     duration_ms=llm_duration_ms,
-                    event_type="loop_stall" if is_loop_stall else "ok",
+                    event_type="loop_stall" if is_loop_stall else "cycle_stall" if cycle else "ok",
                 )
 
                 if is_loop_stall:
@@ -658,7 +681,24 @@ class Harness:
                         content=stall_msg,
                     )
                     continue
+                if cycle:
+                    action_history.clear()
+                    cycle_msg = (
+                        f"[CYCLE DETECTED] You are repeating the commands "
+                        f"{' -> '.join(f'`{c}`' for c in cycle)} "
+                        "and the output/file did not change. Stop: re-read the last output, "
+                        "change your approach (for example a different pattern or a whole-file "
+                        'edit), or call `act("done", stdin="...")`.'
+                    )
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=cycle_msg,
+                    )
+                    continue
                 last_action_sig = action_sig
+                action_history.append(action_sig)
 
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)

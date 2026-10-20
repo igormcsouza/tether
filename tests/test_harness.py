@@ -10,7 +10,7 @@ import pytest
 from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse, register_provider, tool
 from tether.decorator import ToolSpec
-from tether.harness import spawn_detached_worker
+from tether.harness import detect_cycle, spawn_detached_worker
 from tether.store import SQLiteStore
 
 
@@ -348,3 +348,57 @@ async def test_waiting_input_and_interactive_inquiry(tmp_path: Path) -> None:
     done_late = await h_late.execute_session(s_late.id)
     assert done_late.status == "COMPLETED"
     assert done_late.result == "Used Python 3.12"
+
+
+def test_detect_cycle_patterns() -> None:
+    a, b, c, d = ("a", None), ("b", None), ("c", None), ("d", None)
+    assert detect_cycle([a, b, a, b]) == ["a", "b"]
+    assert detect_cycle([d, a, b, c, a, b, c]) == ["a", "b", "c"]
+    assert detect_cycle([a, a, a, a]) is None  # identical run is loop_stall's job
+    assert detect_cycle([a, b, c, d]) is None
+    assert detect_cycle([a, b]) is None
+    assert detect_cycle([a, b, a, b], window=3) is None
+
+
+async def _run_commands(tmp_path: Path, cmds: list[str]) -> tuple[Any, Any, list[str]]:
+    calls: list[str] = []
+
+    @tool(name="ping", description="Ping a host")
+    def ping(host: str) -> str:
+        calls.append(host)
+        return "pong"
+
+    script = [
+        ModelResponse(content="", action=ActionCall(cmd=c), prompt_tokens=10, completion_tokens=5)
+        for c in cmds
+    ]
+    script.append(
+        ModelResponse(content="", action=ActionCall(cmd="done", stdin="ok"), prompt_tokens=10)
+    )
+    provider = FakeScriptedProvider(script)
+    harness = Harness(db_path=tmp_path / "tether.db", tools=[ping], provider=provider)
+    session = await harness.run("goal")
+    events = [t.event_type for t in harness.store.get_turns(session.id) if t.role == "assistant"]
+    return session, provider, events + [str(calls)]
+
+
+async def test_cycle_stall_three_command_cycle(tmp_path: Path) -> None:
+    cmds = [f"ping {h}.com" for h in "abcabc"]
+    session, provider, out = await _run_commands(tmp_path, cmds)
+    assert session.status == "COMPLETED"
+    assert out[:-1] == ["ok"] * 5 + ["cycle_stall", "completed"]
+    assert out[-1] == str(["a.com", "b.com", "c.com", "a.com", "b.com"])
+    nudge = "\n".join(m["content"] for m in provider.recorded_calls[6])
+    assert "[CYCLE DETECTED]" in nudge
+    assert "`ping a.com` -> `ping b.com` -> `ping c.com`" in nudge
+
+
+async def test_cycle_stall_two_command_cycle(tmp_path: Path) -> None:
+    cmds = ["ping 1,40p", "ping 40,100p", "ping 1,40p", "ping 40,100p"]
+    _, _, out = await _run_commands(tmp_path, cmds)
+    assert out[:-1] == ["ok", "ok", "ok", "cycle_stall", "completed"]
+
+
+async def test_varied_commands_do_not_cycle_stall(tmp_path: Path) -> None:
+    _, _, out = await _run_commands(tmp_path, [f"ping h{i}" for i in range(6)])
+    assert "cycle_stall" not in out
