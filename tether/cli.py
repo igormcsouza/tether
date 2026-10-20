@@ -157,10 +157,19 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json(p_status)
 
     # `tether read`
-    p_read = sub.add_parser("read", help="Read session final result, compact digest, or step log")
+    p_read = sub.add_parser(
+        "read",
+        help="Read session final result (default/--full), digest (--digest) or step log (--steps)",
+    )
     p_read.add_argument("session_id", help="Session ID")
-    p_read.add_argument("--digest", action="store_true", help="Show compact ~50-token digest card")
-    p_read.add_argument("--steps", action="store_true", help="Show step-by-step work log")
+    read_mode = p_read.add_mutually_exclusive_group()
+    read_mode.add_argument(
+        "--digest", action="store_true", help="Show compact ~50-token digest card"
+    )
+    read_mode.add_argument("--steps", action="store_true", help="Show step-by-step work log")
+    read_mode.add_argument(
+        "--full", action="store_true", help="Show the full final result (the default)"
+    )
     p_read.add_argument("--db", type=str, default=None)
     _add_json(p_read)
 

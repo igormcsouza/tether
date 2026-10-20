@@ -63,8 +63,11 @@ tether status "$SESSION_ID"
 # Block until the session completes and print a compact ~50-token digest
 tether wait "$SESSION_ID"
 
-# Read the full final deliverable
+# Read the full final deliverable (`--full` is optional: it is the default)
 tether read "$SESSION_ID"
+
+# Or just the compact digest
+tether read "$SESSION_ID" --digest
 
 # Inspect the step-by-step action log
 tether read "$SESSION_ID" --steps

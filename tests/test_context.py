@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from tether import Harness, SandboxPolicy
 from tether.context import (
     ACT_TOOL_SCHEMA,
+    MAX_LIVE_READS,
     ContextAssembler,
+    _read_path,
     elide_active_observation,
     estimate_messages_tokens,
     estimate_tokens,
@@ -148,3 +151,109 @@ def test_context_assembler_edge_cases() -> None:
         current_step=3,
     )
     assert "[PINNED MEMORY]" in assembled[-1]["content"]
+
+
+def _text(tmp_path: Path, cmds: list[str], step: int = 20, **kw: Any) -> str:
+    """Render history where each cmd produced a 500-char observation (obs_1, obs_2, ...)."""
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    rec = store.create_session("goal")
+    observations = {}
+    for i, cmd in enumerate(cmds, start=1):
+        obs = store.add_observation(rec.id, step=i, cmd=cmd, raw_output="line\n" * 100)
+        observations[obs.id] = obs
+        store.add_turn(rec.id, step=i, role="assistant", content="", tool_cmd=cmd)
+        store.add_turn(rec.id, step=i, role="tool", content=obs.raw_output, obs_id=obs.id)
+    msgs = ContextAssembler(fold_after_turns=2, **kw).assemble(
+        system_prompt="S",
+        goal=rec.goal,
+        turns=store.get_turns(rec.id),
+        observations=observations,
+        pins={},
+        current_step=step,
+    )
+    return "\n".join(str(m["content"]) for m in msgs)
+
+
+def _live(text: str, n: int) -> bool:
+    return f"[obs_{n}] line" in text and f"obs_{n} folded" not in text
+
+
+def test_unedited_file_read_is_not_folded(tmp_path: Path) -> None:
+    for i, cmd in enumerate(("edit view a.py", "bash sed -n '1,55p' a.py", "bash cat a.py")):
+        text = _text(tmp_path / str(i), [cmd, "bash ls"])
+        assert _live(text, 1)
+        assert "obs_2 folded" in text  # non-read output still folds
+
+
+def test_edit_or_reread_folds_old_read(tmp_path: Path) -> None:
+    text = _text(tmp_path / "e", ["edit view a.py", "edit replace a.py", "edit view b.py"])
+    assert "obs_1 folded" in text and _live(text, 3)
+    text = _text(tmp_path / "r", ["edit view a.py", "bash cat a.py"])  # same file, latest wins
+    assert "obs_1 folded" in text and _live(text, 2)
+
+
+def test_bash_write_invalidates_live_read(tmp_path: Path) -> None:
+    for i, cmd in enumerate(
+        (
+            "bash sed -i 's/a/b/' a.py",
+            "bash tee a.py",
+            "bash echo x > a.py",
+            "bash python -c 'a.py'",
+        )
+    ):
+        text = _text(tmp_path / str(i), ["edit view a.py", cmd, "edit view b.py"])
+        assert "obs_1 folded" in text, cmd
+        assert _live(text, 3)
+    # a bash command not mentioning the path leaves it live
+    assert _live(_text(tmp_path / "x", ["edit view a.py", "bash ls"]), 1)
+
+
+def test_paths_are_normalized(tmp_path: Path) -> None:
+    root = str(tmp_path)
+    text = _text(
+        tmp_path / "n", ["edit view ./a.py", f"edit view {root}/a.py"], workspace_root=root
+    )
+    assert "obs_1 folded" in text and _live(text, 2)
+    text = _text(
+        tmp_path / "w", ["edit view a.py", f"edit replace {root}/a.py"], workspace_root=root
+    )
+    assert "obs_1 folded" in text
+
+
+def test_live_reads_are_capped(tmp_path: Path) -> None:
+    text = _text(tmp_path, [f"edit view f{i}.py" for i in range(MAX_LIVE_READS + 1)])
+    assert "obs_1 folded" in text
+    assert all(_live(text, n) for n in range(2, MAX_LIVE_READS + 2))
+
+
+def test_read_path_ignores_non_reads() -> None:
+    assert _read_path("bash cat a.py | head") is None
+    assert _read_path("bash grep x a.py") is None
+    assert _read_path("bash sed -i s/a/b/ a.py") is None
+    assert _read_path("bash sed -n -i s/a/b/ a.py") is None
+    assert _read_path("bash sed s/a/b/ a.py") is None
+    assert _read_path("bash cat -n") is None
+    assert _read_path("bash cat 'unclosed") is None
+    assert _read_path("edit view") is None
+
+
+def test_tombstone_hint_follows_mem_availability(tmp_path: Path) -> None:
+    cmds = ["bash ls", "bash pwd"]
+    assert "mem recall obs_1" in _text(tmp_path / "a", cmds)
+    no_mem = _text(tmp_path / "b", cmds, mem_enabled=False)
+    assert "mem recall" not in no_mem and "re-run the command if needed]" in no_mem
+    # active (not yet folded) head+tail elision marker follows the same rule
+    store = SQLiteStore(db_path=tmp_path / "c.db")
+    rec = store.create_session("g")
+    obs = store.add_observation(rec.id, step=1, cmd="bash ls", raw_output="x" * 5000)
+    store.add_turn(rec.id, step=1, role="tool", content="", obs_id=obs.id)
+    msgs = ContextAssembler(mem_enabled=False).assemble(
+        system_prompt="S",
+        goal="g",
+        turns=store.get_turns(rec.id),
+        observations={obs.id: obs},
+        pins={},
+        current_step=1,
+    )
+    flat = str(msgs)
+    assert "mem recall" not in flat and "re-run the command for the full output" in flat

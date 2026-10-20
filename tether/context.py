@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import shlex
 from typing import Any
 
 from tether.store import ObservationRecord, TurnRecord
@@ -49,7 +51,9 @@ def estimate_messages_tokens(
     return total
 
 
-def elide_active_observation(obs_id: str, raw_output: str, max_chars: int = 2400) -> str:
+def elide_active_observation(
+    obs_id: str, raw_output: str, max_chars: int = 2400, mem_enabled: bool = True
+) -> str:
     """Slice oversized active observations into Head + Tail in L1."""
     if len(raw_output) <= max_chars:
         return f"[{obs_id}] {raw_output}"
@@ -58,11 +62,85 @@ def elide_active_observation(obs_id: str, raw_output: str, max_chars: int = 2400
     elided_count = len(raw_output) - (head_len + tail_len)
     head = raw_output[:head_len].rstrip()
     tail = raw_output[-tail_len:].lstrip()
-    marker = (
-        f"\n... [{obs_id}: {elided_count:,} middle chars elided in L1 | "
-        f"use `mem search <query>` or `mem recall {obs_id}`] ...\n"
+    recall_hint = (
+        f"use `mem search <query>` or `mem recall {obs_id}`"
+        if mem_enabled
+        else "re-run the command for the full output"
     )
+    marker = f"\n... [{obs_id}: {elided_count:,} middle chars elided in L1 | {recall_hint}] ...\n"
     return f"[{obs_id}] {head}{marker}{tail}"
+
+
+def _argv(cmd: str | None) -> list[str]:
+    try:
+        return shlex.split(cmd or "")
+    except ValueError:
+        return []
+
+
+# Unedited file reads kept unfolded; older ones fold normally. #81 is the real budget backstop.
+MAX_LIVE_READS = 4
+
+
+def _read_path(cmd: str) -> str | None:
+    """Path read by `edit view <p>` or a pure bash cat/head/tail/sed -n, else None."""
+    argv = _argv(cmd)
+    if argv[:2] == ["edit", "view"] and len(argv) > 2:
+        return argv[2]
+    if argv[:1] == ["bash"]:
+        argv = argv[1:]
+    # ponytail: no pipes/redirects; the last arg is taken as the path
+    if len(argv) < 2 or set("|;&<>") & set(cmd) or argv[-1].startswith("-"):
+        return None
+    in_place = any(a.startswith("-i") or a == "--in-place" for a in argv)
+    if argv[0] in ("cat", "head", "tail") or (argv[0] == "sed" and "-n" in argv and not in_place):
+        return argv[-1]
+    return None
+
+
+def live_reads(
+    turns: list[TurnRecord], observations: dict[str, ObservationRecord], root: str = ""
+) -> set[str]:
+    """Obs ids of the latest unedited read of up to MAX_LIVE_READS files; these stay unfolded.
+
+    Folding a still-valid read makes small models re-read it forever. A path stops being live
+    on `edit write|replace` or on any non-read bash command that mentions it (sed -i, tee, ...).
+    """
+    live: dict[str, str] = {}  # normalized path -> obs_id, oldest first
+
+    def norm(p: str) -> str:
+        return os.path.normpath(os.path.join(root, p))
+
+    for turn in turns:
+        if turn.obs_id in observations:
+            cmd = observations[turn.obs_id].cmd
+            if (path := _read_path(cmd)) is not None:
+                live.pop(norm(path), None)
+                live[norm(path)] = turn.obs_id
+        elif turn.role == "assistant" and turn.tool_cmd:
+            argv = _argv(turn.tool_cmd)
+            if argv[:2] in (["edit", "write"], ["edit", "replace"]) and len(argv) > 2:
+                live.pop(norm(argv[2]), None)
+            elif argv[:1] == ["bash"] and _read_path(turn.tool_cmd) is None:
+                # ponytail: token/substring match; won't catch paths built at runtime
+                tokens = {norm(t) for t in argv[1:]}
+                live = {
+                    k: v
+                    for k, v in live.items()
+                    if k not in tokens and os.path.relpath(k, root or ".") not in turn.tool_cmd
+                }
+    return set(list(live.values())[-MAX_LIVE_READS:])
+
+
+def tombstone(obs: ObservationRecord, mem_enabled: bool = True) -> str:
+    """One-line stand-in for a folded observation; recall hint only when `mem` exists."""
+    cmd_short = obs.cmd.strip().replace("\n", " ")[:48]
+    hint = (
+        f"use `mem search <q>` or `mem recall {obs.id}`"
+        if mem_enabled
+        else "re-run the command if needed"
+    )
+    return f"[{obs.id} folded: `{cmd_short}` ({obs.char_len:,} chars) | {hint}]"
 
 
 class ContextAssembler:
@@ -76,6 +154,8 @@ class ContextAssembler:
         active_char_cap: int = 2400,
         max_context_tokens: int = 8192,
         structured: bool = False,
+        mem_enabled: bool = True,
+        workspace_root: str = "",
     ) -> None:
         self.fold_after_turns = fold_after_turns
         self.fold_char_threshold = fold_char_threshold
@@ -84,6 +164,8 @@ class ContextAssembler:
         # True: replay past actions as tool_calls + tool results (provider adapters translate);
         # False: textual fallback for providers without tool messages.
         self.structured = structured
+        self.mem_enabled = mem_enabled
+        self.workspace_root = workspace_root
         self._static_system_prompt: str | None = None
 
     @staticmethod
@@ -165,16 +247,24 @@ class ContextAssembler:
                 groups.append([self._action_as_text(pending)])
                 pending = None
 
+        keep = live_reads(turns, observations, self.workspace_root)
         for turn in turns:
             content = turn.content
             if turn.obs_id and turn.obs_id in observations:
                 obs = observations[turn.obs_id]
                 age = current_step - turn.step
-                if age >= self.fold_after_turns and obs.char_len >= self.fold_char_threshold:
-                    content = obs.summary
+                if (
+                    age >= self.fold_after_turns
+                    and obs.char_len >= self.fold_char_threshold
+                    and obs.id not in keep
+                ):
+                    content = tombstone(obs, self.mem_enabled)
                 else:
                     content = elide_active_observation(
-                        obs.id, obs.raw_output, max_chars=self.active_char_cap
+                        obs.id,
+                        obs.raw_output,
+                        max_chars=self.active_char_cap,
+                        mem_enabled=self.mem_enabled,
                     )
 
             if turn.role == "assistant" and turn.tool_cmd:

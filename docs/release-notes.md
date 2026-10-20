@@ -9,6 +9,8 @@
 - Skills now warn (`UserWarning`, 0 prompt tokens) at load when `tools.py` defines a `@tool` not listed in the skill `tools:` (#24).
 - Repeated multi-command cycles (e.g. `cat` / `sed` / `pytest`, or two alternating `sed -n` ranges) now trigger a deterministic `[CYCLE DETECTED]` nudge and a new `cycle_stall` event type, shown in `tether stats` as `CYCLES` (#39).
 - HTTP providers now retry timeouts, network errors and 429/5xx twice with backoff, honour `timeout` from `providers.yaml` for all kinds, and fail with a `ProviderError` naming provider, model and timeout instead of a bare `ReadTimeout` (#70).
+- `tether read` now accepts `--full` (the full final result, already its default) so the `agent read <id> --full` form works on the CLI too; `--digest` still gives the compact card (#72).
+- Observation folding no longer makes small models re-read files in a loop: the latest read (`edit view <p>` / `bash cat|head|tail|sed -n <p>`) of each of the last 4 files stays unfolded until that path is edited (`edit write|replace`, or a bash write such as `sed -i`/`tee`) or re-read, and the fold/elision hint only mentions `mem recall` when `mem` is enabled (otherwise "re-run the command"). Static prompt prefix unchanged (#69).
 
 ## v0.2.2 (2026-10-19)
 

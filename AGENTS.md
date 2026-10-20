@@ -48,6 +48,7 @@ Tether implements the architectural principles from *"LLM-Native Applications as
   ```text
   [obs_3 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_3` to expand]
   ```
+- Exception: the latest read of each of the last 4 files (`edit view <p>`, `bash cat/head/tail/sed -n <p>`; paths normalized against the workspace) is not folded until `<p>` is edited (`edit write|replace`, or any other bash command naming it: `sed -i`, `tee`, redirects, `python -c`) or re-read. The 2,400-char head+tail elision still applies, and the hard context budget remains #81. The `mem recall` hint is shown only when `mem` is enabled (else "re-run the command").
 - History is replayed as structured `tool_calls` + `tool` results (providers with `structured_history = True`; textual `act('...')` form only as fallback), with `stdin` replayed as a real 400-char prefix, never a `<N chars>` placeholder. A call and its result are trimmed together.
 
 ### Rule 6: Deterministic Security Envelope (Never Trust the LLM for Safety)
@@ -123,7 +124,7 @@ tether/
   - `agent status <id>` $\rightarrow$ returns 1-line status, step count, and last command.
   - `agent wait <id1> [id2 ...]` $\rightarrow$ asynchronously polls SQLite until the specified child session(s) finish and returns a **compact ~50-token digest** (status, total chars/chunks, 2-line preview) so the parent's context window is never flooded.
   - `agent query <id|--all> <query> [--top 3]` $\rightarrow$ queries `chunks_fts` (BM25 ranking) across the sub-agent's final deliverable and raw observations, returning only the top-K relevant chunks (~200–300 tokens).
-  - `agent read <id> [--full]` $\rightarrow$ reads the child session's digest or full `result`.
+  - `agent read <id> [--full]` $\rightarrow$ reads the child session's digest or full `result`. The CLI `tether read <id>` prints the full result by default (`--full` accepted for parity; `--digest` for the digest).
   - `agent send <id> <message>` $\rightarrow$ queues a message into the child session's inbox (or resumes it if completed).
 - **Deterministic Multi-Stage Pipelines (`tether pipeline <pipeline.yaml> "<goal>"` & `Harness.run_pipeline`):**
   - Each stage runs in its own isolated `SessionRecord` (`parent_id = pipeline_session_id`) with heterogeneous model routing (`stage.model`), stage-level `verify` gates, and strict sandbox monotonicity (`root_sandbox.attenuate(stage.sandbox)`).
