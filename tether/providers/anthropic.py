@@ -26,6 +26,7 @@ class AnthropicProvider:
         model_name: str = "claude-3-7-sonnet-latest",
         *,
         api_key: str | None = None,
+        api_key_env: str = "ANTHROPIC_API_KEY",
         workspace_id: str | None = None,
         base_url: str | None = None,
         max_tokens: int = 4096,
@@ -33,6 +34,7 @@ class AnthropicProvider:
         client: httpx.AsyncClient | None = None,
     ) -> None:
         self.model_name = model_name
+        self.api_key_env = api_key_env
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY") or ""
         self.workspace_id = workspace_id or os.environ.get("ANTHROPIC_WORKSPACE_ID") or ""
         self.base_url = (
@@ -143,6 +145,7 @@ class AnthropicProvider:
             provider="anthropic",
             model=self.model_name,
             timeout=self.timeout,
+            key_env=self.api_key_env,
             headers=headers,
             json=payload,
         )

@@ -90,7 +90,7 @@ async def test_unknown_command_hints_bash_only_when_enabled() -> None:
     from tether.tools.bash import make_bash_tool
 
     mux = Multiplexer()
-    assert "bash" not in (await mux.execute("echo hi")).output
+    assert "`bash echo hi`" not in (await mux.execute("echo hi")).output
     mux.register(make_bash_tool(SandboxPolicy()))
     assert "`bash echo hi`" in (await mux.execute("echo hi")).output
 

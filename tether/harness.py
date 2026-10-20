@@ -557,7 +557,24 @@ class Harness:
             model=rec.model,
         )
 
-        provider = self._provider or resolve_provider(rec.model, num_ctx=self.max_context_tokens)
+        try:
+            provider = self._provider or resolve_provider(
+                rec.model, num_ctx=self.max_context_tokens
+            )
+        except Exception as exc:  # e.g. empty api_key_env or bad providers.yaml: fail early
+            self.store.add_turn(
+                session_id=session_id,
+                step=rec.step_count,
+                role="tool",
+                content=traceback.format_exc()[-4000:],
+                event_type="tool_error",
+            )
+            self.store.update_session(
+                session_id, status="FAILED", result=f"Worker error: {type(exc).__name__}: {exc}"
+            )
+            failed = self.store.get_session(session_id)
+            assert failed is not None
+            return failed
         assembler = ContextAssembler(
             fold_after_turns=self.fold_observations_after,
             max_context_tokens=self.max_context_tokens,

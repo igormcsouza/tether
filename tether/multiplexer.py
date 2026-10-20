@@ -132,8 +132,16 @@ class Multiplexer:
         if spec is None:
             avail = ", ".join(self._tools.keys())
             hint = f" For shell commands use `bash {clean_cmd}`." if "bash" in self._tools else ""
+            from tether.tools import ALL_BUILTIN_TOOLS  # lazy: tools import this module
+
+            head = (
+                f"`{name}` is disabled"
+                if name in ALL_BUILTIN_TOOLS
+                else f"unknown command `{name}`"
+            )
+            enable = "Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill)."
             return DispatchResult(
-                output=f"Error: unknown command `{name}`. Enabled tools: {avail}.{hint}",
+                output=f"Error: {head}. Enabled tools: {avail}. {enable}{hint}",
                 is_error=True,
                 error_kind="unknown_cmd",
             )

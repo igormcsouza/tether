@@ -500,3 +500,39 @@ async def test_cycle_history_resets_on_inbox_message(tmp_path: Path) -> None:
 async def test_cycle_history_resets_after_nudge(tmp_path: Path) -> None:
     run = await _run_commands(tmp_path, [f"ping {h}" for h in "abcabc" * 2])
     assert run.events == ["ok"] * 5 + ["cycle_stall"] + ["ok"] * 5 + ["cycle_stall", "completed"]
+
+
+async def test_empty_api_key_env_fails_session_naming_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = tmp_path / "providers.yaml"
+    cfg.write_text(
+        "acme:\n  kind: openai\n  base_url: http://x/v1\n  api_key_env: ACME_KEY\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TETHER_PROVIDERS", str(cfg))
+    for value in ("", None):  # empty and unset behave the same
+        if value is None:
+            monkeypatch.delenv("ACME_KEY", raising=False)
+        else:
+            monkeypatch.setenv("ACME_KEY", value)
+        harness = Harness(db_path=tmp_path / "t.db", model="acme/m")
+        rec = harness.create_session("goal")
+        done = await harness.execute_session(rec.id)
+        assert done.status == "FAILED" and done.result is not None
+        assert done.result.startswith("Worker error: ProviderError:")
+        assert "`ACME_KEY`" in done.result
+
+
+async def test_resolve_value_error_fails_session_with_tool_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg = tmp_path / "providers.yaml"
+    cfg.write_text("acme: [not, a, mapping]\n", encoding="utf-8")
+    monkeypatch.setenv("TETHER_PROVIDERS", str(cfg))
+    harness = Harness(db_path=tmp_path / "t.db", model="acme/m")
+    rec = harness.create_session("goal")
+    done = await harness.execute_session(rec.id)
+    assert done.status == "FAILED" and done.result is not None
+    assert done.result.startswith("Worker error: ValueError: providers.yaml")
+    assert [t.event_type for t in harness.store.get_turns(rec.id)] == ["tool_error"]
