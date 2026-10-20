@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import shlex
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -54,6 +55,15 @@ def normalize_cmd(raw_cmd: str) -> str:
     if s.startswith("tether "):
         s = s[len("tether ") :].strip()
     return s
+
+
+_HEREDOC_RE = re.compile(r"[ \t]*<<-?[ \t]*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n?\2[ \t]*$", re.DOTALL)
+
+
+def split_heredoc(cmd: str) -> tuple[str, str | None]:
+    """Split a trailing shell heredoc off `cmd` into stdin (models write `edit ... <<'EOF'`)."""
+    m = _HEREDOC_RE.search(cmd)
+    return (cmd[: m.start()].strip(), m.group(3)) if m else (cmd, None)
 
 
 def unescape_literal_newlines(stdin: str | None) -> str | None:
@@ -110,6 +120,8 @@ class Multiplexer:
                 error_kind="syntax_error",
             )
 
+        if stdin is None and not clean_cmd.startswith("bash"):
+            clean_cmd, stdin = split_heredoc(clean_cmd)
         tokens = split_cli(clean_cmd)
         if not tokens:
             return DispatchResult(

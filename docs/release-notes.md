@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.2.4 (unreleased)
+
+### Fixes
+
+- Multiplexer: a trailing heredoc in `cmd` (`edit replace f --lines 1:1 <<'EOF'`) is now passed as `stdin` instead of failing with `requires replacement block in stdin` (never for `bash`). Found dogfooding `nvidia/nemotron-3-ultra-550b-a55b`, which never filled the `stdin` parameter in 150+ steps.
+
 ## v0.2.3 (2026-10-20)
 
 Dogfooding fixes: the issues came from running Tether with a small model (GLM-5.3) on its own backlog.
