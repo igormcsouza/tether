@@ -296,6 +296,60 @@ async def test_verification_gate_circuit_breaker_and_skill_verify(tmp_path: Path
     assert s_bad.status == "FAILED"
 
 
+@pytest.mark.parametrize(
+    "gate",
+    ["sudo rm -rf /", "tether_no_such_cmd_xyz", "exit 127", "exit 124"],
+    ids=["sandbox_violation", "not_found", "127", "timeout"],
+)
+async def test_broken_gate_fails_immediately_as_gate_error(tmp_path: Path, gate: str) -> None:
+    """A gate that errors (not fails) ends the session at once with gate_error and exit 3."""
+    from tether.api import exit_code, failure_info
+    from tether.sandbox import SandboxPolicy
+
+    provider = FakeScriptedProvider(
+        [ModelResponse(content="", action=ActionCall(cmd="done", stdin="x"))] * 3
+    )
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        verify=[gate],
+        max_verify_failures=3,
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+        provider=provider,
+    )
+    session = await harness.run("Broken gate")
+    assert session.status == "FAILED"
+    assert session.step_count == 1
+    assert f"Verification gate `{gate}` misconfigured:" in (session.result or "")
+    fail = failure_info(session)
+    assert fail is not None and fail["kind"] == "gate" and fail["gate"] == gate
+    assert exit_code(session) == 3
+    turns = harness.store.get_turns(session.id)
+    assert [t.event_type for t in turns if t.role == "assistant"] == ["gate_error"]
+    assert "misconfigured, not your work" in turns[-1].content
+
+
+async def test_normal_nonzero_gate_still_retries_as_gate_fail(tmp_path: Path) -> None:
+    """A gate command that ran and exited non-zero stays a retryable gate_fail."""
+    from tether.sandbox import SandboxPolicy
+
+    provider = FakeScriptedProvider(
+        [ModelResponse(content="", action=ActionCall(cmd="done", stdin="x"))] * 2
+    )
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        verify=["exit 2"],
+        max_verify_failures=2,
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+        provider=provider,
+    )
+    session = await harness.run("Real failure")
+    assert session.status == "FAILED"
+    assert session.step_count == 2
+    assert "failed 2 consecutive times" in (session.result or "")
+    events = [t.event_type for t in harness.store.get_turns(session.id) if t.role == "assistant"]
+    assert events == ["gate_fail", "gate_fail"]
+
+
 async def test_waiting_input_and_interactive_inquiry(tmp_path: Path) -> None:
     """Verify `done --ask` pauses in WAITING_INPUT, handles late inbox, and resumes on `send`."""
     store = SQLiteStore(db_path=tmp_path / "tether.db")

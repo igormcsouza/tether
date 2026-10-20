@@ -36,7 +36,7 @@ def failure_info(rec: SessionRecord) -> dict[str, Any] | None:
         return None
     msg = rec.result or ""
     if msg.startswith("Verification gate"):
-        m = re.match(r"Verification gate `(.*)` failed", msg)
+        m = re.match(r"Verification gate `(.*)` (?:failed|misconfigured)", msg)
         return {"kind": "gate", "gate": m.group(1) if m else None, "message": msg}
     if msg.startswith("Max steps"):
         return {"kind": "max_steps", "gate": None, "message": msg}

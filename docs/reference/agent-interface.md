@@ -24,7 +24,7 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 | 0 | completed |
 | 1 | usage error (bad flag, unknown session, invalid pipeline) |
 | 2 | waiting for input (`done --ask`) |
-| 3 | verification gate failed (including `--output-schema`) |
+| 3 | verification gate failed or misconfigured (including `--output-schema`) |
 | 4 | max steps reached |
 | 5 | worker or provider error |
 
