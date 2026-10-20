@@ -563,6 +563,7 @@ class Harness:
             max_context_tokens=self.max_context_tokens,
             structured=bool(getattr(provider, "structured_history", False)),
             mem_enabled="mem" in mux.tool_names,
+            workspace_root=str(sandbox.workspace_root),
         )
         system_prompt = assembler.build_system_prompt(
             toolbox_index=mux.toolbox_index(),

@@ -58,7 +58,7 @@ Tether implements a deterministic three-tier memory hierarchy backed by `.tether
    ```text
    [obs_1 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_1` or `mem search <query>`]
    ```
-   Exception: the latest unedited read of a file is not folded (small models otherwise re-read it in a loop), and the `mem recall` hint appears only when `mem` is enabled.
+   Exception (#69): the latest read of each of the last 4 files (`edit view <p>`, `bash cat/head/tail/sed -n <p>`; paths normalized against the workspace) is not folded until `<p>` is edited (`edit write|replace`, or any other bash command naming it: `sed -i`, `tee`, redirects, `python -c`) or re-read. The 2,400-char head+tail elision still applies, and the hard context budget remains #81. The `mem recall` hint is shown only when `mem` is enabled (else "re-run the command").
 3. **Sub-Millisecond SQLite FTS5 BM25 RAG**: Every raw observation and final deliverable is automatically chunked (~150 tokens per paragraph/section) and indexed into an FTS5 virtual table (`chunks_fts`) so the agent (or a parent agent) can retrieve exact passages via `mem search` or `agent query`.
 
 ---
