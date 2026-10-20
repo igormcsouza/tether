@@ -82,7 +82,7 @@ tether/
 ├── multiplexer.py       # Action Plane: `act(cmd, stdin)` parser, command registry, JIT --help
 ├── decorator.py         # `@tool` introspection: converts Python type hints + docstrings to CLI specs
 ├── context.py           # State Plane: ContextAssembler, EphemeralFolder, token estimator
-├── skills.py            # Skill loader: Markdown + YAML frontmatter + optional sibling `tools.py`
+├── skills.py            # Skill loader: Markdown + YAML frontmatter + optional sibling `tools.py` (its tools must be listed in `tools:`)
 ├── providers/
 │   ├── base.py          # Abstract async ModelProvider protocol (`generate(messages, tools)`)
 │   ├── ollama.py        # Native Ollama `/api/chat` httpx adapter (`num_ctx`, `keep_alive`)
@@ -142,7 +142,7 @@ tether/
     - pytest -q
   ---
   ```
-- If `skills/<name>/tools.py` exists, any `@tool`-decorated functions inside it are loaded with the skill and registered into the session's multiplexer when their name is also listed in the skill's `tools:` (otherwise: `unknown command`).
+- If `skills/<name>/tools.py` exists, any `@tool`-decorated functions inside it are loaded with the skill and registered into the session's multiplexer when their name is also listed in the skill's `tools:` (otherwise: `unknown command`). A skill's own custom tools are opt-in like any other, so they must be listed in `tools:`; loading a skill whose `tools.py` defines an unlisted `@tool` emits a `UserWarning` (0 prompt tokens).
 
 #### D. 3 Thin `httpx` Model Providers & SDK Provider Routing (`providers/`)
 - Model identifier format: `<provider>/<model_name>` (e.g., `ollama/qwen3.5:9b`, `openai/gpt-4o-mini`, `anthropic/claude-3-7-sonnet-latest`).

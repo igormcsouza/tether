@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,14 @@ def parse_skill_markdown(
         tools_py = source_path.parent / "tools.py"
         if tools_py.is_file():
             custom_tools = _load_tools_module(tools_py)
+            unlisted = sorted(t.name for t in custom_tools if t.name not in tools_list)
+            if unlisted:
+                warnings.warn(
+                    f"skill '{name}': tools.py defines {', '.join(unlisted)} not listed in "
+                    "tools: (they will be unavailable: unknown command)",
+                    UserWarning,
+                    stacklevel=2,
+                )
 
     return Skill(
         name=name,

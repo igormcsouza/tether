@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.2.3 (unreleased)
+
+### Fixes
+
+- Skills now warn (`UserWarning`, 0 prompt tokens) at load when `tools.py` defines a `@tool` not listed in the skill `tools:` (#24).
+
 ## v0.2.2 (2026-10-19)
 
 Dogfooding fixes: Tether implemented most of this release itself through the CLI and a `claude -p` provider.
