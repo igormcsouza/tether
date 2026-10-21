@@ -247,6 +247,14 @@ def test_telemetry_migration_and_stats_aggregation(tmp_path: Path) -> None:
     store.close()
 
 
+def test_update_session_persists_max_steps(tmp_path: Path) -> None:
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    rec = store.create_session("g")
+    store.update_session(rec.id, max_steps=9)
+    got = store.get_session(rec.id)
+    assert got is not None and got.max_steps == 9
+
+
 def test_reap_dead_worker(tmp_path: Path) -> None:
     """Test that RUNNING sessions with dead pids are marked FAILED (issue #85)."""
     import os
