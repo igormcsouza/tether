@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -195,7 +196,7 @@ async def test_cli_events_send_read_json_and_mcp_serve(
     code, out, _ = await _run(capsys, ["events", sid, "--db", db])
     assert code == 0 and json.loads(out.splitlines()[0])["turn"] > 0
     h = Harness(db_path=db)
-    h.store.update_session(sid, status="RUNNING")
+    h.store.update_session(sid, status="RUNNING", pid=os.getpid())
 
     async def finish() -> None:
         await asyncio.sleep(0.2)
