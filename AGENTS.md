@@ -127,6 +127,7 @@ tether/
   - `tether stats [--model <m>] [--skill <s>] [--limit <n>]` aggregates per-model pass rates, cumulative token economy (`total_prompt_tokens + total_completion_tokens`), step latency, and self-healing ACI friction (`nudge`, `loop_stall`, `cycle_stall`, `syntax_error`, `tool_error`, `gate_fail`, `gate_error`), plus a top-offenders breakdown by tool command.
 - **Post-Mortem Distillation (`tether retro <session_id> [--apply] [--model <m>]`):** offline only (never mutates a live prompt). `store.extract_friction_trace` pulls `inbox` corrections and `loop_stall`/`cycle_stall`/`syntax_error`/`tool_error`/`gate_fail`/`gate_error` turns (+ the fixing command); one bounded LLM pass yields ≤2 rules (≤30 tokens each, deduped against existing rules). Prints a unified diff of `SKILL.md`; `--apply` appends under `## Learned Rules` (or pins to project memory when no skill was used).
 - **Headless Worker & Live `send` Contract:**
+  - `SQLiteStore.get_session`/`list_sessions` reap dead workers: a `RUNNING` session whose stored `pid` is gone becomes `FAILED` with `Worker died (pid N) before finishing` (#85).
   - `tether run --headless ...` creates the session row in SQLite and spawns `python -m tether.cli _worker <session_id>` via `subprocess.Popen(..., start_new_session=True)`, printing `<session_id>` immediately to stdout.
   - Before each step, the running worker queries `inbox WHERE session_id = ? AND consumed = 0` and injects any new user/parent messages into the conversation.
   - If `tether send <session_id> "msg"` (or `agent send`) is called when the session is `WAITING_INPUT`, `COMPLETED`, or `FAILED`, it inserts the message into `inbox`, sets status back to `RUNNING`/`PENDING`, and spawns/resumes the worker from the persisted SQLite state.
@@ -202,7 +203,8 @@ uv run mypy tether/
    - All model calls and I/O-bound tool executions must be `async`/`await` native, while seamlessly wrapping synchronous user `@tool` functions.
 3. **Graceful Degradation on 9B Hallucinations:**
    - Small models occasionally emit `cmd` with minor quirks (e.g., leading `$`, wrapping backticks, or calling a tool name directly instead of `act`). The multiplexer must normalize trivial syntax quirks deterministically before failing. This includes unescaping literal `\n`/`\t` in one-line `stdin` for `edit write`/`edit replace` and `done` (never `bash`).
-4. **Documentation Integrity:**
+4. **Golden traces:** behaviour the model sees (framing, folding, nudges, tool output) is locked by `tests/golden/*.snap.json`. A PR that changes it runs `UPDATE_GOLDEN=1 pytest tests/test_golden.py` and the snapshot diff is part of the review; unrelated traces must not change. See `docs/testing.md`.
+5. **Documentation Integrity:**
    - Keep `README.md` and `AGENTS.md` synchronized whenever architectural interfaces or built-in tool signatures change.
    - **Always update documentation in the same PR** when introducing a new feature, changing an existing behavior, or altering a CLI/SDK interface. This covers `README.md`, `AGENTS.md`, the MkDocs pages under `docs/` (including `docs/reference/*` for new modules), and a `docs/release-notes.md` entry. A change without matching docs is incomplete.
 
