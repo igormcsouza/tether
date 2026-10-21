@@ -117,6 +117,7 @@ nav:
       - Agent Interface (JSON, MCP): reference/agent-interface.md
   - Project:
       - Troubleshooting: troubleshooting.md
+      - Testing (golden traces): testing.md
       - Release Notes: release-notes.md
       - Releasing: releasing.md
 

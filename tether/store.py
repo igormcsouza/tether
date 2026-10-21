@@ -432,10 +432,30 @@ class SQLiteStore:
             event_type=str(row["event_type"]),
         )
 
+    def _reap_dead(self, rec: SessionRecord) -> SessionRecord:
+        """If rec is RUNNING with a pid that no longer exists, mark it FAILED and re-read."""
+        if rec.status == "RUNNING" and rec.pid is not None:
+            try:
+                os.kill(rec.pid, 0)
+            except PermissionError:  # alive, owned by another user
+                return rec
+            except ProcessLookupError:
+                self.update_session(
+                    rec.id,
+                    status="FAILED",
+                    result=f"Worker died (pid {rec.pid}) before finishing",
+                )
+                # Re-read the updated record
+                with self._connect() as conn:
+                    row = conn.execute("SELECT * FROM sessions WHERE id = ?", (rec.id,)).fetchone()
+                    return self._row_to_session(row) if row else rec
+        return rec
+
     def get_session(self, session_id: str) -> SessionRecord | None:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM sessions WHERE id = ?", (session_id,)).fetchone()
-            return self._row_to_session(row) if row else None
+            rec = self._row_to_session(row) if row else None
+        return self._reap_dead(rec) if rec else None
 
     def list_sessions(self, parent_id: str | None = None, limit: int = 50) -> list[SessionRecord]:
         with self._connect() as conn:
@@ -449,7 +469,8 @@ class SQLiteStore:
                 rows = conn.execute(
                     "SELECT * FROM sessions ORDER BY created_at DESC LIMIT ?", (limit,)
                 ).fetchall()
-            return [self._row_to_session(r) for r in rows]
+            records = [self._row_to_session(r) for r in rows]
+        return [self._reap_dead(rec) for rec in records]
 
     def update_session(
         self,
