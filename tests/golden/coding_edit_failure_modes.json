@@ -1,0 +1,47 @@
+{
+ "goal": "Fix the off-by-one in calc.total",
+ "tools": [
+  "edit"
+ ],
+ "files": {
+  "calc.py": "def total(xs):\n    t = 0\n    for x in xs:\n        t += x\n    return t - 1\n\n\ndef mean(xs):\n    return total(xs) / len(xs)\n"
+ },
+ "max_steps": 12,
+ "phases": [
+  {
+   "steps": [
+    {
+     "cmd": "sed -n 1,10p calc.py"
+    },
+    {
+     "cmd": "edit view calc.py"
+    },
+    {
+     "cmd": "edit replace calc.py --lines 5:5",
+     "stdin": "return t"
+    },
+    {
+     "cmd": "edit replace calc.py --lines 5:5 <<'EOF'\n    return t\nEOF"
+    },
+    {
+     "cmd": "edit replace calc.py",
+     "stdin": "<<<<<<< SEARCH\n    return total(xs) / len(xs)\n=======\n    return total(xs) / len(xs)  # fixed"
+    },
+    {
+     "cmd": "edit replace calc.py",
+     "stdin": "<<<<<<< SEARCH\n    return missing\n=======\n    return 0\n>>>>>>> REPLACE"
+    },
+    {
+     "cmd": "edit view calc.py --lines 1:5"
+    },
+    {
+     "cmd": "edit view calc.py --lines 6:9"
+    },
+    {
+     "cmd": "done",
+     "stdin": "Fixed off-by-one in total()."
+    }
+   ]
+  }
+ ]
+}

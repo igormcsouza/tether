@@ -1,0 +1,30 @@
+{
+ "goal": "Pick a name for the project",
+ "tools": [
+  "edit"
+ ],
+ "max_steps": 6,
+ "phases": [
+  {
+   "steps": [
+    {
+     "cmd": "done --ask",
+     "stdin": "Which name do you prefer: alpha or beta?"
+    }
+   ]
+  },
+  {
+   "send": "beta",
+   "steps": [
+    {
+     "cmd": "edit write name.txt",
+     "stdin": "beta"
+    },
+    {
+     "cmd": "done",
+     "stdin": "Named it beta."
+    }
+   ]
+  }
+ ]
+}
