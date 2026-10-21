@@ -158,3 +158,31 @@ async def test_auth_failure_without_env_var_name() -> None:
 async def test_exhausted_error_includes_body_snippet() -> None:
     with pytest.raises(ProviderError, match="overloaded"):
         await _post(_client(lambda r: httpx.Response(503, text="overloaded")), [])
+
+
+async def test_total_deadline_per_attempt() -> None:
+    """A stalled/trickling response is bounded by asyncio.wait_for(timeout)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1)  # longer than the 0.05s deadline
+        return httpx.Response(200)
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    client = _client(handler)
+    with pytest.raises(ProviderError) as exc:
+        await post_with_retry(
+            client,
+            "http://x/y",
+            provider="p",
+            model="m",
+            timeout=0.05,
+            retries=1,
+            sleep=no_sleep,
+            json={},
+        )
+    msg = str(exc.value)
+    assert "TimeoutError" in msg
+    assert "timeout 0.05s" in msg
+    assert "2 attempts" in msg

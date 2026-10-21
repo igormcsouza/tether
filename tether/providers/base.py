@@ -59,7 +59,7 @@ def auth_message(
 
 
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
-_TRANSIENT = (httpx.TimeoutException, httpx.NetworkError)
+_TRANSIENT = (httpx.TimeoutException, httpx.NetworkError, TimeoutError)
 
 
 async def post_with_retry(
@@ -89,7 +89,7 @@ async def post_with_retry(
         if attempt:
             await sleep(backoff * 2 ** (attempt - 1))
         try:
-            resp = await client.post(url, **kwargs)
+            resp = await asyncio.wait_for(client.post(url, **kwargs), timeout)
         except _TRANSIENT as exc:
             last = type(exc).__name__
             continue
