@@ -12,6 +12,8 @@
 - Providers: `429` retries wait `Retry-After` (else 10s doubling, capped 30s) and get up to 5 attempts instead of 3 quick ones, so rate-limited hosted models (NVIDIA free tier) no longer fail the session after 3 quick attempts.
 - Providers: each `post_with_retry` attempt is now bounded by a total `asyncio.wait_for(timeout)` deadline, so a trickling/stalled response cannot hang past the configured timeout; the deadline is retried like other transient errors and shows as `TimeoutError` (vs `ReadTimeout`) in the final `ProviderError` (#88).
 - Harness: `max_steps` is now the absolute session ceiling. `send` on a session that used its steps extends the ceiling to `step_count + <Harness budget>`, and a session paused earlier keeps its remaining budget, so `status` never shows `step_count` above `max_steps` (e.g. `46/40`) (#75).
+- Context: unfolded reads are tracked per path **and line range**. Viewing `f:55:65` used to evict the live `f:65:120` read, so the model ping-ponged between two ranges forever (found with `nvidia/nemotron-3-ultra-550b-a55b`, #69 follow-up).
+- Context: the unfolded-read window is now the last 8 files (was 4); a model cycling through 5 files evicted each read just before needing it and re-read forever (#69 follow-up).
 
 ## v0.2.3 (2026-10-20)
 

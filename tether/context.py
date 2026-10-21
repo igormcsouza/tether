@@ -79,7 +79,7 @@ def _argv(cmd: str | None) -> list[str]:
 
 
 # Unedited file reads kept unfolded; older ones fold normally. #81 is the real budget backstop.
-MAX_LIVE_READS = 4
+MAX_LIVE_READS = 8
 
 
 def _read_path(cmd: str) -> str | None:
@@ -98,15 +98,21 @@ def _read_path(cmd: str) -> str | None:
     return None
 
 
+def _read_range(cmd: str, path: str) -> str:
+    """Line-range args of a read (`--lines 65:120`, `sed -n 65,120p`), so ranges stay apart."""
+    skip = {"bash", "edit", "view", "cat", "head", "tail", "sed", "-n", "--lines", path}
+    return " ".join(a for a in _argv(cmd) if a not in skip)
+
+
 def live_reads(
     turns: list[TurnRecord], observations: dict[str, ObservationRecord], root: str = ""
 ) -> set[str]:
-    """Obs ids of the latest unedited read of up to MAX_LIVE_READS files; these stay unfolded.
+    """Obs ids of the latest unedited read per path+range (max MAX_LIVE_READS); never folded.
 
     Folding a still-valid read makes small models re-read it forever. A path stops being live
     on `edit write|replace` or on any non-read bash command that mentions it (sed -i, tee, ...).
     """
-    live: dict[str, str] = {}  # normalized path -> obs_id, oldest first
+    live: dict[tuple[str, str], str] = {}  # (normalized path, cmd) -> obs_id, oldest first
 
     def norm(p: str) -> str:
         return os.path.normpath(os.path.join(root, p))
@@ -115,19 +121,21 @@ def live_reads(
         if turn.obs_id in observations:
             cmd = observations[turn.obs_id].cmd
             if (path := _read_path(cmd)) is not None:
-                live.pop(norm(path), None)
-                live[norm(path)] = turn.obs_id
+                key = (norm(path), _read_range(cmd, path))
+                live.pop(key, None)
+                live[key] = turn.obs_id
         elif turn.role == "assistant" and turn.tool_cmd:
             argv = _argv(turn.tool_cmd)
             if argv[:2] in (["edit", "write"], ["edit", "replace"]) and len(argv) > 2:
-                live.pop(norm(argv[2]), None)
+                live = {k: v for k, v in live.items() if k[0] != norm(argv[2])}
             elif argv[:1] == ["bash"] and _read_path(turn.tool_cmd) is None:
                 # ponytail: token/substring match; won't catch paths built at runtime
                 tokens = {norm(t) for t in argv[1:]}
                 live = {
                     k: v
                     for k, v in live.items()
-                    if k not in tokens and os.path.relpath(k, root or ".") not in turn.tool_cmd
+                    if k[0] not in tokens
+                    and os.path.relpath(k[0], root or ".") not in turn.tool_cmd
                 }
     return set(list(live.values())[-MAX_LIVE_READS:])
 
