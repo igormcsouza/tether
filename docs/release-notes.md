@@ -4,6 +4,7 @@
 
 ### Features
 
+- Tests: local end-to-end scenarios (`e2e/`, `TETHER_E2E=1 uv run pytest e2e`): the real CLI against a fault-injecting proxy in front of ollama; 38 scenarios cover the Golden Rules, lifecycle and exit codes, gates, faults (429, trickling hang, dead worker, auth), the sandbox and small-model quirks. Hard assertions are about tether's behaviour, so they hold for any model. See `docs/testing.md`.
 - Tests: golden-trace replay (`tests/golden/`, `tests/test_golden.py`, `scripts/record_golden.py`). Recorded model steps run through the real harness and tools; the exact messages, events, tokens and files are snapshotted, so any behaviour change shows as a reviewable diff. See `docs/testing.md`.
 - Edit: `edit replace <path>` also takes `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks in `stdin` (the format models know from Aider): exact-text match, each SEARCH must hit exactly once, all blocks apply atomically, no line numbers. A missing final `>>>>>>> REPLACE` is tolerated (models stop after the new text); a truncated block in the middle gets a specific error. Line-numbered `--lines` still works. Motivation: `cat | sed` reads carry no line numbers, so models re-read ranges forever trying to count lines.
 - Harness: deterministic one-shot `[NUDGE]` appended to the observation after 6 consecutive read-only/verification steps following a file change, reminding the model to call `done` if the task is complete (0 static prompt tokens, #74).
