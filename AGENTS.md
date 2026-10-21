@@ -202,7 +202,8 @@ uv run mypy tether/
    - All model calls and I/O-bound tool executions must be `async`/`await` native, while seamlessly wrapping synchronous user `@tool` functions.
 3. **Graceful Degradation on 9B Hallucinations:**
    - Small models occasionally emit `cmd` with minor quirks (e.g., leading `$`, wrapping backticks, or calling a tool name directly instead of `act`). The multiplexer must normalize trivial syntax quirks deterministically before failing. This includes unescaping literal `\n`/`\t` in one-line `stdin` for `edit write`/`edit replace` and `done` (never `bash`).
-4. **Documentation Integrity:**
+4. **Golden traces:** behaviour the model sees (framing, folding, nudges, tool output) is locked by `tests/golden/*.snap.json`. A PR that changes it runs `UPDATE_GOLDEN=1 pytest tests/test_golden.py` and the snapshot diff is part of the review; unrelated traces must not change. See `docs/testing.md`.
+5. **Documentation Integrity:**
    - Keep `README.md` and `AGENTS.md` synchronized whenever architectural interfaces or built-in tool signatures change.
    - **Always update documentation in the same PR** when introducing a new feature, changing an existing behavior, or altering a CLI/SDK interface. This covers `README.md`, `AGENTS.md`, the MkDocs pages under `docs/` (including `docs/reference/*` for new modules), and a `docs/release-notes.md` entry. A change without matching docs is incomplete.
 
