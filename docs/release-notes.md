@@ -1,5 +1,12 @@
 # Release Notes
 
+## v0.2.4 (unreleased)
+
+### Fixes
+
+- Context: unfolded reads are tracked per path **and line range**. Viewing `f:55:65` used to evict the live `f:65:120` read, so the model ping-ponged between two ranges forever (found with `nvidia/nemotron-3-ultra-550b-a55b`, #69 follow-up).
+- Context: the unfolded-read window is now the last 8 files (was 4); a model cycling through 5 files evicted each read just before needing it and re-read forever (#69 follow-up).
+
 ## v0.2.3 (2026-10-20)
 
 Dogfooding fixes: the issues came from running Tether with a small model (GLM-5.3) on its own backlog.
@@ -15,7 +22,7 @@ Dogfooding fixes: the issues came from running Tether with a small model (GLM-5.
 - Skills now warn (`UserWarning`, 0 prompt tokens) at load when `tools.py` defines a `@tool` not listed in the skill `tools:` (#24).
 - Repeated multi-command cycles (e.g. `cat` / `sed` / `pytest`, or two alternating `sed -n` ranges) now trigger a deterministic `[CYCLE DETECTED]` nudge and a new `cycle_stall` event type, shown in `tether stats` as `CYCLES` (#39).
 - HTTP providers now retry timeouts, network errors and 429/5xx twice with backoff, honour `timeout` from `providers.yaml` for all kinds, and fail with a `ProviderError` naming provider, model and timeout instead of a bare `ReadTimeout` (#70).
-- Observation folding no longer makes small models re-read files in a loop: the latest read (`edit view <p>` / `bash cat|head|tail|sed -n <p>`) of each of the last 4 files stays unfolded until that path is edited (`edit write|replace`, or a bash write such as `sed -i`/`tee`) or re-read, and the fold/elision hint only mentions `mem recall` when `mem` is enabled (otherwise "re-run the command"). Static prompt prefix unchanged (#69).
+- Observation folding no longer makes small models re-read files in a loop: the latest read per path and line range (`edit view <p>` / `bash cat|head|tail|sed -n <p>`) of each of the last 4 files stays unfolded until that path is edited (`edit write|replace`, or a bash write such as `sed -i`/`tee`) or re-read, and the fold/elision hint only mentions `mem recall` when `mem` is enabled (otherwise "re-run the command"). Static prompt prefix unchanged (#69).
 - Clearer errors (#71): a provider 401/403 now fails with `ProviderError` naming the provider and the `api_key_env` / default key variable as missing or rejected (never its value), a declared `api_key_env` that is empty fails before the first request, and `unknown command` for a built-in tool that is not enabled says it is disabled and how to enable it (`--tools`, `tools=[...]`, skill `tools:`). Static prompt prefix unchanged.
 
 ## v0.2.2 (2026-10-19)

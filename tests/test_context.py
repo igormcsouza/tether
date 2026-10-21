@@ -257,3 +257,10 @@ def test_tombstone_hint_follows_mem_availability(tmp_path: Path) -> None:
     )
     flat = str(msgs)
     assert "mem recall" not in flat and "re-run the command for the full output" in flat
+
+
+def test_ranges_of_one_file_stay_live_together(tmp_path: Path) -> None:
+    text = _text(tmp_path, ["edit view a.py --lines 1:5", "edit view a.py --lines 6:9"])
+    assert _live(text, 1) and _live(text, 2)
+    text = _text(tmp_path / "r", ["edit view a.py --lines 1:5", "edit view a.py --lines 1:5"])
+    assert "obs_1 folded" in text and _live(text, 2)
