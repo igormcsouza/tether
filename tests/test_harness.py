@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -130,7 +131,7 @@ async def test_harness_lifecycle_and_edge_cases(
     with pytest.raises(ValueError, match="not found"):
         await h.execute_session("ses_missing")
 
-    store.update_session(sid_spawned, status="RUNNING")
+    store.update_session(sid_spawned, status="RUNNING", pid=os.getpid())
     assert (await h.send(sid_spawned, "while running")).status == "RUNNING"
     store.update_session(sid_spawned, status="COMPLETED")
     assert (await h.send(sid_spawned, "resume headless", headless=True)).status == "PENDING"
