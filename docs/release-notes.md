@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.2.4 (unreleased)
+
+### Fixes
+
+- Harness: `max_steps` is now the absolute session ceiling. `send` on a session that used its steps extends the ceiling to `step_count + <Harness budget>`, and a session paused earlier keeps its remaining budget, so `status` never shows `step_count` above `max_steps` (e.g. `46/40`) (#75).
+
 ## v0.2.3 (2026-10-20)
 
 Dogfooding fixes: the issues came from running Tether with a small model (GLM-5.3) on its own backlog.

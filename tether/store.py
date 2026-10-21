@@ -464,6 +464,7 @@ class SQLiteStore:
         add_completion_tokens: int | None = None,
         pid: int | None = None,
         tools: list[str] | None = None,
+        max_steps: int | None = None,
     ) -> None:
         updates: list[str] = ["updated_at = ?"]
         params: list[Any] = [time.time()]
@@ -494,6 +495,9 @@ class SQLiteStore:
         if tools is not None:
             updates.append("tools_json = ?")
             params.append(json.dumps(tools))
+        if max_steps is not None:
+            updates.append("max_steps = ?")
+            params.append(max_steps)
 
         params.append(session_id)
         with self._connect() as conn:

@@ -536,3 +536,26 @@ async def test_resolve_value_error_fails_session_with_tool_error(
     assert done.status == "FAILED" and done.result is not None
     assert done.result.startswith("Worker error: ValueError: providers.yaml")
     assert [t.event_type for t in harness.store.get_turns(rec.id)] == ["tool_error"]
+
+
+async def test_send_extends_exhausted_session_ceiling(tmp_path: Path) -> None:
+    """#75: `max_steps` is an absolute ceiling; resuming an exhausted session extends it."""
+
+    class NeverDoneProvider:
+        model_name = "qwen3.5:9b"
+
+        async def generate(self, messages: Any, tools: Any) -> ModelResponse:
+            return ModelResponse(content="Still thinking...")
+
+    h = Harness(db_path=tmp_path / "t.db", provider=NeverDoneProvider(), max_steps=3)
+    first = await h.run("goal")
+    assert (first.status, first.step_count, first.max_steps) == ("FAILED", 3, 3)
+
+    second = await h.send(first.id, "go on")
+    assert (second.status, second.step_count, second.max_steps) == ("FAILED", 6, 6)
+
+    # a session paused early keeps its larger remaining budget (no extension)
+    paused = h.create_session("g2")
+    h.store.update_session(paused.id, status="WAITING_INPUT", step_count=1, max_steps=10)
+    resumed = await h.send(paused.id, "continue")
+    assert (resumed.step_count, resumed.max_steps) == (10, 10)
