@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.2.4 (unreleased)
+
+### Fixes
+
+- Providers: `429` retries wait `Retry-After` (else 10s doubling, capped 30s) and get up to 5 attempts instead of 3 quick ones, so rate-limited hosted models (NVIDIA free tier) no longer fail the session after 3 quick attempts.
+
 ## v0.2.3 (2026-10-20)
 
 Dogfooding fixes: the issues came from running Tether with a small model (GLM-5.3) on its own backlog.

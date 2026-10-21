@@ -158,3 +158,25 @@ async def test_auth_failure_without_env_var_name() -> None:
 async def test_exhausted_error_includes_body_snippet() -> None:
     with pytest.raises(ProviderError, match="overloaded"):
         await _post(_client(lambda r: httpx.Response(503, text="overloaded")), [])
+
+
+async def test_429_waits_longer_and_honors_retry_after() -> None:
+    codes = iter([(429, {}), (429, {"retry-after": "7"}), (200, {})])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        code, headers = next(codes)
+        return httpx.Response(code, headers=headers)
+
+    sleeps: list[float] = []
+    resp = await _post(_client(handler), sleeps)
+    assert resp.status_code == 200 and sleeps == [10.0, 7.0]
+
+
+async def test_persistent_429_gets_more_attempts_with_capped_wait() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429)
+
+    sleeps: list[float] = []
+    with pytest.raises(ProviderError, match="5 attempts"):
+        await _post(_client(handler), sleeps)
+    assert sleeps == [10.0, 20.0, 30.0, 30.0]
