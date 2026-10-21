@@ -503,6 +503,31 @@ async def test_cycle_history_resets_after_nudge(tmp_path: Path) -> None:
     assert run.events == ["ok"] * 5 + ["cycle_stall"] + ["ok"] * 5 + ["cycle_stall", "completed"]
 
 
+async def test_quiet_nudge_after_six_quiet_steps(tmp_path: Path) -> None:
+    # First command is a change (ping), then 8 quiet commands (bash cat)
+    # Nudge should appear on the 6th quiet command (bash cat f5)
+    cmds = ["ping a.com"] + [f"bash cat f{i}" for i in range(8)]
+    run = await _run_commands(tmp_path, cmds)
+
+    # Check that exactly one observation contains the nudge
+    observations = run.provider.store.list_observations(run.session.id)
+    nudge_obs = [o for o in observations.values() if "[NUDGE]" in o.raw_output]
+    assert len(nudge_obs) == 1, f"Expected exactly one nudge, got {len(nudge_obs)}"
+
+    # The nudge should be on the 6th quiet command (step 7: ping + 6 quiet = step 7)
+    # Observations are 1-indexed by step
+    assert nudge_obs[0].step == 7, f"Nudge at step {nudge_obs[0].step}, expected 7"
+
+    # Also verify is_quiet function directly
+    from tether.harness import is_quiet
+
+    assert is_quiet("bash cat x")
+    assert not is_quiet("ping a.com")
+    assert is_quiet("git diff")
+    assert not is_quiet("git commit -m x")
+    assert not is_quiet("")
+
+
 async def test_empty_api_key_env_fails_session_naming_variable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
