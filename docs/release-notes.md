@@ -6,6 +6,10 @@
 
 - Tests: golden-trace replay (`tests/golden/`, `tests/test_golden.py`, `scripts/record_golden.py`). Recorded model steps run through the real harness and tools; the exact messages, events, tokens and files are snapshotted, so any behaviour change shows as a reviewable diff. See `docs/testing.md`.
 
+### Fixes
+
+- Store: a `RUNNING` session whose worker pid no longer exists is flipped to `FAILED` (`Worker died (pid N) before finishing`) when read via `get_session`/`list_sessions`, so `status`, `list`, `wait` and `read` no longer report a killed worker as running forever (#85). A pid owned by another user counts as alive.
+
 ## v0.2.3 (2026-10-20)
 
 Dogfooding fixes: the issues came from running Tether with a small model (GLM-5.3) on its own backlog.
