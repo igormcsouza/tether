@@ -18,4 +18,4 @@ step, event types, token estimates, final status/result and final workspace file
 
 Shipped traces: a real researcher run (web stubbed, plain-text `done` nudges), a synthetic
 coding run covering the edit failure modes seen with small models, and a `done --ask` /
-`send` resume. Add one for every behaviour that must not regress.
+`send` resume, and a range ping-pong (alternating views of one file; the latest read of each range stays unfolded, older ones fold). Add one for every behaviour that must not regress.
