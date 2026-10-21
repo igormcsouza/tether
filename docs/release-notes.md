@@ -5,6 +5,7 @@
 ### Features
 
 - Tests: golden-trace replay (`tests/golden/`, `tests/test_golden.py`, `scripts/record_golden.py`). Recorded model steps run through the real harness and tools; the exact messages, events, tokens and files are snapshotted, so any behaviour change shows as a reviewable diff. See `docs/testing.md`.
+- Edit: `edit replace <path>` also takes `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks in `stdin` (the format models know from Aider): exact-text match, each SEARCH must hit exactly once, all blocks apply atomically, no line numbers. A missing final `>>>>>>> REPLACE` is tolerated (models stop after the new text); a truncated block in the middle gets a specific error. Line-numbered `--lines` still works. Motivation: `cat | sed` reads carry no line numbers, so models re-read ranges forever trying to count lines.
 
 ### Fixes
 
@@ -15,6 +16,7 @@
 - Context: unfolded reads are tracked per path **and line range**. Viewing `f:55:65` used to evict the live `f:65:120` read, so the model ping-ponged between two ranges forever (found with `nvidia/nemotron-3-ultra-550b-a55b`, #69 follow-up).
 - Context: the unfolded-read window is now the last 8 files (was 4); a model cycling through 5 files evicted each read just before needing it and re-read forever (#69 follow-up).
 - Multiplexer: a trailing heredoc in `cmd` (`edit replace f --lines 1:1 <<'EOF'`) is now passed as `stdin` instead of failing with `requires replacement block in stdin` (never for `bash`). Found dogfooding `nvidia/nemotron-3-ultra-550b-a55b`, which never filled the `stdin` parameter in 150+ steps.
+- Edit: `edit replace|write` on a `.py` file that stops parsing (e.g. a one-line replacement that lost its indentation) now ends the tool result with `WARNING: ... no longer parses: <msg> at line N. Fix it now.` so the model self-heals next step instead of discovering it ten steps later via pytest. 0 prompt tokens.
 
 ## v0.2.3 (2026-10-20)
 

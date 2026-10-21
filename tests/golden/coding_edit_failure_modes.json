@@ -6,7 +6,7 @@
  "files": {
   "calc.py": "def total(xs):\n    t = 0\n    for x in xs:\n        t += x\n    return t - 1\n\n\ndef mean(xs):\n    return total(xs) / len(xs)\n"
  },
- "max_steps": 12,
+ "max_steps": 14,
  "phases": [
   {
    "steps": [
@@ -17,11 +17,15 @@
      "cmd": "edit view calc.py"
     },
     {
-     "cmd": "edit replace calc.py --lines 5:5",
-     "stdin": "return t"
+     "cmd": "edit replace calc.py --lines 4:4",
+     "stdin": "t += x"
     },
     {
-     "cmd": "edit replace calc.py --lines 5:5 <<'EOF'\n    return t\nEOF"
+     "cmd": "edit replace calc.py --lines 4:4 <<'EOF'\n        t += x\nEOF"
+    },
+    {
+     "cmd": "edit replace calc.py",
+     "stdin": "<<<<<<< SEARCH\n    return t - 1\n=======\n    return t\n>>>>>>> REPLACE"
     },
     {
      "cmd": "edit replace calc.py",
