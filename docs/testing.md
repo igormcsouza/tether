@@ -68,5 +68,7 @@ pipelines and sandbox monotonicity, the MCP server, `tether stats/retro/events/m
 openai/anthropic/command providers beyond the auth path, `web search`, a skill's own `tools.py`,
 `--no-network` (needs bwrap), and real-model-only checks such as the context budget (#81).
 
+**Merge gate (manual, because CI cannot run it):** before merging a PR run `TETHER_E2E=1 uv run pytest e2e`, paste the summary into the PR, and mitigate every failure: fix the code, fix a wrong scenario, or write down in the PR why it is acceptable and what follows up. No unexplained red scenario is merged.
+
 **Rule:** a new feature or bug fix ships with a scenario here. If a model must misbehave to
 trigger it, script the reply; if infrastructure must fail, add a fault to the proxy.
