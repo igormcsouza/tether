@@ -49,7 +49,7 @@ Reviewers and the Team Leader cite the failing line when they reject a change.
 - When `verify` gate commands are configured (via `Harness(verify=[...])`, CLI `--verify`, or Skill YAML `verify: [...]`), `Harness.execute_session` deterministically executes each command inside the session's `SandboxPolicy` before allowing `done` to transition to `COMPLETED` (consuming 0 static prompt tokens until a gate fails). A gate that errors instead of failing (sandbox violation, exit 124/126/127) ends the session `FAILED` at once as `gate_error` ("gate misconfigured"), without counting toward the consecutive-failure abort.
 
 ### Rule 4: Progressive `--help` (JIT Schema Disclosure)
-- The system prompt lists at most **1 line per enabled tool namespace** (`<name> : <short summary>`, target **≤ 12 tokens per entry**).
+- The system prompt lists at most **1 line per enabled tool namespace** (`- <name>: <short summary>`, target **≤ 12 tokens per entry**).
 - Full parameter signatures, defaults, and docstrings are revealed **Just-In-Time (JIT)** when:
   1. The model explicitly runs `<cmd> --help`, OR
   2. The model invokes `<cmd>` with missing/invalid arguments (self-healing error response, never an unhandled Python exception).
@@ -206,14 +206,15 @@ uv run mypy tether/
 3. **Graceful Degradation on 9B Hallucinations:**
    - Small models occasionally emit `cmd` with minor quirks (e.g., leading `$`, wrapping backticks, or calling a tool name directly instead of `act`). The multiplexer must normalize trivial syntax quirks deterministically before failing. This includes unescaping literal `\n`/`\t` in one-line `stdin` for `edit write`/`edit replace` and `done` (never `bash`), and turning a trailing shell heredoc in `cmd` (`edit write f <<'EOF' ... EOF`) into `stdin` (never for `bash`).
 4. **Golden traces:** behaviour the model sees (framing, folding, nudges, tool output) is locked by `tests/golden/*.snap.json`. A PR that changes it runs `UPDATE_GOLDEN=1 pytest tests/test_golden.py` and the snapshot diff is part of the review; unrelated traces must not change. See `docs/testing.md`.
-5. **Documentation Integrity:**
+5. **E2E scenarios:** every feature or bug fix ships with a scenario in `e2e/` (real CLI, real ollama behind a fault-injecting proxy, local only, `TETHER_E2E=1 uv run pytest e2e`). Assert on what tether sends and records, never on the model's skill; script the reply or inject the fault so the test does not depend on model potency. **Before merging any PR, run `TETHER_E2E=1 uv run pytest e2e` locally and put the result in the PR description (CI cannot run it). Every failure must be mitigated before merge: fix the code, or fix a wrong scenario, or record in the PR why it is acceptable and what follows up. A PR is not merged with an unexplained red scenario.** See `docs/testing.md`.
+6. **Documentation Integrity:**
    - Keep `README.md` and `AGENTS.md` synchronized whenever architectural interfaces or built-in tool signatures change.
    - **Always update documentation in the same PR** when introducing a new feature, changing an existing behavior, or altering a CLI/SDK interface. This covers `README.md`, `AGENTS.md`, the MkDocs pages under `docs/` (including `docs/reference/*` for new modules), and a `docs/release-notes.md` entry. A change without matching docs is incomplete.
 
 ## Dev team specifics
 - Stack: Python 3.12+, package `tether/`, tests in `tests/`, docs in `docs/` (MkDocs); `uv`, ruff, mypy
-- Checks: lint `uv run ruff check . && uv run ruff format --check .`; types `uv run mypy tether/`; tests `uv run pytest --cov=tether --cov-report=term-missing --cov-fail-under=100` (CI enforces 100% coverage)
-- E2E / QA: none beyond pytest; no shared single-instance resources
+- Checks: lint `uv run ruff check . && uv run ruff format --check .`; types `uv run mypy tether/`; tests `uv run pytest --cov=tether --cov-report=term-missing --cov-fail-under=100` (CI enforces 100% coverage); **e2e `TETHER_E2E=1 uv run pytest e2e` run locally before every merge, result in the PR, failures mitigated** (not in CI)
+- E2E / QA: `e2e/` scenarios (real CLI + ollama behind a fault-injecting proxy, local only); shared resource: the `tether-ollama` container (port 11435)
 - Branches/commits/PRs: Conventional Commits (`feat(scope): ... (#N)`, `release: vX.Y.Z ...`); PR per task, squash-merged to `main`; docs updated in the same PR (see section 5.4)
 - Delivery: PR per task
 - Hard stops (ask first): force push / history rewrite
