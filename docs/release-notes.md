@@ -10,6 +10,7 @@
 
 - Store: a `RUNNING` session whose worker pid no longer exists is flipped to `FAILED` (`Worker died (pid N) before finishing`) when read via `get_session`/`list_sessions`, so `status`, `list`, `wait` and `read` no longer report a killed worker as running forever (#85). A pid owned by another user counts as alive.
 - Providers: `429` retries wait `Retry-After` (else 10s doubling, capped 30s) and get up to 5 attempts instead of 3 quick ones, so rate-limited hosted models (NVIDIA free tier) no longer fail the session after 3 quick attempts.
+- Providers: each `post_with_retry` attempt is now bounded by a total `asyncio.wait_for(timeout)` deadline, so a trickling/stalled response cannot hang past the configured timeout; the deadline is retried like other transient errors and shows as `TimeoutError` (vs `ReadTimeout`) in the final `ProviderError` (#88).
 
 ## v0.2.3 (2026-10-20)
 
