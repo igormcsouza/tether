@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.2.4 (unreleased)
+
+### Features
+
+- Tests: golden-trace replay (`tests/golden/`, `tests/test_golden.py`, `scripts/record_golden.py`). Recorded model steps run through the real harness and tools; the exact messages, events, tokens and files are snapshotted, so any behaviour change shows as a reviewable diff. See `docs/testing.md`.
+
 ## v0.2.3 (2026-10-20)
 
 Dogfooding fixes: the issues came from running Tether with a small model (GLM-5.3) on its own backlog.
