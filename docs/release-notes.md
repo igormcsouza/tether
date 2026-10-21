@@ -1,5 +1,15 @@
 # Release Notes
 
+## v0.2.4 (unreleased)
+
+### Features
+
+- Edit: `edit replace <path>` also takes `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks in `stdin` (the format models know from Aider): exact-text match, each SEARCH must hit exactly once, all blocks apply atomically, no line numbers. Line-numbered `--lines` still works. Motivation: `cat | sed` reads carry no line numbers, so models re-read ranges forever trying to count lines.
+
+### Fixes
+
+- Edit: `edit replace|write` on a `.py` file that stops parsing (e.g. a one-line replacement that lost its indentation) now ends the tool result with `WARNING: ... no longer parses: <msg> at line N. Fix it now.` so the model self-heals next step instead of discovering it ten steps later via pytest. 0 prompt tokens.
+
 ## v0.2.3 (2026-10-20)
 
 Dogfooding fixes: the issues came from running Tether with a small model (GLM-5.3) on its own backlog.
