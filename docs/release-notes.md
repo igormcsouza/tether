@@ -1,6 +1,8 @@
 # Release Notes
 
-## v0.2.4 (unreleased)
+## v0.2.4 (2026-10-21)
+
+Dogfooding fixes: the four milestone bugs (#74 #75 #85 #88) plus the friction found by running Tether on its own backlog with `nvidia/nemotron-3-ultra-550b-a55b` (two of the fixes were first written by Tether itself from scoped briefs), and two new regression layers: golden-trace replay in CI and 54 local end-to-end scenarios.
 
 ### Features
 
