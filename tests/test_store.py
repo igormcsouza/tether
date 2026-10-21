@@ -6,6 +6,8 @@ import sqlite3
 import time
 from pathlib import Path
 
+import pytest
+
 from tether.store import (
     GLOBAL_SESSION_ID,
     SQLiteStore,
@@ -243,3 +245,72 @@ def test_telemetry_migration_and_stats_aggregation(tmp_path: Path) -> None:
     assert "Top Friction Offenders (by command):" in formatted
     assert "edit replace" in formatted
     store.close()
+
+
+def test_update_session_persists_max_steps(tmp_path: Path) -> None:
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    rec = store.create_session("g")
+    store.update_session(rec.id, max_steps=9)
+    got = store.get_session(rec.id)
+    assert got is not None and got.max_steps == 9
+
+
+def test_reap_dead_worker(tmp_path: Path) -> None:
+    """Test that RUNNING sessions with dead pids are marked FAILED (issue #85)."""
+    import os
+    import subprocess
+
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+
+    # Create a session
+    session = store.create_session("Test goal")
+    session_id = session.id
+
+    # Spawn a short-lived process and get its pid
+    proc = subprocess.Popen(["true"])
+    dead_pid = proc.pid
+    proc.wait()  # Wait for it to die
+
+    # Set session to RUNNING with the dead pid
+    store.update_session(session_id, status="RUNNING", pid=dead_pid)
+
+    # get_session should reap it and return FAILED
+    rec = store.get_session(session_id)
+    assert rec is not None
+    assert rec.status == "FAILED"
+    assert f"Worker died (pid {dead_pid})" in rec.result
+
+    # Test with a live pid (current process) - should stay RUNNING
+    session2 = store.create_session("Test goal 2")
+    session2_id = session2.id
+    live_pid = os.getpid()
+    store.update_session(session2_id, status="RUNNING", pid=live_pid)
+
+    rec2 = store.get_session(session2_id)
+    assert rec2 is not None
+    assert rec2.status == "RUNNING"
+
+    # Test list_sessions also reaps
+    sessions = store.list_sessions()
+    failed_sessions = [s for s in sessions if s.id == session_id]
+    assert len(failed_sessions) == 1
+    assert failed_sessions[0].status == "FAILED"
+
+    running_sessions = [s for s in sessions if s.id == session2_id]
+    assert len(running_sessions) == 1
+    assert running_sessions[0].status == "RUNNING"
+
+    store.close()
+
+
+def test_reap_dead_keeps_other_users_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = SQLiteStore(db_path=tmp_path / "tether.db")
+    rec = store.create_session("g")
+    store.update_session(rec.id, status="RUNNING", pid=1)
+
+    def deny(pid: int, sig: int) -> None:
+        raise PermissionError
+
+    monkeypatch.setattr("os.kill", deny)
+    got = store.get_session(rec.id)
+    assert got is not None and got.status == "RUNNING"

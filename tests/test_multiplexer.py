@@ -112,3 +112,18 @@ async def test_disabled_builtin_vs_unknown_command() -> None:
     assert unknown.output.startswith("Error: unknown command `frobnicate`.")
     assert "Enabled tools: ping." in unknown.output and "disabled" not in unknown.output
     assert (await mux.execute("ping")).output == "pong"
+
+
+async def test_heredoc_in_cmd_becomes_stdin(tmp_path: Path) -> None:
+    """`edit write f <<'EOF'` works like stdin; bash keeps its own heredoc."""
+    from tether.multiplexer import split_heredoc
+
+    assert split_heredoc("edit write f <<'EOF'\nhi\nEOF") == ("edit write f", "hi")
+    assert split_heredoc("done") == ("done", None)
+    sandbox = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
+    harness = Harness(db_path=tmp_path / "t.db", tools=["edit", "bash"], sandbox=sandbox)
+    mux = harness.build_multiplexer("ses_hd", ["edit", "bash"], sandbox, "ollama/qwen3.5:9b")
+    out = await mux.execute("edit write f.txt <<'EOF'\nhello\nEOF")
+    assert not out.is_error and (tmp_path / "f.txt").read_text().strip() == "hello"
+    out = await mux.execute("bash cat <<'EOF'\nkeep\nEOF")
+    assert "keep" in out.output
