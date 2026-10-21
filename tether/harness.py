@@ -360,6 +360,11 @@ class Harness:
             return rec
 
         # Session was WAITING_INPUT/IDLE/COMPLETED/FAILED -> resume it
+        # Extend max_steps if the session exhausted its budget (step_count == max_steps).
+        # For a paused session (e.g. WAITING_INPUT at 5/40), keep remaining budget.
+        new_max = max(rec.max_steps, rec.step_count + self.max_steps)
+        self.store.update_session(session_id, max_steps=new_max)
+
         if headless:
             self.store.update_session(session_id, status="PENDING")
             spawner = self._spawner_for_store()
@@ -590,7 +595,7 @@ class Harness:
         self.store.update_session(session_id, status="RUNNING", pid=os.getpid())
 
         step_start = rec.step_count
-        step_limit = step_start + rec.max_steps
+        step_limit = rec.max_steps
         last_action_sig: tuple[str, str | None] | None = None
         action_history: list[tuple[str, str | None]] = []
         consecutive_verify_failures = 0

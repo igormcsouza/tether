@@ -61,7 +61,7 @@ Reviewers and the Team Leader cite the failing line when they reject a change.
   ```text
   [obs_3 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_3` to expand]
   ```
-- Exception: the latest read of each of the last 4 files (`edit view <p>`, `bash cat/head/tail/sed -n <p>`; paths normalized against the workspace) is not folded until `<p>` is edited (`edit write|replace`, or any other bash command naming it: `sed -i`, `tee`, redirects, `python -c`) or re-read. The 2,400-char head+tail elision still applies, and the hard context budget remains #81. The `mem recall` hint is shown only when `mem` is enabled (else "re-run the command").
+- Exception: the latest read of each of the last 8 files (`edit view <p>`, `bash cat/head/tail/sed -n <p>`; paths normalized against the workspace) is not folded until `<p>` is edited (`edit write|replace`, or any other bash command naming it: `sed -i`, `tee`, redirects, `python -c`) or re-read. The 2,400-char head+tail elision still applies, and the hard context budget remains #81. The `mem recall` hint is shown only when `mem` is enabled (else "re-run the command").
 - History is replayed as structured `tool_calls` + `tool` results (providers with `structured_history = True`; textual `act('...')` form only as fallback), with `stdin` replayed as a real 400-char prefix, never a `<N chars>` placeholder. A call and its result are trimmed together.
 
 ### Rule 6: Deterministic Security Envelope (Never Trust the LLM for Safety)
@@ -127,6 +127,8 @@ tether/
   - `tether stats [--model <m>] [--skill <s>] [--limit <n>]` aggregates per-model pass rates, cumulative token economy (`total_prompt_tokens + total_completion_tokens`), step latency, and self-healing ACI friction (`nudge`, `loop_stall`, `cycle_stall`, `syntax_error`, `tool_error`, `gate_fail`, `gate_error`), plus a top-offenders breakdown by tool command.
 - **Post-Mortem Distillation (`tether retro <session_id> [--apply] [--model <m>]`):** offline only (never mutates a live prompt). `store.extract_friction_trace` pulls `inbox` corrections and `loop_stall`/`cycle_stall`/`syntax_error`/`tool_error`/`gate_fail`/`gate_error` turns (+ the fixing command); one bounded LLM pass yields ≤2 rules (≤30 tokens each, deduped against existing rules). Prints a unified diff of `SKILL.md`; `--apply` appends under `## Learned Rules` (or pins to project memory when no skill was used).
 - **Headless Worker & Live `send` Contract:**
+  - `max_steps` is the absolute session ceiling. `send` on a session that used its steps extends it to `step_count + <Harness budget>` (a session paused earlier keeps its remaining budget), so `step_count` never exceeds `max_steps` (#75).
+  - `SQLiteStore.get_session`/`list_sessions` reap dead workers: a `RUNNING` session whose stored `pid` is gone becomes `FAILED` with `Worker died (pid N) before finishing` (#85).
   - `tether run --headless ...` creates the session row in SQLite and spawns `python -m tether.cli _worker <session_id>` via `subprocess.Popen(..., start_new_session=True)`, printing `<session_id>` immediately to stdout.
   - Before each step, the running worker queries `inbox WHERE session_id = ? AND consumed = 0` and injects any new user/parent messages into the conversation.
   - If `tether send <session_id> "msg"` (or `agent send`) is called when the session is `WAITING_INPUT`, `COMPLETED`, or `FAILED`, it inserts the message into `inbox`, sets status back to `RUNNING`/`PENDING`, and spawns/resumes the worker from the persisted SQLite state.
@@ -169,7 +171,7 @@ tether/
   - `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` (default `https://api.anthropic.com`)
 
 ---
-- **Timeout/retry (#70):** `providers.yaml` `timeout` applies to every kind; HTTP providers retry timeouts/network errors/429/5xx twice (`post_with_retry` in `providers/base.py`) then raise `ProviderError` naming provider, model and timeout.
+- **Timeout/retry (#70):** `providers.yaml` `timeout` applies to every kind; HTTP providers retry timeouts/network errors/429/5xx twice (`post_with_retry` in `providers/base.py`) then raise `ProviderError` naming provider, model and timeout; each attempt is also bounded by a total `asyncio.wait_for(timeout)` deadline (#88).
 - **Context config (#54):** `max_context_tokens` / `fold_observations_after` resolve as explicit argument (`--context-tokens` / `--fold-after`, MCP `context_tokens` / `fold_after`) > `providers.yaml` entry keys `context_tokens` / `fold_after` > defaults 8192 / 2.
 
 ## 4. Development Workflow & Commands
@@ -202,7 +204,8 @@ uv run mypy tether/
    - All model calls and I/O-bound tool executions must be `async`/`await` native, while seamlessly wrapping synchronous user `@tool` functions.
 3. **Graceful Degradation on 9B Hallucinations:**
    - Small models occasionally emit `cmd` with minor quirks (e.g., leading `$`, wrapping backticks, or calling a tool name directly instead of `act`). The multiplexer must normalize trivial syntax quirks deterministically before failing. This includes unescaping literal `\n`/`\t` in one-line `stdin` for `edit write`/`edit replace` and `done` (never `bash`), and turning a trailing shell heredoc in `cmd` (`edit write f <<'EOF' ... EOF`) into `stdin` (never for `bash`).
-4. **Documentation Integrity:**
+4. **Golden traces:** behaviour the model sees (framing, folding, nudges, tool output) is locked by `tests/golden/*.snap.json`. A PR that changes it runs `UPDATE_GOLDEN=1 pytest tests/test_golden.py` and the snapshot diff is part of the review; unrelated traces must not change. See `docs/testing.md`.
+5. **Documentation Integrity:**
    - Keep `README.md` and `AGENTS.md` synchronized whenever architectural interfaces or built-in tool signatures change.
    - **Always update documentation in the same PR** when introducing a new feature, changing an existing behavior, or altering a CLI/SDK interface. This covers `README.md`, `AGENTS.md`, the MkDocs pages under `docs/` (including `docs/reference/*` for new modules), and a `docs/release-notes.md` entry. A change without matching docs is incomplete.
 

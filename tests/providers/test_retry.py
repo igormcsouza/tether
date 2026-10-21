@@ -158,3 +158,53 @@ async def test_auth_failure_without_env_var_name() -> None:
 async def test_exhausted_error_includes_body_snippet() -> None:
     with pytest.raises(ProviderError, match="overloaded"):
         await _post(_client(lambda r: httpx.Response(503, text="overloaded")), [])
+
+
+async def test_total_deadline_per_attempt() -> None:
+    """A stalled/trickling response is bounded by asyncio.wait_for(timeout)."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1)  # longer than the 0.05s deadline
+        return httpx.Response(200)
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    client = _client(handler)
+    with pytest.raises(ProviderError) as exc:
+        await post_with_retry(
+            client,
+            "http://x/y",
+            provider="p",
+            model="m",
+            timeout=0.05,
+            retries=1,
+            sleep=no_sleep,
+            json={},
+        )
+    msg = str(exc.value)
+    assert "TimeoutError" in msg
+    assert "timeout 0.05s" in msg
+    assert "2 attempts" in msg
+
+
+async def test_429_waits_longer_and_honors_retry_after() -> None:
+    codes = iter([(429, {}), (429, {"retry-after": "7"}), (200, {})])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        code, headers = next(codes)
+        return httpx.Response(code, headers=headers)
+
+    sleeps: list[float] = []
+    resp = await _post(_client(handler), sleeps)
+    assert resp.status_code == 200 and sleeps == [10.0, 7.0]
+
+
+async def test_persistent_429_gets_more_attempts_with_capped_wait() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429)
+
+    sleeps: list[float] = []
+    with pytest.raises(ProviderError, match="5 attempts"):
+        await _post(_client(handler), sleeps)
+    assert sleeps == [10.0, 20.0, 30.0, 30.0]
