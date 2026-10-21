@@ -1,0 +1,38 @@
+{
+ "goal": "Understand big.py",
+ "tools": [
+  "edit"
+ ],
+ "files": {
+  "big.py": "def function_number_0():\n    return 'value number 0 padded to be long enough'\n\ndef function_number_1():\n    return 'value number 1 padded to be long enough'\n\ndef function_number_2():\n    return 'value number 2 padded to be long enough'\n\ndef function_number_3():\n    return 'value number 3 padded to be long enough'\n\ndef function_number_4():\n    return 'value number 4 padded to be long enough'\n\ndef function_number_5():\n    return 'value number 5 padded to be long enough'\n\ndef function_number_6():\n    return 'value number 6 padded to be long enough'\n\ndef function_number_7():\n    return 'value number 7 padded to be long enough'\n\ndef function_number_8():\n    return 'value number 8 padded to be long enough'\n\ndef function_number_9():\n    return 'value number 9 padded to be long enough'\n\ndef function_number_10():\n    return 'value number 10 padded to be long enough'\n\ndef function_number_11():\n    return 'value number 11 padded to be long enough'\n\ndef function_number_12():\n    return 'value number 12 padded to be long enough'\n\ndef function_number_13():\n    return 'value number 13 padded to be long enough'\n\ndef function_number_14():\n    return 'value number 14 padded to be long enough'\n\ndef function_number_15():\n    return 'value number 15 padded to be long enough'\n\ndef function_number_16():\n    return 'value number 16 padded to be long enough'\n\ndef function_number_17():\n    return 'value number 17 padded to be long enough'\n\ndef function_number_18():\n    return 'value number 18 padded to be long enough'\n\ndef function_number_19():\n    return 'value number 19 padded to be long enough'\n\ndef function_number_20():\n    return 'value number 20 padded to be long enough'\n\ndef function_number_21():\n    return 'value number 21 padded to be long enough'\n\ndef function_number_22():\n    return 'value number 22 padded to be long enough'\n\ndef function_number_23():\n    return 'value number 23 padded to be long enough'\n\ndef function_number_24():\n    return 'value number 24 padded to be long enough'\n\ndef function_number_25():\n    return 'value number 25 padded to be long enough'\n\ndef function_number_26():\n    return 'value number 26 padded to be long enough'\n\ndef function_number_27():\n    return 'value number 27 padded to be long enough'\n\ndef function_number_28():\n    return 'value number 28 padded to be long enough'\n\ndef function_number_29():\n    return 'value number 29 padded to be long enough'\n\ndef function_number_30():\n    return 'value number 30 padded to be long enough'\n\ndef function_number_31():\n    return 'value number 31 padded to be long enough'\n\ndef function_number_32():\n    return 'value number 32 padded to be long enough'\n\ndef function_number_33():\n    return 'value number 33 padded to be long enough'\n\ndef function_number_34():\n    return 'value number 34 padded to be long enough'\n\ndef function_number_35():\n    return 'value number 35 padded to be long enough'\n\ndef function_number_36():\n    return 'value number 36 padded to be long enough'\n\ndef function_number_37():\n    return 'value number 37 padded to be long enough'\n\ndef function_number_38():\n    return 'value number 38 padded to be long enough'\n\ndef function_number_39():\n    return 'value number 39 padded to be long enough'\n\n"
+ },
+ "max_steps": 10,
+ "phases": [
+  {
+   "steps": [
+    {
+     "cmd": "edit view big.py --lines 1:40"
+    },
+    {
+     "cmd": "edit view big.py --lines 41:80"
+    },
+    {
+     "cmd": "edit view big.py --lines 1:40"
+    },
+    {
+     "cmd": "edit view big.py --lines 41:80"
+    },
+    {
+     "cmd": "edit view big.py --lines 1:40"
+    },
+    {
+     "cmd": "edit view big.py --lines 41:80"
+    },
+    {
+     "cmd": "done",
+     "stdin": "read it"
+    }
+   ]
+  }
+ ]
+}
