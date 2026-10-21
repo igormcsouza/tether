@@ -18,6 +18,7 @@ from typing import Any
 
 import httpx
 import pytest
+import yaml
 
 from e2e.proxy import Chaos
 
@@ -68,8 +69,37 @@ class Tether:
         self.home.mkdir()
         providers = tmp / "providers.yaml"
         providers.write_text(
-            f"e2e:\n  kind: ollama\n  host: {chaos.url}\n  timeout: {timeout}\n"
-            f"e2eauth:\n  kind: openai\n  base_url: {chaos.url}/v1\n  api_key_env: E2E_KEY\n"
+            yaml.safe_dump(
+                {
+                    "e2e": {"kind": "ollama", "host": chaos.url, "timeout": timeout},
+                    "e2eauth": {
+                        "kind": "openai",
+                        "base_url": f"{chaos.url}/v1",
+                        "api_key_env": "E2E_KEY",
+                    },
+                    "e2eopenai": {
+                        "kind": "openai",
+                        "base_url": f"{chaos.url}/openai/v1",
+                        "api_key_env": "E2E_KEY",
+                    },
+                    "e2eanthropic": {
+                        "kind": "anthropic",
+                        "base_url": f"{chaos.url}/anthropic",
+                        "api_key_env": "E2E_KEY",
+                    },
+                    "e2ecmd": {
+                        "kind": "command",
+                        "argv": [sys.executable, str(tmp / "cmd_model.py")],
+                        "stdin": "{conversation}",
+                        "reply": "result",
+                        "timeout": 30,
+                    },
+                }
+            )
+        )
+        (tmp / "cmd_model.py").write_text(
+            "import json,sys\nsys.stdin.read()\n"
+            "print(json.dumps({'result': 'act(\"done\", stdin=\"from command\")'}))\n"
         )
         env = {
             k: v for k, v in os.environ.items() if not k.endswith("_API_KEY") and k != "OLLAMA_HOST"

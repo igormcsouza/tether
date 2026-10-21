@@ -62,11 +62,21 @@ ollama does not answer. A scenario tagged *model* runs once per model in `TETHER
 | One done-nudge after a quiet stretch (#74) | `quiet_stretch_after_a_change...` | scripted |
 | Folding to a recallable tombstone (Rule 5), per-range reads (#99) | `old_observations_fold...`, `two_ranges_of_one_file...` | scripted |
 | `mem` pin/search; skills enable tools without touching the schema | `mem_pins_...`, `skill_enables_its_tools...` | scripted |
+| Sub-agents: spawn is async, `wait` digest is compact, `read --full`, `query`, `send` resumes a finished child | `test_agents::agent_*` | scripted |
+| Child sandbox never wider than its parent | `child_sandbox_is_never_wider_than_the_parent` | scripted |
+| Pipelines: stages in order, upstream digest reaches the next stage, `act` stays the only schema | `pipeline_runs_stages_in_order...` | scripted |
+| OpenAI and Anthropic wire formats, declared `command` provider | `test_surface::*_wire_format`, `declared_command_provider` | scripted |
+| `web search` via `SEARXNG_URL`, `web fetch` (private hosts allowed explicitly) | `web_search_uses_searxng_override`, `web_fetch_reads_a_page...` | scripted |
+| A skill's own `tools.py`: listed tool runs, unlisted stays unknown and warns | `skill_tools_py_runs_when_listed`, `skill_tool_not_listed...` | scripted |
+| `stats` / `events` / `misses`; `retro` never edits a skill without `--apply` | `stats_events_and_misses...`, `retro_proposes_rules...` | scripted |
+| MCP server over stdio runs a session | `mcp_server_runs_a_session_over_stdio` | scripted |
+| `--no-network` cuts what the default allows (with a control), hard context budget trims old history (with a control) | `test_limits::*` | scripted |
 
-**Not covered yet** (add a scenario when touching them): sub-agents (`agent spawn/wait/query`),
-pipelines and sandbox monotonicity, the MCP server, `tether stats/retro/events/misses`, the
-openai/anthropic/command providers beyond the auth path, `web search`, a skill's own `tools.py`,
-`--no-network` (needs bwrap), and real-model-only checks such as the context budget (#81).
+**Not covered yet** (add a scenario when touching them): the `claude`/`vllm` flavours of the HTTP
+providers beyond the wire format, Anthropic prompt caching, `web fetch` against the real SSRF
+list beyond loopback and metadata, `tether pipeline` verify gates and per-stage model routing,
+`mem pin --project` across sessions, `retro --apply`, and the real-model-only checks that need a
+judge (answer quality).
 
 **Merge gate (manual, because CI cannot run it):** before merging a PR run `TETHER_E2E=1 uv run pytest e2e`, paste the summary into the PR, and mitigate every failure: fix the code, fix a wrong scenario, or write down in the PR why it is acceptable and what follows up. No unexplained red scenario is merged.
 
