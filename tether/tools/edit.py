@@ -9,7 +9,8 @@ import re
 from tether.decorator import ToolSpec, build_tool_spec
 from tether.sandbox import SandboxPolicy
 
-_BLOCK_RE = re.compile(r"<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n?>>>>>>> REPLACE", re.DOTALL)
+# The closing marker is optional at the very end: models often stop after the new text.
+_BLOCK_RE = re.compile(r"<<<<<<< SEARCH\n(.*?)\n=======\n(.*?)\n?(?:>>>>>>> REPLACE|\Z)", re.DOTALL)
 
 
 def _apply_blocks(text: str, stdin: str) -> str | tuple[str, int]:
@@ -18,6 +19,8 @@ def _apply_blocks(text: str, stdin: str) -> str | tuple[str, int]:
     if not blocks:
         return "no complete `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` block in stdin."
     for i, (old, new) in enumerate(blocks, 1):
+        if "<<<<<<< SEARCH" in new:
+            return f"SEARCH block {i} is missing its `>>>>>>> REPLACE` line; nothing changed."
         n = text.count(old)
         if n != 1:
             how = "not found (exact text, incl. indentation)" if n == 0 else f"matches {n} times"

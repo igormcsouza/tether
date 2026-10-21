@@ -128,3 +128,15 @@ async def test_search_replace_blocks(tmp_path: Path) -> None:
         stdin="<<<<<<< SEARCH\n    return 1\n=======\nreturn 1\n>>>>>>> REPLACE",
     )
     assert "WARNING" in out.output
+
+
+async def test_search_replace_tolerates_missing_final_marker(tmp_path: Path) -> None:
+    mux = _mux(tmp_path)
+    f = tmp_path / "a.txt"
+    f.write_text("a\nb\n")
+    out = await mux.execute("edit replace a.txt", stdin="<<<<<<< SEARCH\na\n=======\nA")
+    assert out.output == "Replaced 1 block(s) in `a.txt`." and f.read_text() == "A\nb\n"
+    # a truncated block in the middle must not swallow the next one
+    two = "<<<<<<< SEARCH\nb\n=======\nB\n<<<<<<< SEARCH\nA\n=======\nZ\n>>>>>>> REPLACE"
+    out = await mux.execute("edit replace a.txt", stdin=two)
+    assert "block 1 is missing its `>>>>>>> REPLACE`" in out.output and f.read_text() == "A\nb\n"

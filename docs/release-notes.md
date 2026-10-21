@@ -4,7 +4,7 @@
 
 ### Features
 
-- Edit: `edit replace <path>` also takes `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks in `stdin` (the format models know from Aider): exact-text match, each SEARCH must hit exactly once, all blocks apply atomically, no line numbers. Line-numbered `--lines` still works. Motivation: `cat | sed` reads carry no line numbers, so models re-read ranges forever trying to count lines.
+- Edit: `edit replace <path>` also takes `<<<<<<< SEARCH` / `=======` / `>>>>>>> REPLACE` blocks in `stdin` (the format models know from Aider): exact-text match, each SEARCH must hit exactly once, all blocks apply atomically, no line numbers. A missing final `>>>>>>> REPLACE` is tolerated (models stop after the new text); a truncated block in the middle gets a specific error. Line-numbered `--lines` still works. Motivation: `cat | sed` reads carry no line numbers, so models re-read ranges forever trying to count lines.
 
 ### Fixes
 
