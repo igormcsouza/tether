@@ -14,6 +14,7 @@
 - Harness: `max_steps` is now the absolute session ceiling. `send` on a session that used its steps extends the ceiling to `step_count + <Harness budget>`, and a session paused earlier keeps its remaining budget, so `status` never shows `step_count` above `max_steps` (e.g. `46/40`) (#75).
 - Context: unfolded reads are tracked per path **and line range**. Viewing `f:55:65` used to evict the live `f:65:120` read, so the model ping-ponged between two ranges forever (found with `nvidia/nemotron-3-ultra-550b-a55b`, #69 follow-up).
 - Context: the unfolded-read window is now the last 8 files (was 4); a model cycling through 5 files evicted each read just before needing it and re-read forever (#69 follow-up).
+- Multiplexer: a trailing heredoc in `cmd` (`edit replace f --lines 1:1 <<'EOF'`) is now passed as `stdin` instead of failing with `requires replacement block in stdin` (never for `bash`). Found dogfooding `nvidia/nemotron-3-ultra-550b-a55b`, which never filled the `stdin` parameter in 150+ steps.
 
 ## v0.2.3 (2026-10-20)
 
