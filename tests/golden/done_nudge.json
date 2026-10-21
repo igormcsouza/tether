@@ -1,0 +1,45 @@
+{
+ "goal": "Write a.txt",
+ "tools": [
+  "edit"
+ ],
+ "max_steps": 14,
+ "phases": [
+  {
+   "steps": [
+    {
+     "cmd": "edit write a.txt",
+     "stdin": "hello world, this line is long enough to keep around for the nudge trace\n"
+    },
+    {
+     "cmd": "edit view a.txt --lines 1:1"
+    },
+    {
+     "cmd": "edit view a.txt --lines 1:2"
+    },
+    {
+     "cmd": "edit view a.txt --lines 1:3"
+    },
+    {
+     "cmd": "edit view a.txt --lines 1:4"
+    },
+    {
+     "cmd": "edit view a.txt --lines 1:5"
+    },
+    {
+     "cmd": "edit view a.txt --lines 1:6"
+    },
+    {
+     "cmd": "edit view a.txt --lines 1:7"
+    },
+    {
+     "cmd": "edit view a.txt --lines 1:8"
+    },
+    {
+     "cmd": "done",
+     "stdin": "written"
+    }
+   ]
+  }
+ ]
+}

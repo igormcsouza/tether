@@ -47,6 +47,28 @@ def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list
     return None
 
 
+# Quiet nudge: one-shot completion hint after N consecutive read-only/verification steps
+QUIET_NUDGE_STEPS = 6
+_QUIET = {"cat", "head", "tail", "grep", "rg", "ls", "find", "wc", "pytest", "ruff", "mypy"}
+
+
+def is_quiet(cmd: str) -> bool:
+    """Return True if `cmd` is a read-only or verification command."""
+    argv = cmd.split()
+    argv = argv[1:] if argv[:1] == ["bash"] else argv
+    if not argv:
+        return False
+    if argv[0] in _QUIET:
+        return True
+    if argv[:2] == ["edit", "view"]:
+        return True
+    if argv[0] == "git" and argv[1:2] in (["diff"], ["log"], ["status"], ["show"]):
+        return True
+    if argv[0] == "sed" and "-n" in argv:
+        return True
+    return False
+
+
 def spawn_detached_worker(db_path: Path, session_id: str) -> int:
     """Spawn a detached OS background worker (`python -m tether.cli _worker <session_id>`)."""
     env = dict(os.environ)
@@ -600,6 +622,11 @@ class Harness:
         action_history: list[tuple[str, str | None]] = []
         consecutive_verify_failures = 0
 
+        # Quiet nudge state
+        changed = False
+        quiet_run = 0
+        nudged = False
+
         try:
             for step in range(step_start + 1, step_limit + 1):
                 # 1. Poll SQLite inbox before each reasoning step
@@ -885,18 +912,35 @@ class Harness:
                 elif dispatch.is_error:
                     self.store.update_turn_telemetry(assistant_turn_id, event_type="tool_error")
 
+                # Quiet nudge: track consecutive read-only/verification steps after a change
+                if is_quiet(cmd):
+                    quiet_run += 1
+                else:
+                    changed = True
+                    quiet_run = 0
+                    nudged = False
+
+                # One-shot nudge after QUIET_NUDGE_STEPS quiet steps following a change
+                out = dispatch.output
+                if changed and not nudged and quiet_run >= QUIET_NUDGE_STEPS:
+                    out += (
+                        f"\n[NUDGE] No file changes for {QUIET_NUDGE_STEPS} steps. If the task is "
+                        "complete call `done`; otherwise make your next edit."
+                    )
+                    nudged = True
+
                 # Record tool observation in SQLite (auto-chunks into FTS5)
                 obs = self.store.add_observation(
                     session_id=session_id,
                     step=step,
                     cmd=cmd,
-                    raw_output=dispatch.output,
+                    raw_output=out,
                 )
                 self.store.add_turn(
                     session_id=session_id,
                     step=step,
                     role="tool",
-                    content=dispatch.output,
+                    content=out,
                     obs_id=obs.id,
                     duration_ms=tool_duration_ms,
                 )
