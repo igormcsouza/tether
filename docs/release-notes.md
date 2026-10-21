@@ -2,8 +2,16 @@
 
 ## v0.2.4 (unreleased)
 
+### Features
+
+- Tests: golden-trace replay (`tests/golden/`, `tests/test_golden.py`, `scripts/record_golden.py`). Recorded model steps run through the real harness and tools; the exact messages, events, tokens and files are snapshotted, so any behaviour change shows as a reviewable diff. See `docs/testing.md`.
+
 ### Fixes
 
+- Store: a `RUNNING` session whose worker pid no longer exists is flipped to `FAILED` (`Worker died (pid N) before finishing`) when read via `get_session`/`list_sessions`, so `status`, `list`, `wait` and `read` no longer report a killed worker as running forever (#85). A pid owned by another user counts as alive.
+- Providers: `429` retries wait `Retry-After` (else 10s doubling, capped 30s) and get up to 5 attempts instead of 3 quick ones, so rate-limited hosted models (NVIDIA free tier) no longer fail the session after 3 quick attempts.
+- Providers: each `post_with_retry` attempt is now bounded by a total `asyncio.wait_for(timeout)` deadline, so a trickling/stalled response cannot hang past the configured timeout; the deadline is retried like other transient errors and shows as `TimeoutError` (vs `ReadTimeout`) in the final `ProviderError` (#88).
+- Harness: `max_steps` is now the absolute session ceiling. `send` on a session that used its steps extends the ceiling to `step_count + <Harness budget>`, and a session paused earlier keeps its remaining budget, so `status` never shows `step_count` above `max_steps` (e.g. `46/40`) (#75).
 - Context: unfolded reads are tracked per path **and line range**. Viewing `f:55:65` used to evict the live `f:65:120` read, so the model ping-ponged between two ranges forever (found with `nvidia/nemotron-3-ultra-550b-a55b`, #69 follow-up).
 - Context: the unfolded-read window is now the last 8 files (was 4); a model cycling through 5 files evicted each read just before needing it and re-read forever (#69 follow-up).
 
@@ -22,7 +30,7 @@ Dogfooding fixes: the issues came from running Tether with a small model (GLM-5.
 - Skills now warn (`UserWarning`, 0 prompt tokens) at load when `tools.py` defines a `@tool` not listed in the skill `tools:` (#24).
 - Repeated multi-command cycles (e.g. `cat` / `sed` / `pytest`, or two alternating `sed -n` ranges) now trigger a deterministic `[CYCLE DETECTED]` nudge and a new `cycle_stall` event type, shown in `tether stats` as `CYCLES` (#39).
 - HTTP providers now retry timeouts, network errors and 429/5xx twice with backoff, honour `timeout` from `providers.yaml` for all kinds, and fail with a `ProviderError` naming provider, model and timeout instead of a bare `ReadTimeout` (#70).
-- Observation folding no longer makes small models re-read files in a loop: the latest read per path and line range (`edit view <p>` / `bash cat|head|tail|sed -n <p>`) of each of the last 4 files stays unfolded until that path is edited (`edit write|replace`, or a bash write such as `sed -i`/`tee`) or re-read, and the fold/elision hint only mentions `mem recall` when `mem` is enabled (otherwise "re-run the command"). Static prompt prefix unchanged (#69).
+- Observation folding no longer makes small models re-read files in a loop: the latest read (`edit view <p>` / `bash cat|head|tail|sed -n <p>`) of each of the last 4 files stays unfolded until that path is edited (`edit write|replace`, or a bash write such as `sed -i`/`tee`) or re-read, and the fold/elision hint only mentions `mem recall` when `mem` is enabled (otherwise "re-run the command"). Static prompt prefix unchanged (#69).
 - Clearer errors (#71): a provider 401/403 now fails with `ProviderError` naming the provider and the `api_key_env` / default key variable as missing or rejected (never its value), a declared `api_key_env` that is empty fails before the first request, and `unknown command` for a built-in tool that is not enabled says it is disabled and how to enable it (`--tools`, `tools=[...]`, skill `tools:`). Static prompt prefix unchanged.
 
 ## v0.2.2 (2026-10-19)

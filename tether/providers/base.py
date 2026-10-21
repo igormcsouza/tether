@@ -59,7 +59,7 @@ def auth_message(
 
 
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
-_TRANSIENT = (httpx.TimeoutException, httpx.NetworkError)
+_TRANSIENT = (httpx.TimeoutException, httpx.NetworkError, TimeoutError)
 
 
 async def post_with_retry(
@@ -85,21 +85,29 @@ async def post_with_retry(
     """
     sleep = sleep or asyncio.sleep  # resolved at call time so tests can patch it
     last = ""
-    for attempt in range(retries + 1):
+    delay = 0.0
+    attempt = -1
+    while (attempt := attempt + 1) <= retries:
         if attempt:
-            await sleep(backoff * 2 ** (attempt - 1))
+            await sleep(delay)
         try:
-            resp = await client.post(url, **kwargs)
+            resp = await asyncio.wait_for(client.post(url, **kwargs), timeout)
         except _TRANSIENT as exc:
-            last = type(exc).__name__
+            last, delay = type(exc).__name__, backoff * 2**attempt
             continue
         if resp.status_code in (401, 403):
             raise ProviderError(auth_message(provider, key_env, resp.status_code, resp.text))
         if resp.status_code not in RETRY_STATUS:
             return resp
         last = f"HTTP {resp.status_code}: {resp.text[:120]!r}"
+        if resp.status_code == 429:  # rate limits reset per minute: wait longer, honor Retry-After
+            ra = resp.headers.get("retry-after", "")
+            delay = float(ra) if ra.isdigit() else min(30.0, max(backoff, 10.0) * 2**attempt)
+            retries = max(retries, 4)
+        else:
+            delay = backoff * 2**attempt
     raise ProviderError(
-        f"{provider} model `{model}` unavailable after {retries + 1} attempts "
+        f"{provider} model `{model}` unavailable after {attempt} attempts "
         f"(timeout {timeout:g}s, last error: {last})"
     )
 
