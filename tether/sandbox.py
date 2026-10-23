@@ -50,7 +50,20 @@ _BLOCKED_BASH_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"chmod\s+(?:-R\s+)?777\b"), "`chmod 777` is blocked"),
     (re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;"), "fork bombs are blocked"),
     (
-        re.compile(r"(?:^|[\s/\"'])(\.env(?:\.[a-zA-Z0-9_-]+)?)\b"),
+        re.compile(r"(?:~|\$HOME)/\.ssh\b|/etc/(?:shadow|sudoers)\b"),
+        "access to system secrets is blocked",
+    ),
+]
+
+# Text rules that bwrap's mounts already enforce (masked secrets, hidden `.tether/`, read-only root,
+# hidden home). They only guard the no-bwrap fallback: with the kernel jail they would just refuse
+# harmless commands such as `cat .env.example` (#125).
+_MOUNT_ENFORCED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(
+            r"(?:^|[\s/\"'])(\.env(?!\.(?:example|sample|template|dist)\b)"
+            r"(?:\.[a-zA-Z0-9_-]+)?)\b"
+        ),
         "access to `.env` files is blocked",
     ),
     (
@@ -60,10 +73,6 @@ _BLOCKED_BASH_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"(?:^|[\s/\"'])\.git/(?:config|hooks)\b"),
         "access to `.git/config` or `hooks` is blocked",
-    ),
-    (
-        re.compile(r"(?:~|\$HOME)/\.ssh\b|/etc/(?:shadow|sudoers)\b"),
-        "access to system secrets is blocked",
     ),
 ]
 
@@ -96,7 +105,7 @@ _REGEX_META_RE = re.compile(r"[{}^$*()|]")
 
 # Secret-looking file names masked at the mount level at any depth under the workspace.
 _MASKED_NAME_RE = re.compile(
-    r"^(?:\.env(?:\..*)?|id_rsa|id_ed25519|authorized_keys|.*\.(?:pem|key))$"
+    r"^(?:\.env(?!.*\.(?:example|sample|template|dist)$)(?:\..*)?|id_rsa|id_ed25519|authorized_keys|.*\.(?:pem|key))$"
 )
 _MASK_SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".tether"}
 _MASK_MAX_FILES = 200
@@ -119,6 +128,13 @@ def _host_socket_masks() -> tuple[str, ...]:
     """
     paths = [p for pat in ("/run/*", "/run/*/*") for p in sorted(glob.glob(pat))]
     return tuple(a for p in paths if Path(p).is_socket() for a in ("--ro-bind", "/dev/null", p))
+
+
+def _is_env_secret(name: str) -> bool:
+    """`.env`, `.env.local`, ...; the committed templates (`.env.example`) hold no secrets."""
+    return name.startswith(".env") and not name.endswith(
+        (".example", ".sample", ".template", ".dist")
+    )
 
 
 def _can_use_bwrap() -> bool:
@@ -231,7 +247,7 @@ class SandboxPolicy:
         # Check sensitive patterns
         if (
             rel_str in _SENSITIVE_FILENAMES
-            or any(part.startswith(".env") for part in parts)
+            or any(_is_env_secret(part) for part in parts)
             or ".tether" in parts
             or (len(parts) >= 2 and parts[0] == ".git" and parts[1] in ("config", "hooks"))
             or candidate.name in ("id_rsa", "id_ed25519", "authorized_keys")
@@ -264,7 +280,10 @@ class SandboxPolicy:
         if not stripped:
             raise SandboxViolationError("Empty command.")
 
-        for pattern, reason in _BLOCKED_BASH_PATTERNS:
+        kernel = self.use_kernel_sandbox and _can_use_bwrap()
+        for pattern, reason in (
+            _BLOCKED_BASH_PATTERNS if kernel else _BLOCKED_BASH_PATTERNS + _MOUNT_ENFORCED_PATTERNS
+        ):
             if pattern.search(stripped):
                 raise SandboxViolationError(f"Sandbox violation: {reason}.")
 
@@ -275,7 +294,9 @@ class SandboxPolicy:
             tokens = stripped.split()
 
         cmd_start, cur_bin, pending, prev = True, "", False, ""
-        for tok in tokens:
+        for tok in (
+            [] if kernel else tokens
+        ):  # the kernel jail enforces paths; text rules are fallback
             if tok in _CMD_SEPARATORS:
                 cmd_start = True
                 continue

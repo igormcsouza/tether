@@ -3,6 +3,10 @@ result never depends on the model's obedience; tether alone must say no."""
 
 from __future__ import annotations
 
+import shutil
+
+import pytest
+
 from e2e.conftest import Tether
 
 
@@ -60,3 +64,14 @@ def test_verify_gate_can_run_a_tool_installed_under_home(tether: Tether, chaos) 
     chaos.script(("done", "ok"))
     d = tether.run("x", "--verify", "gatetool", "--tools", "bash")
     assert d["rc"] == 0, d
+
+
+@pytest.mark.skipif(shutil.which("bwrap") is None, reason="needs bwrap")
+def test_bash_reads_env_template_but_not_the_secret(tether: Tether, chaos) -> None:
+    (tether.ws / ".env").write_text("TOKEN=hunter2")
+    (tether.ws / ".env.example").write_text("TOKEN=\n")
+    chaos.script("bash cat .env.example", "bash cat .env", ("done", "ok"))
+    r = tether.run("read env files", "--tools", "bash")
+    template, secret = tether.tool_outputs(r["id"])[:2]
+    assert "TOKEN=" in template and "Sandbox violation" not in template, template
+    assert "hunter2" not in secret, secret  # masked by the kernel mount, not by a text rule

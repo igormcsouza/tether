@@ -100,7 +100,7 @@ async def test_web_fetch_blocks_private_addresses(
     ],
 )
 def test_program_args_are_not_paths(cmd: str, tmp_path: Path) -> None:
-    SandboxPolicy(workspace_root=tmp_path).validate_bash_command(cmd)
+    SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False).validate_bash_command(cmd)
 
 
 @pytest.mark.parametrize(
@@ -108,8 +108,59 @@ def test_program_args_are_not_paths(cmd: str, tmp_path: Path) -> None:
     ["sed -n p /etc/hosts", "awk -f /etc/passwd x", "cat /etc/hosts", "cd . && cat /etc/hosts"],
 )
 def test_real_absolute_paths_still_blocked(cmd: str, tmp_path: Path) -> None:
+    with pytest.raises(SandboxViolationError):  # text rules are the no-bwrap fallback
+        SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False).validate_bash_command(cmd)
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    ["ls ~/..", "cat /etc/hosts", "cat .tether/x", "cat .git/config"],
+)
+def test_kernel_sandbox_leaves_path_policing_to_the_mounts(
+    cmd: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: True)
+    SandboxPolicy(workspace_root=tmp_path).validate_bash_command(cmd)  # no false refusal
+    monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: False)
+    with pytest.raises(SandboxViolationError):  # same commands stay refused without bwrap
+        SandboxPolicy(workspace_root=tmp_path).validate_bash_command(cmd)
+
+
+@pytest.mark.parametrize("cmd", ["sudo ls", "rm -rf /", "cat ~/.ssh/id_rsa", "chmod 777 x"])
+def test_kernel_sandbox_keeps_the_cheap_red_lines(
+    cmd: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: True)
     with pytest.raises(SandboxViolationError):
         SandboxPolicy(workspace_root=tmp_path).validate_bash_command(cmd)
+
+
+@pytest.mark.parametrize(
+    ("name", "secret"),
+    [(".env", True), (".env.local", True), (".env.example", False), (".env.dist", False)],
+)
+def test_env_templates_are_readable_secrets_are_not(
+    name: str, secret: bool, tmp_path: Path
+) -> None:
+    (tmp_path / name).write_text("K=v")
+    sp = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
+    if secret:
+        with pytest.raises(SandboxViolationError):
+            sp.resolve_safe_path(name)
+        with pytest.raises(SandboxViolationError):
+            sp.validate_bash_command(f"cat {name}")
+    else:
+        assert sp.resolve_safe_path(name).name == name
+        sp.validate_bash_command(f"cat {name}")
+
+
+@needs_bwrap
+async def test_masked_secret_and_env_example_under_real_bwrap(tmp_path: Path) -> None:
+    (tmp_path / ".env").write_text("TOKEN=secret")
+    (tmp_path / ".env.example").write_text("TOKEN=\n")
+    sp = SandboxPolicy(workspace_root=tmp_path)
+    code, out = await sp.execute_bash_with_code("cat .env.example; echo ---; cat .env")
+    assert "TOKEN=" in out.split("---")[0] and "secret" not in out, out
 
 
 def test_unknown_tool_name_rejected(tmp_path: Path) -> None:
