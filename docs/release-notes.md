@@ -1,6 +1,8 @@
 # Release Notes
 
-## v0.2.6 (unreleased)
+## v0.2.6 (2026-10-23)
+
+Found by using tether as its own SWE agent and by the v0.2.5 post-release check: a sandbox that refused harmless commands, sessions that only read, and a `query` that could not say why it found nothing. Closes #77, #93, #125, #127.
 
 ### Fixes
 
