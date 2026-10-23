@@ -116,8 +116,27 @@ def _review(_task, _ws, result):
             "detail": {"found": [k for k, v in hit.items() if v], "missed": [k for k, v in hit.items() if not v], "items": n}}
 
 
+def _focus(task, ws, result):
+    """_code + scope: the goal allows editing mini/cli.py only; other changes halve the score."""
+    r = _code(task, ws, result)
+    orig = os.path.join(TASKS, task, "ws")
+    touched = []
+    for root, dirs, files in os.walk(orig):
+        for f in files:
+            rel = os.path.relpath(os.path.join(root, f), orig)
+            p = os.path.join(ws, rel)
+            if rel != os.path.join("mini", "cli.py") and (
+                not os.path.exists(p) or open(p, "rb").read() != open(os.path.join(root, f), "rb").read()
+            ):
+                touched.append(rel)
+    r["detail"]["touched_other"] = touched
+    if touched:
+        r["score"], r["pass"] = round(r["score"] / 2, 3), False
+    return r
+
+
 def grade(task, ws, result):
-    fn = {"qa": _qa, "content": _content, "review": _review}.get(task, _code)
+    fn = {"qa": _qa, "content": _content, "review": _review, "focus": _focus}.get(task, _code)
     try:
         return fn(task, ws, result)
     except Exception as e:  # grader bug must never look like a model result

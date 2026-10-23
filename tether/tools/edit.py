@@ -69,8 +69,28 @@ def _patch_hunks(body: list[str]) -> list[tuple[list[str], list[str]]]:
     return [h for h in hunks if h != ([], [])]
 
 
+_UNIFIED_RE = re.compile(r"^--- .+\n\+\+\+ .+\n@@", re.M)
+
+
+def _unified_to_patch(diff: str) -> str:
+    """Rewrite a `git diff` / `diff -u` as a V4A patch so one applier handles both."""
+    out = ["*** Begin Patch"]
+    for line in diff.strip("\n").splitlines():
+        if line.startswith("+++ "):
+            name = line[4:].split("\t")[0].strip()
+            name = name[2:] if name[:2] in ("a/", "b/") else name
+            out.append(f"*** Update File: {name}")
+        elif line.startswith(("--- ", "diff --git", "index ", "\\")):
+            continue
+        else:
+            out.append(line)
+    return "\n".join([*out, "*** End Patch"])
+
+
 def _apply_patch(sandbox: SandboxPolicy, patch: str) -> str:
-    """Apply an `*** Begin Patch` (Codex/V4A) patch; all-or-nothing per call."""
+    """Apply an `*** Begin Patch` (Codex/V4A) or unified-diff patch; all-or-nothing per call."""
+    if _UNIFIED_RE.search(patch):
+        patch = _unified_to_patch(patch)
     lines = patch.strip("\n").splitlines()
     if not lines or lines[0].strip() != "*** Begin Patch":
         return "Error: apply_patch needs a patch starting with `*** Begin Patch` in stdin."
@@ -146,6 +166,8 @@ def _infer_verb(args: list[str], stdin: str | None) -> list[str]:
         return args
     if stdin is None:
         return ["view", *args]
+    if _UNIFIED_RE.match(stdin.lstrip()):  # a diff as stdin would otherwise overwrite the file
+        return ["apply_patch"]
     return ["replace" if "<<<<<<< SEARCH" in stdin else "write", *args]
 
 
@@ -179,10 +201,10 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
         if not args or args[0] in ("--help", "-h"):
             return help_str
 
-        if args[0] == "apply_patch":
-            return _apply_patch(sandbox, stdin or "")
         args = _infer_verb(args, stdin)
         sub = args[0]
+        if sub == "apply_patch":
+            return _apply_patch(sandbox, stdin or "")
         if sub == "view":
             if len(args) < 2:
                 return f"Error: missing `<path>`.\n{help_str}"

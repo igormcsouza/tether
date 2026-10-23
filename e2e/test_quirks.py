@@ -40,6 +40,14 @@ def test_apply_patch_edits_a_file(tether: Tether, chaos) -> None:
     assert (tether.ws / "p.txt").read_text() == "two\n"
 
 
+def test_unified_diff_in_stdin_patches_instead_of_overwriting(tether: Tether, chaos) -> None:
+    (tether.ws / "p.py").write_text("a = 1\nb = 2\nc = 3\n")
+    diff = "--- p.py\n+++ p.py\n@@ -1,3 +1,3 @@\n a = 1\n-b = 2\n+b = 20\n c = 3\n"
+    chaos.script(("edit p.py", diff), ("done", "ok"))  # verbless edit + diff, as gemma4 sends it
+    tether.run("diff", "--tools", "edit")
+    assert (tether.ws / "p.py").read_text() == "a = 1\nb = 20\nc = 3\n"
+
+
 def test_prompt_and_backtick_wrappers_are_normalised(tether: Tether, chaos) -> None:
     chaos.script("$ bash echo hi", "`bash echo bye`", ("done", "ok"))
     r = tether.run("quirks", "--tools", "bash")

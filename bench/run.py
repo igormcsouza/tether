@@ -19,6 +19,7 @@ import grade  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 TASK_CFG = {  # tether tools / step cap / wall timeout
     "code-simple": ("edit,bash", 30, 600), "code-medium": ("edit,bash", 40, 900), "code-hard": ("edit,bash", 50, 1200),
+    "focus": ("edit,bash,mem", 30, 600),
     "qa": ("", 10, 300), "content": ("", 10, 300), "review": ("edit", 15, 420),
 }
 

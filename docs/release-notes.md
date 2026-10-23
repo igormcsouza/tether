@@ -18,6 +18,10 @@ Found by benchmarking the same models inside Tether and inside a plain tool loop
 
 - Sandbox: tools installed under `$HOME` (`~/.local/bin/uv`, nvm's `node`) are visible to `bash` and `--verify` gates again (#76). bwrap hides `/home` and `$HOME` behind a tmpfs, which also hid every `PATH` entry in them, so `uv`, `ruff` or `node` were "not found" inside the sandbox and models pip-installed tools into the workspace. Now each existing, absolute `PATH` directory under a hidden root is re-bound read-only (at most 16). Never re-exposed: the hidden roots or `$HOME` themselves, the workspace, and anything under `.ssh`, `.gnupg`, `.aws`, `.kube`, `.docker`, `.config` or `.netrc`. Secrets and the rest of `/home` stay hidden.
 
+- Edit: a unified diff (`git diff` / `diff -u`) sent as `stdin` to `edit <path>` or `edit apply_patch` is applied as a patch (same all-or-nothing applier as `*** Begin Patch`). Before, the verbless `edit <path>` rule turned any stdin into a whole-file `write`, so `gemma4:e4b` replaced `cli.py` with the diff text and called `done` (bench task `focus`: 0.0, now 1.0 on 2/2 trials) (#86).
+
+- Context: `mem recall` results are no longer folded back into a tombstone (#86). The recalled output of `obs_1` was itself folded two turns later, so GLM-5.3 chased `mem recall obs_3`, `obs_4`, ... for 10 steps (27 steps for a one-function edit; 10 to 11 steps after). Recalls were asked for explicitly and still fall under the `--context-tokens` budget.
+
 ### Features
 
 - CLI: `tether stop <id>` sends SIGTERM to a running detached worker and marks the session `FAILED` as `Stopped by user.` (exit 5 on `status`/`wait`, `failure.kind` `stopped`) (#89).

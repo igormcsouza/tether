@@ -275,6 +275,7 @@ class ContextAssembler:
                     age >= self.fold_after_turns
                     and obs.char_len >= self.fold_char_threshold
                     and obs.id not in keep
+                    and not obs.cmd.startswith("mem recall")  # asked for; re-folding loops (#86)
                 ):
                     content = tombstone(obs, self.mem_enabled)
                     obs = None

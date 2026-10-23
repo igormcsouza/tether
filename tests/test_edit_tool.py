@@ -231,3 +231,20 @@ async def test_apply_patch_text_inside_cmd_or_bash_stdin(tmp_path: Path) -> None
     shell = f"apply_patch <<'PATCH'\n{second}\nPATCH"
     assert "Patched" in (await mux.execute("bash", stdin=shell)).output
     assert (tmp_path / "p.txt").read_text() == "three\n"
+
+
+async def test_unified_diff_stdin_is_applied_not_written(tmp_path: Path) -> None:
+    (tmp_path / "a.py").write_text("x = 1\ny = 2\nz = 3\n")
+    diff = "--- a.py\n+++ a.py\n@@ -1,3 +1,3 @@\n x = 1\n-y = 2\n+y = 20\n z = 3\n"
+    mux = _mux(tmp_path)
+    out = (await mux.execute("edit a.py", stdin=diff)).output
+    assert out.startswith("Patched: update a.py")
+    assert (tmp_path / "a.py").read_text() == "x = 1\ny = 20\nz = 3\n"
+    git = (
+        "diff --git a/a.py b/a.py\nindex 1..2 100644\n--- a/a.py\n+++ b/a.py\n"
+        "@@ -1 +1 @@\n-x = 1\n+x = 9\n"
+    )
+    assert (await mux.execute("edit apply_patch", stdin=git)).output.startswith("Patched")
+    assert (tmp_path / "a.py").read_text().startswith("x = 9\n")
+    bad = "--- a.py\n+++ a.py\n@@ -1 +1 @@\n-nope\n+yes\n"
+    assert "not found" in (await mux.execute("edit a.py", stdin=bad)).output
