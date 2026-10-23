@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import time
@@ -13,7 +14,7 @@ from typing import Any
 
 from tether.context import ACT_TOOL_SCHEMA, ContextAssembler, estimate_messages_tokens
 from tether.decorator import ToolSpec, build_tool_spec
-from tether.multiplexer import Multiplexer
+from tether.multiplexer import Multiplexer, normalize_cmd
 from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
 from tether.providers import ModelProvider, resolve_provider
 from tether.providers.declarative import load_declared
@@ -52,12 +53,28 @@ QUIET_NUDGE_STEPS = 6
 _QUIET = {"cat", "head", "tail", "grep", "rg", "ls", "find", "wc", "pytest", "ruff", "mypy"}
 
 
+_WRITES = re.compile(
+    r"(?:^|[^<>&\d\s])\s*>{1,2}\s*[^&\s]|\d>{1,2}\s*[^&\s]|\b(?:open|write|write_text|write_bytes|"
+    r"unlink|remove|rmtree|rename|replace|system|Popen|touch|mkdir|sed\s+-i|tee)\b"
+)
+_PY = ("python", "python3")
+_PY_TESTS = (["-m", "unittest"], ["-m", "pytest"], ["-m", "doctest"])
+
+
 def is_quiet(cmd: str) -> bool:
     """Return True if `cmd` is a read-only or verification command."""
     argv = cmd.split()
     argv = argv[1:] if argv[:1] == ["bash"] else argv
     if not argv:
         return False
+    if _WRITES.search(cmd):
+        return False
+    if argv[0] in _PY and (
+        argv[1:2] == ["-c"]
+        or argv[1:2] == ["-m"]
+        and argv[2:3] in (["unittest"], ["pytest"], ["doctest"])
+    ):
+        return True
     if argv[0] in _QUIET:
         return True
     if argv[:2] == ["edit", "view"]:
@@ -701,7 +718,7 @@ class Harness:
                     )
                     continue
 
-                cmd = resp.action.cmd
+                cmd = normalize_cmd(resp.action.cmd)
                 stdin = resp.action.stdin
                 action_sig = (cmd.strip(), stdin)
                 is_loop_stall = action_sig == last_action_sig and not cmd.strip().startswith("done")

@@ -418,3 +418,23 @@ def test_reply_string_still_works() -> None:
     resp = _run(CommandProvider("m", argv=_script(code), reply="r"))
     assert resp.action is not None
     assert resp.action.cmd == "ls"
+
+
+def test_rpm_reaches_http_providers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("NV_KEY", "k")
+    for kind, cls in (
+        ("openai", OpenAIProvider),
+        ("ollama", OllamaProvider),
+        ("anthropic", AnthropicProvider),
+    ):
+        cfg = {
+            "kind": kind,
+            "rpm": 40,
+            "api_key_env": "NV_KEY",
+            "base_url": "http://x",
+            "host": "http://x",
+        }
+        prov = build_declared(cfg, "m", num_ctx=1)
+        assert isinstance(prov, cls) and prov._limiter is not None and prov._limiter.rpm == 40  # type: ignore[attr-defined]
+    off = build_declared({"kind": "openai", "base_url": "http://y"}, "m", num_ctx=1)
+    assert off._limiter is None  # type: ignore[attr-defined]

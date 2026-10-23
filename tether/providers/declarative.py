@@ -136,7 +136,7 @@ def load_declared() -> dict[str, dict[str, Any]]:
                 f"providers.yaml: entry `{name}` has unknown kind `{kind}`. "
                 f"Valid kinds: {', '.join(VALID_KINDS)}."
             )
-        for key in ("context_tokens", "fold_after"):
+        for key in ("context_tokens", "fold_after", "rpm"):
             if key in cfg:
                 val = cfg[key]
                 if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
@@ -284,7 +284,9 @@ def build_declared(cfg: dict[str, Any], model_name: str, *, num_ctx: int) -> Mod
             timeout=cfg.get("timeout", 300),
             dialects=_build_dialects(cfg.get("dialects")),
         )
-    http_timeout = {"timeout": cfg["timeout"]} if "timeout" in cfg else {}
+    http_timeout: dict[str, Any] = {"timeout": cfg["timeout"]} if "timeout" in cfg else {}
+    if "rpm" in cfg:
+        http_timeout["rpm"] = cfg["rpm"]
     api_key_env = cfg.get("api_key_env")
     api_key = os.environ.get(api_key_env) if api_key_env else None
     if api_key_env and kind != "ollama" and not api_key:

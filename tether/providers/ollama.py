@@ -11,8 +11,9 @@ import httpx
 from tether.providers.base import (
     ActionCall,
     ModelResponse,
+    action_from_tool_call,
     extract_fallback_action,
-    parse_tool_arguments,
+    limiter_for,
     post_with_retry,
 )
 
@@ -31,6 +32,7 @@ class OllamaProvider:
         keep_alive: str = "10m",
         timeout: float = 120.0,
         client: httpx.AsyncClient | None = None,
+        rpm: int | None = None,
         fallback: bool | None = None,
     ) -> None:
         self.model_name = model_name
@@ -44,6 +46,7 @@ class OllamaProvider:
         self.keep_alive = keep_alive
         self.timeout = timeout
         self._client = client
+        self._limiter = limiter_for(f"ollama:{self.host}", rpm)
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -73,6 +76,7 @@ class OllamaProvider:
             provider="ollama",
             model=self.model_name,
             timeout=self.timeout,
+            limiter=self._limiter,
             json=payload,
         )
 
@@ -132,16 +136,7 @@ class OllamaProvider:
         if tool_calls:
             first_tc = tool_calls[0]
             fn_obj = first_tc.get("function") or {}
-            fn_name = str(fn_obj.get("name") or "")
-            raw_args = fn_obj.get("arguments") or {}
-            action = parse_tool_arguments(raw_args)
-            if action is None and fn_name and fn_name != "act":
-                # Graceful 9B fallback if model called tool name directly
-                if isinstance(raw_args, dict):
-                    arg_str = " ".join(f"--{k} {v!r}" for k, v in raw_args.items())
-                    action = ActionCall(cmd=f"{fn_name} {arg_str}".strip())
-                else:
-                    action = ActionCall(cmd=fn_name)
+            action = action_from_tool_call(fn_obj.get("name"), fn_obj.get("arguments") or {})
 
         if action is None and content:
             action = extract_fallback_action(content)

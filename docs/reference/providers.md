@@ -44,7 +44,7 @@ tether run --model claude-cli/sonnet "fix the failing test"
 
 ### Context budget
 
-Every entry, of any kind, may set two optional positive integers: `context_tokens` (the context budget, default 8192) and `fold_after` (how many recent turns keep full observations, default 2). The `--context-tokens` / `--fold-after` flags and the Harness arguments override them.
+Every entry, of any kind, may set optional positive integers: `context_tokens` (the context budget, default 8192), `fold_after` (how many recent turns keep full observations, default 2) and, for HTTP kinds (`openai`, `ollama`, `anthropic`), `rpm` (maximum requests per minute, off by default; a sliding window shared by every tether process on the machine through a lock file in `$TMPDIR`, or `TETHER_RATE_DIR`). The `--context-tokens` / `--fold-after` flags and the Harness arguments override the first two.
 
 ### Timeout and retry
 

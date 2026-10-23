@@ -37,7 +37,7 @@ def test_precedence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert h.max_context_tokens == 8192
 
 
-@pytest.mark.parametrize("key", ["context_tokens", "fold_after"])
+@pytest.mark.parametrize("key", ["context_tokens", "fold_after", "rpm"])
 @pytest.mark.parametrize("bad", ["0", "-1", "true", "'8'", "1.5"])
 def test_validation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, key: str, bad: str) -> None:
     _yaml(monkeypatch, tmp_path, ENTRY + f"  {key}: {bad}\n")

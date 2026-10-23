@@ -1,5 +1,24 @@
 # Release Notes
 
+## v0.2.5 (unreleased)
+
+Found by benchmarking the same models inside Tether and inside a plain tool loop (6 tasks, 10+ models): three model idioms made the single-`act` grammar fail invisibly, so small models looped on commands that never ran.
+
+### Fixes
+
+- Multiplexer: `bash -c '<cmd>'`, `bash -lc "<cmd>"` and `sh -c ...` wrappers are unwrapped to `bash <cmd>` in `normalize_cmd`, and the harness records and folds the normalized command (#109). Before, `bash` received `-c "ls"` and answered `bash: - : invalid option`, so `qwen3.5:9b` repeated the call 20+ times (code tasks 0.00).
+- Multiplexer: when `bash` is enabled, an unknown first word (`ls -la`) now runs through the sandboxed `bash` tool instead of returning an error the model ignores (#109). Disabled built-ins (`web`, `mem`, ...) keep their "disabled" error. 0 prompt tokens.
+- Providers: a native tool call with a name other than `act` (`edit`, `edit<|channel|>commentary`) is mapped to `<name> --k 'v'` for all three HTTP providers, so the registry answers with its JIT usage instead of a silent "(no output)" nudge (#109). `ollama` already did this; `openai` and `anthropic` dropped the call.
+
+- Harness: the quiet `[NUDGE]` now treats `python -m unittest|pytest|doctest` and non-writing `python -c` as verification (not as a change), and `cat > f <<EOF` / any redirect as a change. Before, a model verifying with ad-hoc `python3 -c` scripts reset the counter every step and never got the hint (qwen3.5:9b used all 40 steps after solving the task) (#92).
+
+### Features
+
+- Edit: `apply_patch` (the Codex/V4A `*** Begin Patch` format that `gpt-oss` and other Codex-family models use natively) is accepted as `edit apply_patch` or bare `apply_patch`, with the patch in `stdin`, in a heredoc, in `cmd`, or in the stdin of `bash`. Update (context hunks, exact single match), Add and Delete File; atomic per call; the `.py` syntax warning applies. `gpt-oss-20b` issued 15+ `apply_patch` calls per run that had nowhere to go.
+- Edit: the verb is optional: `edit <path>` views (no stdin), replaces (SEARCH/REPLACE blocks) or writes (other stdin); `edit --path P --line_start a --line_end b` views. `gemma4:e4b` kept sending aider-style `edit file.py` with SEARCH/REPLACE and got `unknown subcommand` (code-simple 0.00).
+- Providers: optional `rpm: <n>` on a `providers.yaml` entry caps requests per minute with a sliding window kept in a lock file (`$TMPDIR/tether-rate-<uid>-<hash>.json`, override the directory with `TETHER_RATE_DIR`), so every worker, sub-agent and pipeline stage on the machine counts against one budget (#110). For keys with a hard limit such as NVIDIA's 40 req/min. Without `fcntl` the window is per process.
+- Tests: golden trace `shell_wrappers` locks the new command handling.
+
 ## v0.2.4 (2026-10-21)
 
 Dogfooding fixes: the four milestone bugs (#74 #75 #85 #88) plus the friction found by running Tether on its own backlog with `nvidia/nemotron-3-ultra-550b-a55b` (two of the fixes were first written by Tether itself from scoped briefs), and two new regression layers: golden-trace replay in CI and 54 local end-to-end scenarios.

@@ -99,3 +99,16 @@ async def test_provider_registry_and_custom_sdk_routing(tmp_path: Path) -> None:
     assert session.status == "COMPLETED"
     assert session.result == "Routed via custom gateway: qwen-enterprise-32b"
     assert session.peak_tokens == 320
+
+
+def test_action_from_tool_call_maps_wrong_tool_names() -> None:
+    from tether.providers.base import action_from_tool_call
+
+    assert action_from_tool_call("act", {"cmd": "ls"}).cmd == "ls"  # type: ignore[union-attr]
+    assert action_from_tool_call("act", {"nope": 1}) is None
+    assert action_from_tool_call("", "{}") is None
+    wrong = action_from_tool_call("edit<|channel|>commentary", '{"path": "a.md", "n": 2}')
+    assert wrong is not None and wrong.cmd == "edit --path 'a.md' --n 2"
+    assert action_from_tool_call("bash", {"command": "ls"}).cmd == "ls"  # type: ignore[union-attr]
+    assert action_from_tool_call("done", "not json").cmd == "done"  # type: ignore[union-attr]
+    assert action_from_tool_call("<|x|>", {"a": 1}) is None

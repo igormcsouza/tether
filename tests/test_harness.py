@@ -585,3 +585,23 @@ async def test_send_extends_exhausted_session_ceiling(tmp_path: Path) -> None:
     h.store.update_session(paused.id, status="WAITING_INPUT", step_count=1, max_steps=10)
     resumed = await h.send(paused.id, "continue")
     assert (resumed.step_count, resumed.max_steps) == (10, 10)
+
+
+@pytest.mark.parametrize(
+    ("cmd", "quiet"),
+    [
+        ("python3 -m unittest discover -s tests -t . 2>&1", True),
+        ("bash python3 -m pytest -q", True),
+        ('python3 -c "print(1)"', True),
+        ("python3 -c \"open('f','w').write('x')\"", False),
+        ("cat a.py", True),
+        ("cat > a.py << 'EOF'\nx\nEOF", False),
+        ("pytest -q > out.txt", False),
+        ("ls 2>&1", True),
+        ("python3 cli.py report s.csv", False),
+    ],
+)
+def test_is_quiet_counts_verification_not_writes(cmd: str, quiet: bool) -> None:
+    from tether.harness import is_quiet
+
+    assert is_quiet(cmd) is quiet

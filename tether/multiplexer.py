@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -54,9 +55,40 @@ def normalize_cmd(raw_cmd: str) -> str:
     # Strip redundant leading `tether ` prefix if the model typed `tether web search ...`
     if s.startswith("tether "):
         s = s[len("tether ") :].strip()
-    return s
+    return _unwrap_shell(s)
 
 
+_SHELL_WRAP_RE = re.compile(
+    r"(?:(?:/bin/)?(?:ba)?sh\s+)?-[a-z]*c\s+(?:(?P<q>['\"])(?P<body>.*)(?P=q)|(?P<raw>\S.*))",
+    re.DOTALL,
+)
+_DQ_ESCAPES = re.compile(r'\\(["$`\\])')
+
+
+def _unwrap_shell(s: str) -> str:
+    """`bash -lc 'ls'` / `sh -c "ls"` -> `bash ls` (models trained on shell tools wrap commands)."""
+    m = _SHELL_WRAP_RE.fullmatch(s)
+    if not m:
+        return s
+    body = m.group("raw") or m.group("body")
+    if m.group("q") == '"':
+        body = _DQ_ESCAPES.sub(r"\1", body)
+    return f"bash {body}"
+
+
+_SHELL_BUILTINS = frozenset(
+    "cd echo export set unset source test type read printf pwd exit true false alias wait".split()
+)
+
+
+def _looks_like_shell(word: str) -> bool:
+    """True for a program on PATH, a shell builtin, a path or `VAR=value`; typos stay unknown."""
+    return bool(shutil.which(word)) or word in _SHELL_BUILTINS or "/" in word or "=" in word
+
+
+_APPLY_PATCH_RE = re.compile(
+    r"(?:^|\n)\s*(?:bash\s+)?apply_patch\b[^\n]*\n(?P<patch>\s*\*\*\* Begin Patch.*)", re.DOTALL
+)
 _HEREDOC_RE = re.compile(r"[ \t]*<<-?[ \t]*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n?\2[ \t]*$", re.DOTALL)
 
 
@@ -120,6 +152,9 @@ class Multiplexer:
                 error_kind="syntax_error",
             )
 
+        patch = _APPLY_PATCH_RE.search(f"{clean_cmd}\n{stdin or ''}")
+        if patch and "edit" in self._tools:  # patch text may sit in cmd, or in stdin of `bash`
+            clean_cmd, stdin = "apply_patch", patch.group("patch")
         if stdin is None and not clean_cmd.startswith("bash"):
             clean_cmd, stdin = split_heredoc(clean_cmd)
         tokens = split_cli(clean_cmd)
@@ -140,7 +175,17 @@ class Multiplexer:
                 output=f"Available commands:\n{self.toolbox_index()}\nRun `<cmd> --help` for usage."
             )
 
+        if name == "apply_patch" and "edit" in self._tools:  # Codex-family models' native verb
+            clean_cmd, name = f"edit {clean_cmd}", "edit"
+            args = tokens
         spec = self._tools.get(name)
+        if spec is None and "bash" in self._tools:
+            from tether.tools import ALL_BUILTIN_TOOLS  # lazy: tools import this module
+
+            if name not in ALL_BUILTIN_TOOLS and _looks_like_shell(name):
+                # A bare shell command (`ls -la`): the sandboxed bash tool runs it, no retry step.
+                name, spec = "bash", self._tools["bash"]
+                clean_cmd = f"bash {clean_cmd}"
         if spec is None:
             avail = ", ".join(self._tools.keys())
             hint = f" For shell commands use `bash {clean_cmd}`." if "bash" in self._tools else ""
