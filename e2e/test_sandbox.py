@@ -48,3 +48,15 @@ def test_read_only_profile_refuses_writes(tether: Tether, chaos) -> None:
     chaos.script(("edit write a.txt", "x"), ("done", "ok"))
     r = tether.run("write", "--tools", "edit", "--sandbox", "read-only")
     assert not (tether.ws / "a.txt").exists(), tether.tool_outputs(r["id"])
+
+
+def test_verify_gate_can_run_a_tool_installed_under_home(tether: Tether, chaos) -> None:
+    home_bin = tether.home / ".local" / "bin"
+    home_bin.mkdir(parents=True)
+    tool = home_bin / "gatetool"
+    tool.write_text("#!/bin/sh\necho gate-ok\n")
+    tool.chmod(0o755)
+    tether.env["PATH"] = f"{home_bin}:{tether.env['PATH']}"
+    chaos.script(("done", "ok"))
+    d = tether.run("x", "--verify", "gatetool", "--tools", "bash")
+    assert d["rc"] == 0, d
