@@ -823,7 +823,9 @@ class SQLiteStore:
         candidate_expressions = [" ".join(tokens)]
         if len(tokens) > 1:
             candidate_expressions.append(" OR ".join(tokens))
-
+        prefix_tokens = [t for t in tokens if len(t) >= 3]
+        if prefix_tokens:
+            candidate_expressions.append(" OR ".join(f"{t}*" for t in prefix_tokens))
         with self._connect() as conn:
             for fts_expr in candidate_expressions:
                 sql = f"""
@@ -849,6 +851,18 @@ class SQLiteStore:
                         for r in rows
                     ]
         return []
+
+    def count_chunks(self, session_ids: list[str]) -> int:
+        """Count indexed FTS chunks for the given session(s) (0 when none given)."""
+        if not session_ids:
+            return 0
+        placeholders = ",".join("?" for _ in session_ids)
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT COUNT(*) FROM chunks_fts WHERE session_id IN ({placeholders})",
+                tuple(session_ids),
+            ).fetchone()
+        return int(row[0]) if row else 0
 
     def get_project_session_ids(self) -> list[str]:
         """Return GLOBAL_SESSION_ID plus all COMPLETED session IDs for cross-session RAG."""
