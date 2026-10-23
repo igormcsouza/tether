@@ -11,7 +11,7 @@ import pytest
 from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse, register_provider, tool
 from tether.decorator import ToolSpec
-from tether.harness import detect_cycle, read_target, spawn_detached_worker
+from tether.harness import detect_cycle, is_quiet, read_target, spawn_detached_worker
 from tether.store import SQLiteStore
 
 
@@ -662,3 +662,59 @@ async def test_context_overflow_warns_once_on_stderr(
     err = capsys.readouterr().err
     assert err.count("over --context-tokens 20") == 1
     assert "raise the budget" in err
+
+
+async def test_explore_nudge_when_nothing_changes(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, [f"bash cat f{i}" for i in range(14)])  # no change at all
+    obs = run.provider.store.list_observations(run.session.id)
+    steps = [o.step for o in obs.values() if "[NUDGE] No file changes in 12 steps" in o.raw_output]
+    assert steps == [12]
+
+
+async def test_explore_nudge_repeats_while_the_model_only_reads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("tether.harness.EXPLORE_NUDGE_STEPS", 2)
+    monkeypatch.setattr("tether.harness.EXPLORE_NUDGE_EVERY", 3)
+    run = await _run_commands(tmp_path, [f"bash cat f{i}" for i in range(9)])
+    obs = run.provider.store.list_observations(run.session.id)
+    assert [o.step for o in obs.values() if "[NUDGE] No file changes" in o.raw_output] == [2, 5, 8]
+
+
+async def test_explore_nudge_is_off_after_a_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("tether.harness.EXPLORE_NUDGE_STEPS", 2)
+    run = await _run_commands(tmp_path, ["ping a.com", "bash cat f0", "bash cat f1", "bash cat f2"])
+    obs = run.provider.store.list_observations(run.session.id)
+    assert not [o for o in obs.values() if "[NUDGE] No file changes in" in o.raw_output]
+
+
+@pytest.mark.parametrize(
+    ("cmd", "quiet"),
+    [
+        ("awk 'NR>=470 && NR<=500 {printf \"%d:%s\\n\", NR, $0}' tether/cli.py", True),
+        ("bash awk '/a/{n++} END{print n}' README.md", True),
+        ("awk '{print $1 > \"out.txt\"}' f", False),
+        ("awk 'BEGIN{system(\"rm x\")}'", False),
+        ("awk '{print}' f | tee g", False),
+        ("gawk -i inplace '{print}' f", False),
+    ],
+)
+def test_awk_is_quiet_unless_it_writes(cmd: str, quiet: bool) -> None:
+    assert is_quiet(cmd) is quiet
+    assert (read_target(cmd) is not None) is quiet
+
+
+@pytest.mark.parametrize(
+    ("cmd", "quiet"),
+    [
+        ("grep -n x f; awk 'NR>=820 && NR<=856' f", True),  # `>=` is a comparison, not a redirect
+        ("cat f | awk 'NR>5'", True),
+        ("echo hi > out.txt", False),
+        ("cat a >> b", False),
+        ("ls >out", False),
+    ],
+)
+def test_comparison_operators_are_not_redirects(cmd: str, quiet: bool) -> None:
+    assert is_quiet(cmd) is quiet
