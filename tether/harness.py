@@ -662,6 +662,7 @@ class Harness:
         last_action_sig: tuple[str, str | None] | None = None
         action_history: list[tuple[str, str | None]] = []
         consecutive_verify_failures = 0
+        warned_overflow = False
 
         # Stall guard state: warnings since the last change, reads of one file in a row
         stalls = 0
@@ -702,10 +703,19 @@ class Harness:
                 )
 
                 est_tokens = estimate_messages_tokens(messages, [ACT_TOOL_SCHEMA])
+                if assembler.overflow and not warned_overflow:
+                    warned_overflow = True
+                    print(
+                        f"tether: warning: context is ~{assembler.overflow} tokens over "
+                        f"--context-tokens {self.max_context_tokens} (goal, system prompt and "
+                        "the latest step alone do not fit); raise the budget.",
+                        file=sys.stderr,
+                    )
                 t_llm_start = time.perf_counter()
                 resp = await provider.generate(messages, [ACT_TOOL_SCHEMA])
                 llm_duration_ms = int((time.perf_counter() - t_llm_start) * 1000)
 
+                assembler.calibrate(est_tokens, resp.prompt_tokens)
                 prompt_tokens = resp.prompt_tokens if resp.prompt_tokens > 0 else est_tokens
                 completion_tokens = resp.completion_tokens
                 actual_tokens = max(est_tokens, prompt_tokens + completion_tokens)
