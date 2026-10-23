@@ -11,8 +11,9 @@ import httpx
 from tether.providers.base import (
     ActionCall,
     ModelResponse,
+    action_from_tool_call,
     extract_fallback_action,
-    parse_tool_arguments,
+    limiter_for,
     post_with_retry,
 )
 
@@ -42,6 +43,7 @@ class OpenAIProvider:
         base_url: str | None = None,
         timeout: float = 120.0,
         client: httpx.AsyncClient | None = None,
+        rpm: int | None = None,
     ) -> None:
         self.model_name = model_name
         self.api_key_env = api_key_env
@@ -51,6 +53,7 @@ class OpenAIProvider:
         ).rstrip("/")
         self.timeout = timeout
         self._client = client
+        self._limiter = limiter_for(f"openai:{self.base_url}", rpm)
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -86,6 +89,7 @@ class OpenAIProvider:
             timeout=self.timeout,
             key_env=self.api_key_env,
             headers=headers,
+            limiter=self._limiter,
             json=payload,
         )
         resp.raise_for_status()
@@ -103,8 +107,7 @@ class OpenAIProvider:
         if tool_calls:
             first_tc = tool_calls[0]
             fn_obj = first_tc.get("function") or {}
-            raw_args = fn_obj.get("arguments") or "{}"
-            action = parse_tool_arguments(raw_args)
+            action = action_from_tool_call(fn_obj.get("name"), fn_obj.get("arguments") or "{}")
 
         if action is None and content:
             action = extract_fallback_action(content)

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tether import Harness, SandboxPolicy, tool
 from tether.multiplexer import Multiplexer, normalize_cmd, split_cli
+from tether.tools.bash import make_bash_tool
 
 
 async def test_multiplexer_normalization_and_dispatch() -> None:
@@ -127,3 +130,37 @@ async def test_heredoc_in_cmd_becomes_stdin(tmp_path: Path) -> None:
     assert not out.is_error and (tmp_path / "f.txt").read_text().strip() == "hello"
     out = await mux.execute("bash cat <<'EOF'\nkeep\nEOF")
     assert "keep" in out.output
+
+
+@pytest.mark.parametrize(
+    ("raw", "want"),
+    [
+        ("bash -lc 'ls -R | head'", "bash ls -R | head"),
+        ('bash -c "echo \\$PWD && ls"', "bash echo $PWD && ls"),
+        ("sh -c 'pwd'", "bash pwd"),
+        ('/bin/bash -lc "echo \\"x\\""', 'bash echo "x"'),
+        ("-lc 'ls'", "bash ls"),
+        ("bash -c ls -la", "bash ls -la"),
+        ("bash ls -la", "bash ls -la"),
+        ("bash -x script.sh", "bash -x script.sh"),
+        ("edit view a.py", "edit view a.py"),
+    ],
+)
+def test_normalize_unwraps_shell_wrappers(raw: str, want: str) -> None:
+    assert normalize_cmd(raw) == want
+
+
+async def test_bare_shell_command_runs_through_bash_tool(tmp_path: Path) -> None:
+    mux = Multiplexer()
+    mux.register(make_bash_tool(SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)))
+    (tmp_path / "a.txt").write_text("hi")
+    assert "a.txt" in (await mux.execute("ls")).output
+    assert "a.txt" in (await mux.execute("bash -lc 'ls'")).output
+    disabled = await mux.execute("mem search x")
+    assert disabled.is_error and disabled.error_kind == "unknown_cmd"
+    typo = await mux.execute("lss -la")
+    assert (
+        typo.is_error and "unknown command `lss`" in typo.output and "bash lss -la" in typo.output
+    )
+    assert (await mux.execute("FOO=1 sh -c 'echo $FOO'")).output.strip() == "1"
+    assert (await mux.execute("echo hi")).output.strip() == "hi"

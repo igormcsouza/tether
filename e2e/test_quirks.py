@@ -16,15 +16,32 @@ def test_heredoc_in_cmd_becomes_stdin(tether: Tether, chaos) -> None:
     assert (tether.ws / "a.txt").read_text() == "hello"
 
 
-def test_bare_shell_command_is_redirected_to_bash(tether: Tether, chaos) -> None:
+def test_bare_shell_command_runs_through_bash(tether: Tether, chaos) -> None:
+    (tether.ws / "marker.txt").write_text("x")
     chaos.script("ls", ("done", "ok"))
     r = tether.run("list", "--tools", "bash")
-    assert "For shell commands use `bash ls`" in tether.tool_outputs(r["id"])[0]
-    assert tether.events(r["id"])[0] == "syntax_error"
+    assert "marker.txt" in tether.tool_outputs(r["id"])[0]
+    assert tether.events(r["id"])[0] == "ok"
+
+
+def test_shell_wrapper_is_unwrapped(tether: Tether, chaos) -> None:
+    (tether.ws / "marker.txt").write_text("x")
+    chaos.script("bash -lc 'ls'", ("done", "ok"))
+    r = tether.run("wrapper", "--tools", "bash")
+    assert "marker.txt" in tether.tool_outputs(r["id"])[0]
+    assert tether.events(r["id"])[0] == "ok"
+
+
+def test_apply_patch_edits_a_file(tether: Tether, chaos) -> None:
+    (tether.ws / "p.txt").write_text("one\n")
+    patch = "*** Begin Patch\n*** Update File: p.txt\n-one\n+two\n*** End Patch"
+    chaos.script(("apply_patch", patch), ("done", "ok"))
+    tether.run("patch", "--tools", "edit")
+    assert (tether.ws / "p.txt").read_text() == "two\n"
 
 
 def test_prompt_and_backtick_wrappers_are_normalised(tether: Tether, chaos) -> None:
-    chaos.script("$ bash echo hi", "`bash echo hi`", ("done", "ok"))
+    chaos.script("$ bash echo hi", "`bash echo bye`", ("done", "ok"))
     r = tether.run("quirks", "--tools", "bash")
     assert tether.events(r["id"])[:2] == ["ok", "ok"]
 

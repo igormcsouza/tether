@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -208,3 +209,55 @@ async def test_persistent_429_gets_more_attempts_with_capped_wait() -> None:
     with pytest.raises(ProviderError, match="5 attempts"):
         await _post(_client(handler), sleeps)
     assert sleeps == [10.0, 20.0, 30.0, 30.0]
+
+
+@pytest.mark.parametrize("shared", [True, False])
+async def test_rate_limiter_blocks_when_window_full(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared: bool
+) -> None:
+    from tether.providers import base
+    from tether.providers.base import RateLimiter, limiter_for
+
+    monkeypatch.setenv("TETHER_RATE_DIR", str(tmp_path))
+    now = [100.0]
+    slept: list[float] = []
+
+    async def fake_sleep(d: float) -> None:
+        slept.append(d)
+        now[0] += d
+
+    monkeypatch.setattr(base.time, "time", lambda: now[0])
+    monkeypatch.setattr(base.asyncio, "sleep", fake_sleep)
+    lim = RateLimiter(2, "k" if shared else "")
+    other = RateLimiter(2, "k" if shared else "")  # a second process sharing the same file
+    await lim.acquire()
+    now[0] += 10
+    await (other if shared else lim).acquire()
+    await lim.acquire()  # third call must wait until the first leaves the 60 s window
+    assert slept == [pytest.approx(50.0)]
+    assert limiter_for("k", None) is None
+    assert limiter_for("k", 5) is limiter_for("k", 5)
+
+
+async def test_rate_limiter_recovers_from_a_corrupt_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from tether.providers.base import RateLimiter
+
+    monkeypatch.setenv("TETHER_RATE_DIR", str(tmp_path))
+    lim = RateLimiter(1, "bad")
+    assert lim._path is not None
+    lim._path.write_text("not json")
+    await lim.acquire()
+    assert len(json.loads(lim._path.read_text())) == 1
+
+
+async def test_post_with_retry_acquires_limiter() -> None:
+    from tether.providers.base import RateLimiter
+
+    lim = RateLimiter(1)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(200))) as c:
+        resp = await post_with_retry(
+            c, "http://x/y", provider="p", model="m", timeout=5, limiter=lim
+        )
+    assert resp.status_code == 200 and lim._claim() > 0

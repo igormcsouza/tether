@@ -10,8 +10,9 @@ import httpx
 from tether.providers.base import (
     ActionCall,
     ModelResponse,
+    action_from_tool_call,
     extract_fallback_action,
-    parse_tool_arguments,
+    limiter_for,
     post_with_retry,
 )
 
@@ -32,6 +33,7 @@ class AnthropicProvider:
         max_tokens: int = 4096,
         timeout: float = 180.0,
         client: httpx.AsyncClient | None = None,
+        rpm: int | None = None,
     ) -> None:
         self.model_name = model_name
         self.api_key_env = api_key_env
@@ -43,6 +45,7 @@ class AnthropicProvider:
         self.max_tokens = max_tokens
         self.timeout = timeout
         self._client = client
+        self._limiter = limiter_for(f"anthropic:{self.base_url}", rpm)
 
     def _get_client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
@@ -147,6 +150,7 @@ class AnthropicProvider:
             timeout=self.timeout,
             key_env=self.api_key_env,
             headers=headers,
+            limiter=self._limiter,
             json=payload,
         )
         resp.raise_for_status()
@@ -159,7 +163,7 @@ class AnthropicProvider:
             if btype == "text":
                 text_parts.append(str(block.get("text") or ""))
             elif btype == "tool_use" and action is None:
-                action = parse_tool_arguments(block.get("input") or {})
+                action = action_from_tool_call(block.get("name"), block.get("input") or {})
 
         content = "\n".join(text_parts).strip()
         if action is None and content:

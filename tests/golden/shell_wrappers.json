@@ -1,0 +1,29 @@
+{
+ "goal": "List the workspace and read a.txt",
+ "tools": [
+  "bash"
+ ],
+ "files": {
+  "a.txt": "hello\n"
+ },
+ "max_steps": 8,
+ "phases": [
+  {
+   "steps": [
+    {
+     "cmd": "bash -lc 'ls'"
+    },
+    {
+     "cmd": "ls -1"
+    },
+    {
+     "cmd": "sh -c \"cat a.txt\""
+    },
+    {
+     "cmd": "done",
+     "stdin": "a.txt contains hello."
+    }
+   ]
+  }
+ ]
+}

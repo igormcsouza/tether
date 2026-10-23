@@ -90,9 +90,12 @@ async def test_unknown_command_hints_bash_only_when_enabled() -> None:
     from tether.tools.bash import make_bash_tool
 
     mux = Multiplexer()
-    assert "`bash echo hi`" not in (await mux.execute("echo hi")).output
+    res = await mux.execute("echo hi")
+    assert res.is_error and "For shell commands" not in res.output
     mux.register(make_bash_tool(SandboxPolicy()))
-    assert "`bash echo hi`" in (await mux.execute("echo hi")).output
+    assert (await mux.execute("echo hi")).output.strip() == "hi"
+    disabled = await mux.execute("web search x")
+    assert disabled.is_error and "`web` is disabled" in disabled.output
 
 
 def test_cli_version_flag(capsys: pytest.CaptureFixture[str]) -> None:

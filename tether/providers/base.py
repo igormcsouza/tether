@@ -4,13 +4,23 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import hashlib
 import json
+import os
 import re
+import tempfile
+import time
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Protocol
 
 import httpx
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - non-POSIX
+    fcntl = None  # type: ignore[assignment]
 
 
 @dataclass(slots=True)
@@ -62,6 +72,63 @@ RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 _TRANSIENT = (httpx.TimeoutException, httpx.NetworkError, TimeoutError)
 
 
+class RateLimiter:
+    """Sliding-window cap of `rpm` requests per 60 s.
+
+    The window lives in a lock-protected file shared by every process using the same key, so
+    parallel workers and sub-agents on one machine count against one budget. Without `fcntl`
+    (non-POSIX) it falls back to a per-process window.
+    """
+
+    def __init__(self, rpm: int, key: str = "") -> None:
+        self.rpm = rpm
+        self._stamps: list[float] = []
+        root = Path(os.environ.get("TETHER_RATE_DIR") or tempfile.gettempdir())
+        root.mkdir(parents=True, exist_ok=True)
+        self._path = (
+            root / f"tether-rate-{os.getuid()}-{hashlib.sha1(key.encode()).hexdigest()[:12]}.json"
+            if fcntl and key
+            else None
+        )
+
+    def _claim(self) -> float:
+        """Take a slot now (return 0) or return how long to wait for one."""
+        now = time.time()
+        if self._path is None:
+            stamps = [t for t in self._stamps if now - t < 60.0]
+            wait = 0.0 if len(stamps) < self.rpm else 60.0 - (now - stamps[0])
+            self._stamps = stamps if wait else [*stamps, now]
+            return wait
+        with open(self._path, "a+") as fh:
+            fcntl.flock(fh, fcntl.LOCK_EX)
+            fh.seek(0)
+            try:
+                stamps = [t for t in json.loads(fh.read() or "[]") if now - t < 60.0]
+            except ValueError:
+                stamps = []
+            wait = 0.0 if len(stamps) < self.rpm else 60.0 - (now - stamps[0])
+            if not wait:
+                stamps.append(now)
+            fh.seek(0)
+            fh.truncate()
+            fh.write(json.dumps(stamps))
+        return wait
+
+    async def acquire(self) -> None:
+        while wait := self._claim():
+            await asyncio.sleep(wait)
+
+
+_LIMITERS: dict[str, RateLimiter] = {}
+
+
+def limiter_for(key: str, rpm: int | None) -> RateLimiter | None:
+    """Process-wide limiter for `key` (provider + endpoint); None when no limit is configured."""
+    if not rpm:
+        return None
+    return _LIMITERS.setdefault(f"{key}:{rpm}", RateLimiter(rpm, key))
+
+
 async def post_with_retry(
     client: httpx.AsyncClient,
     url: str,
@@ -73,6 +140,7 @@ async def post_with_retry(
     retries: int = 2,
     backoff: float = 1.0,
     sleep: Callable[[float], Awaitable[None]] | None = None,
+    limiter: RateLimiter | None = None,
     **kwargs: Any,
 ) -> httpx.Response:
     """POST with bounded retry on timeouts, network errors and 429/5xx.
@@ -90,6 +158,8 @@ async def post_with_retry(
     while (attempt := attempt + 1) <= retries:
         if attempt:
             await sleep(delay)
+        if limiter:
+            await limiter.acquire()
         try:
             resp = await asyncio.wait_for(client.post(url, **kwargs), timeout)
         except _TRANSIENT as exc:
@@ -152,6 +222,34 @@ def parse_tool_arguments(raw_args: str | dict[str, Any]) -> ActionCall | None:
         return ActionCall(cmd=cmd, stdin=stdin) if cmd else None
 
     return None
+
+
+_TOOL_NAME_RE = re.compile(r"[A-Za-z_][\w.-]*")
+
+
+def action_from_tool_call(name: object, raw_args: str | dict[str, Any]) -> ActionCall | None:
+    """Turn a native tool call into an ActionCall.
+
+    `act` arguments parse as usual. A call to another name (`edit`, `bash`, or `edit<|channel|>x`
+    with harmony markers) becomes `<name> --k 'v'` so the registry answers with its JIT usage
+    instead of a silent nudge.
+    """
+    action = parse_tool_arguments(raw_args)
+    if action is not None:
+        return action
+    match = _TOOL_NAME_RE.match(str(name or ""))
+    fn = match.group(0) if match else ""
+    if not fn or fn == "act":
+        return None
+    args = raw_args
+    if isinstance(args, str):
+        try:
+            args = json.loads(args)
+        except ValueError:
+            args = {}
+    if isinstance(args, dict) and args:
+        return ActionCall(cmd=f"{fn} " + " ".join(f"--{k} {v!r}" for k, v in args.items()))
+    return ActionCall(cmd=fn)
 
 
 _PARAM_CMD_RE = re.compile(r'<parameter\s+name="cmd"\s*>(?P<value>.*?)</parameter>', re.DOTALL)
