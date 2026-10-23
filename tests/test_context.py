@@ -314,3 +314,9 @@ def test_calibration_tightens_the_budget_and_never_loosens_it() -> None:
     assert ca.calibration == 1.5
     ca.calibrate(0, 5)
     assert ca.calibration == 1.5
+
+
+def test_mem_recall_results_are_not_folded_again(tmp_path: Path) -> None:
+    # Folding a recall's own output sent GLM-5.3 on a 10-step `mem recall obs_N` chain (#86).
+    text = _text(tmp_path, ["bash ls", "mem recall obs_1", "bash echo a", "bash echo b"])
+    assert _live(text, 2) and "obs_1 folded" in text and "obs_3 folded" in text
