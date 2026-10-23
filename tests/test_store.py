@@ -314,3 +314,14 @@ def test_reap_dead_keeps_other_users_pid(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr("os.kill", deny)
     got = store.get_session(rec.id)
     assert got is not None and got.status == "RUNNING"
+
+
+def test_memory_path_does_not_create_a_file_in_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    store = SQLiteStore(":memory:")
+    rec = store.create_session("g")
+    assert store.get_session(rec.id) is not None
+    assert not (tmp_path / ":memory:").exists()
+    assert store.db_path.parent != tmp_path

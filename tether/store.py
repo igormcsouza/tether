@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import tempfile
 import threading
 import time
 import uuid
@@ -220,6 +221,8 @@ class SQLiteStore:
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         resolved = db_path or os.environ.get("TETHER_DB") or ".tether/tether.db"
+        if str(resolved) == ":memory:":
+            resolved = Path(tempfile.mkdtemp(prefix="tether-memory-")) / "tether.db"
         self.db_path = Path(resolved).resolve()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
