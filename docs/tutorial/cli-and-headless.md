@@ -81,7 +81,7 @@ tether list
 
 ## Context budget and fold window
 
-By default Tether keeps an 8192-token context budget and folds observations older than 2 turns. Tune both per run with `--context-tokens N` and `--fold-after N` (on `tether run` and `tether pipeline`), or per model in `providers.yaml` with `context_tokens` / `fold_after`. Flags override the provider entry, which overrides the defaults.
+By default Tether keeps an 8192-token context budget (a hard target: it folds, then drops, then shrinks to fit, and warns on stderr if the goal and latest step alone do not fit) and folds observations older than 2 turns. Tune both per run with `--context-tokens N` and `--fold-after N` (on `tether run` and `tether pipeline`), or per model in `providers.yaml` with `context_tokens` / `fold_after`. Flags override the provider entry, which overrides the defaults.
 
 ```bash
 tether run --context-tokens 32000 --fold-after 8 "refactor the parser"
@@ -89,11 +89,15 @@ tether run --context-tokens 32000 --fold-after 8 "refactor the parser"
 
 ## Scripting: `--json` and exit codes
 
-`run`, `pipeline`, `status`, `list`, `read`, `wait`, `send` and `stats` accept `--json`. Exit codes: `0` completed, `1` usage error, `2` waiting for input, `3` gate failed, `4` max steps, `5` worker error. A failure reason goes to stderr, never stdout. `--result-file <path>` writes the deliverable to a file, `--output-schema <schema.json>` rejects a `done` whose JSON does not match, and `tether events <id> --follow` streams turns as JSONL. Details: [Agent Interface reference](../reference/agent-interface.md).
+`run`, `pipeline`, `status`, `list`, `read`, `wait`, `send` and `stats` accept `--json`. Exit codes: `0` completed, `1` usage error, `2` waiting for input, `3` gate failed, `4` max steps or stalled (repeated loop warnings with no change), `5` worker error or `tether stop`. A failure reason goes to stderr, never stdout. `--result-file <path>` writes the deliverable to a file, `--output-schema <schema.json>` rejects a `done` whose JSON does not match, and `tether events <id> --follow` streams turns as JSONL. Details: [Agent Interface reference](../reference/agent-interface.md).
 
 ### When a model's replies are not understood
 
 If a model keeps answering in a format Tether cannot parse into an action (many nudges in `tether stats`), run `tether misses [session_id] [--model M] [--limit N] [--json]`. It lists the unparsed replies; with `--json` each line is fixture-ready. Paste lines into `tests/fixtures/dialects.jsonl` after filling `expected`, or add a `dialects:` regex to `providers.yaml`.
+
+## Stopping a session (`tether stop`)
+
+`tether stop "$SESSION_ID"` sends SIGTERM to the running detached worker and marks the session `FAILED` as `Stopped by user.`; a session that already finished is left alone. Add `--json` for the session view.
 
 ## Live Inbox Injection & Auto-Resume (`tether send`)
 
