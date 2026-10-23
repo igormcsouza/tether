@@ -12,7 +12,7 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 ```
 
 - `result` is the deliverable, or the pending question when `WAITING_INPUT`. It is `null` on failure.
-- `failure` is `{"kind": "gate|max_steps|worker_error", "gate": "<cmd>|output-schema|null", "message": "…"}`.
+- `failure` is `{"kind": "gate|max_steps|stalled|stopped|worker_error", "gate": "<cmd>|output-schema|null", "message": "…"}`.
 - Keys are stable; new keys may be added.
 
 `--json` is available on `run`, `pipeline`, `status`, `list`, `read` (also `--digest`, `--steps`, `--full`), `wait`, `send` and `stats`. With `--headless` it prints `{"v":1,"id":"ses_…"}`.
@@ -25,12 +25,14 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 | 1 | usage error (bad flag, unknown session, invalid pipeline) |
 | 2 | waiting for input (`done --ask`) |
 | 3 | verification gate failed or misconfigured (including `--output-schema`) |
-| 4 | max steps reached |
-| 5 | worker or provider error |
+| 4 | max steps reached, or stopped early as `stalled` (repeated loop warnings with no change) |
+| 5 | worker or provider error, or `tether stop` |
 
 In plain mode the failure reason goes to **stderr**; stdout only ever holds a deliverable. `wait` returns the highest code among its sessions.
 
 ## Other flags
+
+- `tether stop <id>`: terminate a running detached session (SIGTERM to its worker); the session ends `FAILED` as `Stopped by user.`
 
 - `tether run --result-file <path>`: write the deliverable to a file, print nothing on stdout.
 - `tether run --output-schema <schema.json>`: `done` is rejected (like a failed gate, 0 prompt tokens until it fails) unless the deliverable is JSON matching the schema. Supported subset: `type`, `enum`, `required`, `properties`, `items`.

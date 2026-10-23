@@ -374,7 +374,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_8] [a.txt lines 1-1 of 1]\n   1: hello world, this line is long enough to keep around for the nudge trace",
+    "content": "Observation:\n[CYCLE DETECTED] 7 reads of `a.txt` in a row without editing. Stop exploring: make your edit now (a whole-file `edit write` is fine), or call `act(\"done\", stdin=\"...\")`.",
     "role": "user"
    }
   ],
@@ -448,7 +448,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_8] [a.txt lines 1-1 of 1]\n   1: hello world, this line is long enough to keep around for the nudge trace",
+    "content": "Observation:\n[CYCLE DETECTED] 7 reads of `a.txt` in a row without editing. Stop exploring: make your edit now (a whole-file `edit write` is fine), or call `act(\"done\", stdin=\"...\")`.",
     "role": "user"
    },
    {
@@ -456,7 +456,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_9] [a.txt lines 1-1 of 1]\n   1: hello world, this line is long enough to keep around for the nudge trace",
+    "content": "Observation:\n[obs_8] [a.txt lines 1-1 of 1]\n   1: hello world, this line is long enough to keep around for the nudge trace",
     "role": "user"
    }
   ]
@@ -469,14 +469,14 @@
   "ok",
   "ok",
   "ok",
-  "ok",
+  "cycle_stall",
   "ok",
   "completed"
  ],
  "files": {
   "a.txt": "hello world, this line is long enough to keep around for the nudge trace\n"
  },
- "peak_tokens": 605,
+ "peak_tokens": 620,
  "result": "written",
  "status": "COMPLETED",
  "step_count": 10

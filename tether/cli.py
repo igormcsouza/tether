@@ -1,10 +1,13 @@
-"""Headless CLI (`tether run|pipeline|status|read|query|send|wait|list|stats`)."""
+"""Headless CLI (`tether run|pipeline|status|read|query|send|wait|stop|list|stats`)."""
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
+import os
+import signal
 import sys
 from pathlib import Path
 
@@ -24,6 +27,7 @@ _KNOWN_SUBCOMMANDS = {
     "query",
     "send",
     "wait",
+    "stop",
     "list",
     "stats",
     "retro",
@@ -206,6 +210,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_wait.add_argument("--timeout", type=float, default=120.0)
     p_wait.add_argument("--db", type=str, default=None)
     _add_json(p_wait)
+
+    # `tether stop`
+    p_stop = sub.add_parser("stop", help="Terminate a running detached session")
+    p_stop.add_argument("session_id", help="Session ID")
+    p_stop.add_argument("--db", type=str, default=None)
+    _add_json(p_stop)
 
     # `tether list`
     p_list = sub.add_parser("list", help="List recent sessions")
@@ -499,6 +509,22 @@ async def _async_main(argv: list[str]) -> int:
             for sid in ns.session_ids:
                 print(store.get_session_digest(sid))
         return max((api.exit_code(r) for r in recs if r), default=0)
+
+    if cmd == "stop":
+        srec = store.get_session(ns.session_id)
+        if srec is None:
+            print(f"Error: unknown session `{ns.session_id}`", file=sys.stderr)
+            return api.EXIT_USAGE
+        if srec.status == "RUNNING" and srec.pid and srec.pid != os.getpid():
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.kill(srec.pid, signal.SIGTERM)
+            store.update_session(srec.id, status="FAILED", result="Stopped by user.")
+            srec = store.get_session(srec.id) or srec
+        if ns.json:
+            print(json.dumps(api.session_dict(srec)))
+        else:
+            print(f"[{srec.id} {srec.status}]")
+        return 0
 
     if cmd == "list":
         sessions = store.list_sessions(limit=ns.limit)

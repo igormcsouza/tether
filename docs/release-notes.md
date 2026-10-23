@@ -12,8 +12,11 @@ Found by benchmarking the same models inside Tether and inside a plain tool loop
 
 - Harness: the quiet `[NUDGE]` now treats `python -m unittest|pytest|doctest` and non-writing `python -c` as verification (not as a change), and `cat > f <<EOF` / any redirect as a change. Before, a model verifying with ad-hoc `python3 -c` scripts reset the counter every step and never got the hint (qwen3.5:9b used all 40 steps after solving the task) (#92).
 
+- Harness: reading one file over varying ranges (`edit view f --lines 1:40`, `sed -n`, `cat`, `grep f`) 7 times in a row without any change is now a `cycle_stall` with a `[CYCLE DETECTED]` hint, and 4 stall warnings without an intervening change end the session `FAILED` as `Stalled: ...` (exit code 4, `failure.kind` `stalled`) instead of using every step (#92). Before, `gpt-oss-20b` looped on reads until `max_steps`.
+
 ### Features
 
+- CLI: `tether stop <id>` sends SIGTERM to a running detached worker and marks the session `FAILED` as `Stopped by user.` (exit 5 on `status`/`wait`, `failure.kind` `stopped`) (#89).
 - Providers: `params` on a `providers.yaml` entry and per call (`tether run --param k=v`, `Harness(params=...)`, MCP `tether_run` `params`) are merged into the request body (Ollama: `think`/`keep_alive`/`format` at request level, the rest in `options`); stored with the session, so resumed workers keep them (#112).
 - Multiplexer: `register_normalizer(fn)` adds a command-quirk normalizer for every model; the built-in ones use the same list (#113).
 - Dev: `bench/`, a model-in-the-loop conformance bench (six tasks, Tether / plain loop / Claude Code runners), outside the package and CI (#114).

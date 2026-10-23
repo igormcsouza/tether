@@ -48,6 +48,24 @@ def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list
     return None
 
 
+# Stall guard: warn after N reads of one file with varying ranges, abort after M warnings
+RANGE_STALL_READS = 7  # after the 6-step quiet [NUDGE], which gets the first word
+STALL_ABORT = 4
+_READERS = {"cat", "head", "tail", "grep", "rg", "sed", "wc"}
+
+
+def read_target(cmd: str) -> str | None:
+    """File a read-only command inspects (`edit view p`, `sed -n 1,9p p`, `cat p`), else None."""
+    argv = cmd.split()
+    argv = argv[1:] if argv[:1] == ["bash"] else argv
+    if argv[:2] == ["edit", "view"] and len(argv) > 2:
+        return argv[2]
+    if argv[:1] and argv[0] in _READERS and is_quiet(cmd):
+        paths = [a for a in argv[1:] if not a.startswith("-") and ("." in a or "/" in a)]
+        return paths[-1] if paths else None
+    return None
+
+
 # Quiet nudge: one-shot completion hint after N consecutive read-only/verification steps
 QUIET_NUDGE_STEPS = 6
 _QUIET = {"cat", "head", "tail", "grep", "rg", "ls", "find", "wc", "pytest", "ruff", "mypy"}
@@ -106,7 +124,7 @@ class Harness:
 
     `output_schema` (JSON Schema subset) is a deterministic pre-`done` gate: the deliverable
     must be JSON matching it. `tether.api.failure_info` classifies FAILED results by the
-    prefixes "Verification gate", "Max steps" and "Worker error" written in this module.
+    prefixes "Verification gate", "Max steps", "Stalled", "Stopped" and "Worker error".
     """
 
     def __init__(
@@ -645,6 +663,11 @@ class Harness:
         action_history: list[tuple[str, str | None]] = []
         consecutive_verify_failures = 0
 
+        # Stall guard state: warnings since the last change, reads of one file in a row
+        stalls = 0
+        read_file: str | None = None
+        read_run = 0
+
         # Quiet nudge state
         changed = False
         quiet_run = 0
@@ -734,6 +757,12 @@ class Harness:
                     else detect_cycle([*action_history, action_sig])
                 )
 
+                target = read_target(cmd) if not (is_loop_stall or cycle) else None
+                if target is None or target != read_file:
+                    read_file, read_run = target, 0
+                read_run += 1 if target else 0
+                range_stall = bool(target) and read_run >= RANGE_STALL_READS
+
                 assistant_turn_id = self.store.add_turn(
                     session_id=session_id,
                     step=step,
@@ -744,9 +773,42 @@ class Harness:
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     duration_ms=llm_duration_ms,
-                    event_type="loop_stall" if is_loop_stall else "cycle_stall" if cycle else "ok",
+                    event_type=(
+                        "loop_stall"
+                        if is_loop_stall
+                        else "cycle_stall"
+                        if cycle or range_stall
+                        else "ok"
+                    ),
                 )
 
+                if is_loop_stall or cycle or range_stall:
+                    stalls += 1
+                    if stalls >= STALL_ABORT:
+                        self.store.update_session(
+                            session_id,
+                            status="FAILED",
+                            result=(
+                                f"Stalled: {stalls} loop warnings without a change; "
+                                "stopped early instead of using all steps."
+                            ),
+                        )
+                        done_rec = self.store.get_session(session_id)
+                        assert done_rec is not None
+                        return done_rec
+                if range_stall:
+                    read_run = max(0, RANGE_STALL_READS - 2)  # repeat offenders: warn every 2nd
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=(
+                            f"[CYCLE DETECTED] {RANGE_STALL_READS} reads of `{target}` in a row "
+                            "without editing. Stop exploring: make your edit now (a whole-file "
+                            '`edit write` is fine), or call `act("done", stdin="...")`.'
+                        ),
+                    )
+                    continue
                 if is_loop_stall:
                     stall_msg = (
                         f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input in the "
@@ -942,6 +1004,7 @@ class Harness:
                     changed = True
                     quiet_run = 0
                     nudged = False
+                    stalls = 0
 
                 # One-shot nudge after QUIET_NUDGE_STEPS quiet steps following a change
                 out = dispatch.output

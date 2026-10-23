@@ -11,7 +11,7 @@ import pytest
 from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse, register_provider, tool
 from tether.decorator import ToolSpec
-from tether.harness import detect_cycle, spawn_detached_worker
+from tether.harness import detect_cycle, read_target, spawn_detached_worker
 from tether.store import SQLiteStore
 
 
@@ -605,3 +605,43 @@ def test_is_quiet_counts_verification_not_writes(cmd: str, quiet: bool) -> None:
     from tether.harness import is_quiet
 
     assert is_quiet(cmd) is quiet
+
+
+@pytest.mark.parametrize(
+    ("cmd", "target"),
+    [
+        ("edit view a.py --lines 1:40", "a.py"),
+        ("bash sed -n 1,40p src/a.py", "src/a.py"),
+        ("cat a.py", "a.py"),
+        ("grep -n foo a.py", "a.py"),
+        ("edit write a.py", None),
+        ("ls", None),
+        ("pytest -q", None),
+    ],
+)
+def test_read_target(cmd: str, target: str | None) -> None:
+    assert read_target(cmd) == target
+
+
+async def test_range_shifting_reads_warn_then_abort(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("tether.harness.RANGE_STALL_READS", 3)
+    cmds = [f"edit view a.py --lines {i}:{i + 9}" for i in range(1, 14)]  # warns at 3, 5, 7, 9
+    run = await _run_commands(tmp_path, cmds)
+    assert run.session.status == "FAILED"
+    assert (run.session.result or "").startswith("Stalled")
+    assert run.events.count("cycle_stall") == 4
+    assert run.session.step_count == 9
+    warn = "\n".join(m["content"] for m in run.provider.recorded_calls[3])
+    assert "3 reads of `a.py`" in warn
+
+
+async def test_a_change_resets_the_stall_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("tether.harness.RANGE_STALL_READS", 2)
+    reads = [f"edit view a.py --lines {i}:{i + 9}" for i in range(1, 7)]  # 3 warnings
+    run = await _run_commands(tmp_path, [*reads, "ping x", *reads, "ping y"])
+    assert run.session.status == "COMPLETED"
+    assert run.events.count("cycle_stall") == 6

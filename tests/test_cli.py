@@ -134,3 +134,25 @@ def test_cli_sync_main_entrypoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     with pytest.raises(SystemExit) as excinfo:
         main()
     assert excinfo.value.code == 0
+
+
+async def test_stop_terminates_a_running_worker(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    db_arg = str(tmp_path / "tether.db")
+    h = Harness(db_path=db_arg)
+    rec = h.create_session("stuck")
+    h.store.update_session(rec.id, status="RUNNING", pid=424242)
+    killed: list[tuple[int, int]] = []
+    monkeypatch.setattr(
+        cli_mod.os, "kill", lambda pid, sig: killed.append((pid, sig)) if sig else None
+    )
+    assert await _async_main(["stop", "ses_nope", "--db", db_arg]) == 1
+    assert await _async_main(["stop", rec.id, "--db", db_arg]) == 0
+    assert killed == [(424242, cli_mod.signal.SIGTERM)]
+    after = h.store.get_session(rec.id)
+    assert after is not None and after.status == "FAILED"
+    assert after.result == "Stopped by user."
+    assert await _async_main(["stop", rec.id, "--json", "--db", db_arg]) == 0
+    assert '"kind": "stopped"' in capsys.readouterr().out
+    assert len(killed) == 1  # a finished session is left alone

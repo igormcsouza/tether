@@ -26,6 +26,8 @@ EXIT_CODES = {
     "waiting_input": EXIT_WAITING,
     "gate": EXIT_GATE,
     "max_steps": EXIT_MAX_STEPS,
+    "stalled": EXIT_MAX_STEPS,
+    "stopped": EXIT_ERROR,
     "worker_error": EXIT_ERROR,
 }
 
@@ -40,6 +42,10 @@ def failure_info(rec: SessionRecord) -> dict[str, Any] | None:
         return {"kind": "gate", "gate": m.group(1) if m else None, "message": msg}
     if msg.startswith("Max steps"):
         return {"kind": "max_steps", "gate": None, "message": msg}
+    if msg.startswith("Stalled"):
+        return {"kind": "stalled", "gate": None, "message": msg}
+    if msg.startswith("Stopped"):
+        return {"kind": "stopped", "gate": None, "message": msg}
     return {"kind": "worker_error", "gate": None, "message": msg or "unknown failure"}
 
 
