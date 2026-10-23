@@ -85,7 +85,7 @@ trigger it, script the reply; if infrastructure must fail, add a fault to the pr
 
 ## Model conformance bench (developers only)
 
-`bench/` holds seven tasks (the `focus` task checks that an exact single-file goal is not lost in a distractor-heavy repo) with hidden-test graders and three runners (Tether, a plain tool loop,
+`bench/` holds nine tasks (the `focus` task checks that an exact single-file goal is not lost in a distractor-heavy repo) with hidden-test graders and three runners (Tether, a plain tool loop,
 Claude Code) so the same model can be compared across harnesses and releases. It needs real
 models, so it is not in CI and not in the package: use it when onboarding a model or before a
 release to see friction that scripted tests cannot (the shell-wrapper, bare-command and
