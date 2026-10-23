@@ -704,3 +704,17 @@ async def test_explore_nudge_is_off_after_a_change(
 def test_awk_is_quiet_unless_it_writes(cmd: str, quiet: bool) -> None:
     assert is_quiet(cmd) is quiet
     assert (read_target(cmd) is not None) is quiet
+
+
+@pytest.mark.parametrize(
+    ("cmd", "quiet"),
+    [
+        ("grep -n x f; awk 'NR>=820 && NR<=856' f", True),  # `>=` is a comparison, not a redirect
+        ("cat f | awk 'NR>5'", True),
+        ("echo hi > out.txt", False),
+        ("cat a >> b", False),
+        ("ls >out", False),
+    ],
+)
+def test_comparison_operators_are_not_redirects(cmd: str, quiet: bool) -> None:
+    assert is_quiet(cmd) is quiet

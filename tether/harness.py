@@ -76,7 +76,7 @@ _QUIET = {"cat", "head", "tail", "grep", "rg", "ls", "find", "wc", "pytest", "ru
 
 
 _WRITES = re.compile(
-    r"(?:^|[^<>&\d\s])\s*>{1,2}\s*[^&\s]|\d>{1,2}\s*[^&\s]|\b(?:open|write|write_text|write_bytes|"
+    r"(?:^|[^<>&\d\s])\s*>{1,2}(?![=\d])\s*[^&\s]|\d>{1,2}\s*[^&\s]|\b(?:open|write|write_text|write_bytes|"
     r"unlink|remove|rmtree|rename|replace|system|Popen|touch|mkdir|sed\s+-i|tee)\b"
 )
 _AWK = ("awk", "gawk", "mawk")
