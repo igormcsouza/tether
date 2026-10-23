@@ -16,6 +16,8 @@ Found by benchmarking the same models inside Tether and inside a plain tool loop
 
 - Context: `--context-tokens` is now enforced in three deterministic steps instead of only dropping the oldest history: fold live observations oldest-first (even inside the `--fold-after` window and the last-8-files exception), then drop the oldest call+result groups, then shrink the newest observation. The budget also adapts to the model: the assembler learns `real prompt tokens / estimate` (between 1.0 and 1.5) from the provider's usage and tightens the target, so the 4-chars/token estimate no longer lets a code-heavy prompt run past the limit. When goal, system prompt and the latest step alone exceed the budget, one warning goes to stderr (#81). Before, 8 unfolded `edit view` results reached ~24k tokens on a 16,384 budget.
 
+- Sandbox: tools installed under `$HOME` (`~/.local/bin/uv`, nvm's `node`) are visible to `bash` and `--verify` gates again (#76). bwrap hides `/home` and `$HOME` behind a tmpfs, which also hid every `PATH` entry in them, so `uv`, `ruff` or `node` were "not found" inside the sandbox and models pip-installed tools into the workspace. Now each existing, absolute `PATH` directory under a hidden root is re-bound read-only (at most 16). Never re-exposed: the hidden roots or `$HOME` themselves, the workspace, and anything under `.ssh`, `.gnupg`, `.aws`, `.kube`, `.docker`, `.config` or `.netrc`. Secrets and the rest of `/home` stay hidden.
+
 ### Features
 
 - CLI: `tether stop <id>` sends SIGTERM to a running detached worker and marks the session `FAILED` as `Stopped by user.` (exit 5 on `status`/`wait`, `failure.kind` `stopped`) (#89).

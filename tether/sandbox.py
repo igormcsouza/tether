@@ -104,6 +104,9 @@ _MASK_MAX_DEPTH = 8
 
 # Host directories holding other users' data / service sockets, hidden behind empty tmpfs.
 _HIDDEN_HOST_DIRS = ("/home", "/media", "/mnt", "/srv", "/var/tmp")
+# Never re-exposed even when a PATH entry points into them (credentials and config).
+_PRIVATE_DIR_NAMES = frozenset({".ssh", ".gnupg", ".aws", ".kube", ".docker", ".config", ".netrc"})
+_MAX_PATH_MOUNTS = 16
 
 _BWRAP_USABLE: bool | None = None
 
@@ -337,6 +340,32 @@ class SandboxPolicy:
             args += ["--ro-bind", "/dev/null", str(git_config)]
         return args
 
+    def _tool_path_mounts(self, hidden: list[str]) -> list[str]:
+        """Read-only binds for PATH entries that the tmpfs masks hid (`~/.local/bin/uv`, nvm).
+
+        Tools installed under /home would otherwise vanish inside the sandbox (#76). Only the
+        PATH directories themselves are re-exposed, read-only; never a hidden root, `$HOME`,
+        the workspace, or anything under a credential/config directory.
+        """
+        masked = [*hidden, os.path.expanduser("~")]
+        ws = self.workspace_root
+        seen: list[str] = []
+        for entry in os.environ.get("PATH", "").split(os.pathsep):
+            if not entry or not os.path.isabs(entry) or not os.path.isdir(entry):
+                continue
+            real = Path(entry).resolve()
+            if (
+                str(real) in masked
+                or real == ws
+                or ws in real.parents
+                or not any(real.is_relative_to(m) for m in masked)
+                or _PRIVATE_DIR_NAMES & set(real.parts)
+                or str(real) in seen
+            ):
+                continue
+            seen.append(str(real))
+        return [a for d in seen[:_MAX_PATH_MOUNTS] for a in ("--ro-bind", d, d)]
+
     def _build_exec_argv(self, cmd: str) -> list[str]:
         """Wrap command in Linux `bwrap` kernel sandbox if available, else standard bash."""
         if self.use_kernel_sandbox and _can_use_bwrap():
@@ -357,6 +386,7 @@ class SandboxPolicy:
                 os.path.expanduser("~"),
                 *(["--tmpfs", "/run/user"] if os.path.isdir("/run/user") else []),
                 *[a for d in hidden for a in ("--tmpfs", d)],
+                *self._tool_path_mounts(hidden),
                 *_host_socket_masks(),
                 "--bind" if self.profile == "workspace-write" else "--ro-bind",
                 ws,

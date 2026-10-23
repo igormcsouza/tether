@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -125,3 +127,53 @@ async def test_sandbox_bwrap_and_execution_edge_cases(
     )
     res_to = await sb_timeout.execute_bash("python3 -c 'import time; time.sleep(0.12)'")
     assert "timed out" in res_to
+
+
+def test_tool_path_dirs_under_home_are_rebound_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    ws = home / "proj"
+    dirs = {n: home / n for n in (".local/bin", ".ssh/bin", ".config/x", "proj/node_modules/.bin")}
+    for d in dirs.values():
+        d.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv(
+        "PATH",
+        os.pathsep.join(
+            [
+                str(dirs[".local/bin"]),
+                str(dirs[".ssh/bin"]),  # credentials dir: never re-exposed
+                str(dirs[".config/x"]),
+                str(dirs["proj/node_modules/.bin"]),  # inside the workspace already
+                str(home),  # a hidden root itself
+                str(tmp_path / "missing"),
+                "relative/bin",
+                "/usr/bin",  # not masked: already visible
+                str(dirs[".local/bin"]),  # duplicate
+            ]
+        ),
+    )
+    args = SandboxPolicy(workspace_root=ws)._tool_path_mounts([])
+    good = str(dirs[".local/bin"].resolve())
+    assert args == ["--ro-bind", good, good]
+
+
+@pytest.mark.skipif(shutil.which("bwrap") is None, reason="needs bwrap")
+async def test_tool_on_path_under_home_runs_inside_the_sandbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    bindir = home / ".local" / "bin"
+    bindir.mkdir(parents=True)
+    tool = bindir / "mytool"
+    tool.write_text("#!/bin/sh\necho tool-ok\n")
+    tool.chmod(0o755)
+    ws = home / "proj"
+    ws.mkdir()
+    (home / "secret.txt").write_text("nope")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}/usr/bin{os.pathsep}/bin")
+    sp = SandboxPolicy(workspace_root=ws)
+    code, out = await sp.execute_bash_with_code("mytool; ls ~/..; echo end")
+    assert "tool-ok" in out and "secret.txt" not in out, out
