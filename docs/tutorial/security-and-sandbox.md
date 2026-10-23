@@ -13,7 +13,7 @@ Tether never relies on system prompt instructions ("please do not read `.env` or
 ## Four Layers of Deterministic Defense
 
 ### 1. Canonical Path Confinement (`resolve_safe_path`)
-Every path passed to `edit` or referenced in `bash` is canonicalized via `Path.resolve()` and verified to reside inside `workspace_root`. Traversal attempts (`../../etc/passwd`) raise `SandboxViolationError` before touching the filesystem.
+Every path passed to `edit` or referenced in `bash` is canonicalized via `Path.resolve()` and verified to reside inside `workspace_root`. Traversal attempts (`../../etc/passwd`) raise `SandboxViolationError` before touching the filesystem. For `bash`, the kernel jail (below) is the boundary when `bwrap` is available: path and `.env` text checks on the command line run only in the no-`bwrap` fallback, so harmless commands such as `ls ~/..` are not refused for how they look. The cheap red lines (`sudo`, `su`, disk tools, `rm -rf /`, `chmod 777`, fork bombs, `~/.ssh`) are checked in both modes. `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are not treated as secrets.
 
 ### 2. Protected Sensitive Paths
 Even within `workspace_root`, Tether deterministically blocks access to sensitive files and directories:
