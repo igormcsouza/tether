@@ -316,6 +316,18 @@ def test_reap_dead_keeps_other_users_pid(tmp_path: Path, monkeypatch: pytest.Mon
     assert got is not None and got.status == "RUNNING"
 
 
+def test_count_chunks_and_prefix_fallback(tmp_path: Path) -> None:
+    store = SQLiteStore(db_path=tmp_path / "t.db")
+    rec = store.create_session("g")
+    assert store.count_chunks([]) == 0
+    assert store.count_chunks([rec.id]) == 0
+    store.add_observation(rec.id, step=1, cmd="bash x", raw_output="the model keeps looping here")
+    assert store.count_chunks([rec.id]) >= 1
+    hits = store.search_chunks("loop", session_ids=[rec.id])  # prefix: loop -> looping
+    assert hits and "looping" in hits[0].content
+    assert store.search_chunks("zz", session_ids=[rec.id]) == []  # too short for a prefix match
+
+
 def test_memory_path_does_not_create_a_file_in_cwd(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -156,3 +156,19 @@ async def test_stop_terminates_a_running_worker(
     assert await _async_main(["stop", rec.id, "--json", "--db", db_arg]) == 0
     assert '"kind": "stopped"' in capsys.readouterr().out
     assert len(killed) == 1  # a finished session is left alone
+
+
+async def test_query_reports_why_nothing_matched(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    db_arg = str(tmp_path / "tether.db")
+    store = SQLiteStore(db_path=db_arg)
+    rec = store.create_session("g")
+    assert await _async_main(["query", "ses_nope", "x", "--db", db_arg]) == 1
+    assert "unknown session `ses_nope`" in capsys.readouterr().err
+    assert await _async_main(["query", rec.id, "anything", "--db", db_arg]) == 0
+    assert "No chunks are indexed for" in capsys.readouterr().out
+    store.add_observation(rec.id, step=1, cmd="bash x", raw_output="alpha beta gamma")
+    assert await _async_main(["query", rec.id, "nonexistent_xyz", "--db", db_arg]) == 0
+    out = capsys.readouterr().out
+    assert "1 chunks indexed" in out and "nonexistent_xyz" in out

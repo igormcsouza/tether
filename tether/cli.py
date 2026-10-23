@@ -466,10 +466,24 @@ async def _async_main(argv: list[str]) -> int:
         return 0
 
     if cmd == "query":
+        srec = store.get_session(ns.session_id)
+        if srec is None:
+            print(f"Error: unknown session `{ns.session_id}`", file=sys.stderr)
+            return api.EXIT_USAGE
         q = " ".join(ns.query).strip()
         hits = store.search_chunks(q, session_ids=[ns.session_id], top_k=ns.top)
         if not hits:
-            print(f"No BM25 RAG chunks matched `{q}`.")
+            total = store.count_chunks([ns.session_id])
+            if total == 0:
+                print(
+                    f"No chunks are indexed for `{ns.session_id}` yet "
+                    "(no observations or result recorded)."
+                )
+            else:
+                print(
+                    f"No BM25 RAG chunks matched `{q}` in `{ns.session_id}` "
+                    f"({total} chunks indexed). Try fewer or different words."
+                )
             return 0
         for h in hits:
             print(f"[{h.session_id} {h.source_type}:{h.source_id}#{h.chunk_index}]\n{h.content}\n")
