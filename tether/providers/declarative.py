@@ -149,6 +149,8 @@ def load_declared() -> dict[str, dict[str, Any]]:
             isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
         ):
             raise _bad(name, "has invalid `timeout` (must be a positive number)")
+        if "params" in cfg and (kind == "command" or not isinstance(cfg["params"], dict)):
+            raise _bad(name, "has invalid `params` (a mapping; not supported for kind `command`)")
         if kind == "command":
             _validate_command(name, cfg)
         result[str(name)] = cfg
@@ -271,7 +273,13 @@ class CommandProvider:
         )
 
 
-def build_declared(cfg: dict[str, Any], model_name: str, *, num_ctx: int) -> ModelProvider:
+def build_declared(
+    cfg: dict[str, Any],
+    model_name: str,
+    *,
+    num_ctx: int,
+    params: dict[str, Any] | None = None,
+) -> ModelProvider:
     """Build a provider instance from a declared config entry."""
     kind = cfg["kind"]
     if kind == "command":
@@ -287,6 +295,7 @@ def build_declared(cfg: dict[str, Any], model_name: str, *, num_ctx: int) -> Mod
     http_timeout: dict[str, Any] = {"timeout": cfg["timeout"]} if "timeout" in cfg else {}
     if "rpm" in cfg:
         http_timeout["rpm"] = cfg["rpm"]
+    http_timeout["params"] = {**cfg.get("params", {}), **(params or {})}
     api_key_env = cfg.get("api_key_env")
     api_key = os.environ.get(api_key_env) if api_key_env else None
     if api_key_env and kind != "ollama" and not api_key:

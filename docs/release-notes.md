@@ -14,6 +14,9 @@ Found by benchmarking the same models inside Tether and inside a plain tool loop
 
 ### Features
 
+- Providers: `params` on a `providers.yaml` entry and per call (`tether run --param k=v`, `Harness(params=...)`, MCP `tether_run` `params`) are merged into the request body (Ollama: `think`/`keep_alive`/`format` at request level, the rest in `options`); stored with the session, so resumed workers keep them (#112).
+- Multiplexer: `register_normalizer(fn)` adds a command-quirk normalizer for every model; the built-in ones use the same list (#113).
+- Dev: `bench/`, a model-in-the-loop conformance bench (six tasks, Tether / plain loop / Claude Code runners), outside the package and CI (#114).
 - Edit: `apply_patch` (the Codex/V4A `*** Begin Patch` format that `gpt-oss` and other Codex-family models use natively) is accepted as `edit apply_patch` or bare `apply_patch`, with the patch in `stdin`, in a heredoc, in `cmd`, or in the stdin of `bash`. Update (context hunks, exact single match), Add and Delete File; atomic per call; the `.py` syntax warning applies. `gpt-oss-20b` issued 15+ `apply_patch` calls per run that had nowhere to go.
 - Edit: the verb is optional: `edit <path>` views (no stdin), replaces (SEARCH/REPLACE blocks) or writes (other stdin); `edit --path P --line_start a --line_end b` views. `gemma4:e4b` kept sending aider-style `edit file.py` with SEARCH/REPLACE and got `unknown subcommand` (code-simple 0.00).
 - Providers: optional `rpm: <n>` on a `providers.yaml` entry caps requests per minute with a sliding window kept in a lock file (`$TMPDIR/tether-rate-<uid>-<hash>.json`, override the directory with `TETHER_RATE_DIR`), so every worker, sub-agent and pipeline stage on the machine counts against one budget (#110). For keys with a hard limit such as NVIDIA's 40 req/min. Without `fcntl` the window is per process.

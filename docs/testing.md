@@ -82,3 +82,12 @@ judge (answer quality).
 
 **Rule:** a new feature or bug fix ships with a scenario here. If a model must misbehave to
 trigger it, script the reply; if infrastructure must fail, add a fault to the proxy.
+
+## Model conformance bench (developers only)
+
+`bench/` holds six tasks with hidden-test graders and three runners (Tether, a plain tool loop,
+Claude Code) so the same model can be compared across harnesses and releases. It needs real
+models, so it is not in CI and not in the package: use it when onboarding a model or before a
+release to see friction that scripted tests cannot (the shell-wrapper, bare-command and
+tool-name failures behind #109 were found this way). Anything it finds that can be scripted
+becomes a unit, golden or e2e test. See `bench/README.md`.

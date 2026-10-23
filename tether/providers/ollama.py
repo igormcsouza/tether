@@ -17,6 +17,9 @@ from tether.providers.base import (
     post_with_retry,
 )
 
+# Request-level keys of /api/chat; everything else in `params` is a sampling option.
+_TOP_LEVEL = frozenset({"think", "keep_alive", "format", "stream"})
+
 
 class OllamaProvider:
     """Thin async adapter for Ollama `/api/chat`."""
@@ -33,6 +36,7 @@ class OllamaProvider:
         timeout: float = 120.0,
         client: httpx.AsyncClient | None = None,
         rpm: int | None = None,
+        params: dict[str, Any] | None = None,
         fallback: bool | None = None,
     ) -> None:
         self.model_name = model_name
@@ -46,6 +50,7 @@ class OllamaProvider:
         self.keep_alive = keep_alive
         self.timeout = timeout
         self._client = client
+        self.params = dict(params or {})
         self._limiter = limiter_for(f"ollama:{self.host}", rpm)
 
     def _get_client(self) -> httpx.AsyncClient:
@@ -104,6 +109,11 @@ class OllamaProvider:
             "keep_alive": self.keep_alive,
             "options": {"num_ctx": self.num_ctx, "temperature": 0.2},
         }
+        for key, value in self.params.items():  # top-level request keys vs sampling options
+            if key in _TOP_LEVEL:
+                payload[key] = value
+            else:
+                payload["options"][key] = value
         client = self._get_client()
         resp = await self._chat(client, payload)
         if resp.status_code == 404:

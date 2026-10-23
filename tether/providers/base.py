@@ -224,6 +224,20 @@ def parse_tool_arguments(raw_args: str | dict[str, Any]) -> ActionCall | None:
     return None
 
 
+def parse_params(items: Iterable[str]) -> dict[str, Any]:
+    """`["temperature=0", "think=false"]` -> `{"temperature": 0, "think": False}` (JSON values)."""
+    out: dict[str, Any] = {}
+    for item in items:
+        key, sep, raw = item.partition("=")
+        if not sep or not key.strip():
+            raise ValueError(f"bad --param `{item}`: expected KEY=VALUE")
+        try:
+            out[key.strip()] = json.loads(raw)
+        except ValueError:
+            out[key.strip()] = raw
+    return out
+
+
 _TOOL_NAME_RE = re.compile(r"[A-Za-z_][\w.-]*")
 
 

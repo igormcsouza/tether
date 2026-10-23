@@ -1,0 +1,8 @@
+Implement the ledger reports in this repo (Python 3, stdlib only; ledger/parser.py already works, do not change its behaviour).
+
+1. ledger/report.py
+   - summarize(rows) -> list of (account, total) tuples (total is a Decimal), one per account, sorted by absolute total descending, ties broken by account name ascending.
+   - monthly(rows) -> dict mapping 'YYYY-MM' to the net Decimal sum of that month, keys in ascending order.
+   - render(rows, month=None) -> str. If month ('YYYY-MM') is given, only rows of that month are used. Output one line per account from summarize(), formatted as the account name left-aligned and padded to W characters where W = the longest account name length (at least 5, the length of 'TOTAL'), two spaces, then the total right-aligned in a width of 10 with exactly 2 decimals (f"{total:>10.2f}"). Last line: 'TOTAL' padded to W the same way, two spaces, the grand total formatted the same way. Lines are joined with '\n' with no trailing newline. No rows -> the single line 'no data'.
+2. cli.py: `python3 cli.py report FILE.csv [--month YYYY-MM]` prints render(...) and exits 0. A missing file prints 'error: cannot read FILE' to stderr and exits 2. A bad --month value (not YYYY-MM) prints 'error: bad month' to stderr and exits 2. `python3 cli.py monthly FILE.csv` prints one line per month: 'YYYY-MM  <net, 2 decimals>'.
+Tests in tests/ must keep passing (run: python3 -m unittest discover -s tests -t .).

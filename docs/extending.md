@@ -92,3 +92,16 @@ git_tool = ToolSpec(
 
 harness = Harness(tools=[git_tool])
 ```
+
+## Command normalizers
+
+Models bring habits the `act` grammar does not expect (wrapping commands in `bash -lc '...'`, prefixing a vendor tag). Built-in fixes live in `tether.multiplexer.NORMALIZERS`; add your own with `tether.register_normalizer(fn)`, a deterministic `str -> str` that returns its input unchanged when it does not apply. It runs for every model after the built-ins, before the command is parsed.
+
+```python
+import tether
+
+
+@tether.register_normalizer
+def drop_vendor_prefix(cmd: str) -> str:
+    return cmd.removeprefix("vendor:")
+```

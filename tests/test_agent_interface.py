@@ -280,3 +280,19 @@ async def test_mcp_remaining_tools(tmp_path: Path, monkeypatch: pytest.MonkeyPat
         err, msg = await call("tether_read")
         assert err and "KeyError" in msg
         assert (await call("tether_run", goal="g", tools="definitely_not_a_tool"))[0]
+
+
+async def test_mcp_run_accepts_params(tmp_path: Path) -> None:
+    import mcp
+
+    from tether.mcp import build_server
+    from tether.store import SQLiteStore
+
+    m = _reg("ai-mcp-params", [ActionCall(cmd="done", stdin="a")])
+    db = tmp_path / "t.db"
+    async with mcp.Client(build_server(db, tmp_path)) as c:
+        res = await c.call_tool(
+            "tether_run", {"goal": "g", "model": m, "params": {"temperature": 0}}
+        )
+        assert not res.is_error
+    assert SQLiteStore(db).list_sessions()[0].sandbox_config["params"] == {"temperature": 0}

@@ -44,6 +44,7 @@ class OpenAIProvider:
         timeout: float = 120.0,
         client: httpx.AsyncClient | None = None,
         rpm: int | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         self.model_name = model_name
         self.api_key_env = api_key_env
@@ -53,6 +54,7 @@ class OpenAIProvider:
         ).rstrip("/")
         self.timeout = timeout
         self._client = client
+        self.params = dict(params or {})
         self._limiter = limiter_for(f"openai:{self.base_url}", rpm)
 
     def _get_client(self) -> httpx.AsyncClient:
@@ -79,6 +81,7 @@ class OpenAIProvider:
             "messages": [_to_openai(m) for m in messages],
             "tools": tools,
             "temperature": 0.2,
+            **self.params,
         }
         client = self._get_client()
         resp = await post_with_retry(

@@ -47,6 +47,10 @@ TOOLS: list[dict[str, Any]] = [
             "sandbox": {"type": "string", "enum": ["workspace-write", "read-only"]},
             "no_network": {"type": "boolean"},
             "output_schema": {"type": "object", "description": "JSON Schema for the deliverable"},
+            "params": {
+                "type": "object",
+                "description": 'Model request params, e.g. {"temperature": 0, "think": false}',
+            },
             "wait": {"type": "boolean", "description": "default true"},
         },
         ["goal"],
@@ -156,6 +160,7 @@ class TetherMCP:
                 db_path=self.db_path,
                 max_steps=int(a.get("max_steps") or 15),
                 output_schema=a.get("output_schema"),
+                params=a.get("params"),
                 max_context_tokens=a.get("context_tokens"),
                 fold_observations_after=a.get("fold_after"),
             )

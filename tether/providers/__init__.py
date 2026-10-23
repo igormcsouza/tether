@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from tether.providers.anthropic import AnthropicProvider
 from tether.providers.base import (
@@ -30,7 +31,9 @@ def register_provider(prefix: str, factory: ProviderFactory) -> None:
     _CUSTOM_PROVIDERS[clean] = factory
 
 
-def resolve_provider(model: str, *, num_ctx: int = 8192) -> ModelProvider:
+def resolve_provider(
+    model: str, *, num_ctx: int = 8192, params: dict[str, Any] | None = None
+) -> ModelProvider:
     """Resolve `<provider>/<model_name>` into an async ModelProvider instance."""
     spec = model.strip() or "ollama/qwen3.5:9b"
     if "/" in spec:
@@ -42,14 +45,14 @@ def resolve_provider(model: str, *, num_ctx: int = 8192) -> ModelProvider:
     if provider in _CUSTOM_PROVIDERS:
         return _CUSTOM_PROVIDERS[provider](name)
     if provider == "ollama":
-        return OllamaProvider(model_name=name, num_ctx=num_ctx)
+        return OllamaProvider(model_name=name, num_ctx=num_ctx, params=params)
     if provider in ("openai", "openrouter", "vllm", "groq", "deepseek"):
-        return OpenAIProvider(model_name=name)
+        return OpenAIProvider(model_name=name, params=params)
     if provider in ("anthropic", "claude"):
-        return AnthropicProvider(model_name=name)
+        return AnthropicProvider(model_name=name, params=params)
     declared = load_declared()
     if provider in declared:
-        return build_declared(declared[provider], name, num_ctx=num_ctx)
+        return build_declared(declared[provider], name, num_ctx=num_ctx, params=params)
     supported = ["ollama/", "openai/", "anthropic/", *[f"{k}/" for k in _CUSTOM_PROVIDERS]]
     raise ValueError(
         f"Unknown model provider `{prefix}` in `{model}`. "

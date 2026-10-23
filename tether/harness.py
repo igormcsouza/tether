@@ -126,6 +126,7 @@ class Harness:
         skill_search_dirs: list[str | Path] | None = None,
         worker_spawner: Callable[[str], int | None] | None = None,
         output_schema: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         self.model = model or os.environ.get("TETHER_MODEL") or "ollama/qwen3.5:9b"
         self.store = SQLiteStore(db_path=db_path)
@@ -147,6 +148,7 @@ class Harness:
         self.skill_loader = SkillLoader(search_dirs=skill_search_dirs)
         self._worker_spawner = worker_spawner
         self.output_schema = output_schema
+        self.params = dict(params or {})
 
         self._custom_tools: dict[str, ToolSpec] = {}
         self._enabled_tool_names: list[str] = []
@@ -360,6 +362,8 @@ class Harness:
         sbox_dict = self.sandbox.to_dict()
         if self.output_schema:
             sbox_dict["output_schema"] = self.output_schema
+        if self.params:
+            sbox_dict["params"] = self.params
         return self.store.create_session(
             goal=goal,
             model=self.model,
@@ -603,7 +607,9 @@ class Harness:
 
         try:
             provider = self._provider or resolve_provider(
-                rec.model, num_ctx=self.max_context_tokens
+                rec.model,
+                num_ctx=self.max_context_tokens,
+                params=rec.sandbox_config.get("params") or None,
             )
         except Exception as exc:  # e.g. empty api_key_env or bad providers.yaml: fail early
             self.store.add_turn(
