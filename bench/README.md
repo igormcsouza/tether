@@ -4,8 +4,8 @@ Not part of the `tether` package, not run in CI. Use it to onboard a new model o
 release for regressions that deterministic tests cannot see (unit, golden and e2e tests stay the
 gate; see `docs/testing.md`).
 
-Six tasks in `tasks/<name>/` (workspace in `ws/`, goal in `goal.txt`, hidden tests in `hidden/`):
-`code-simple`, `code-medium`, `code-hard` (graded by hidden unit tests; editing the visible tests
+Seven tasks in `tasks/<name>/` (workspace in `ws/`, goal in `goal.txt`, hidden tests in `hidden/`):
+`focus` (one exact edit in a distractor-heavy repo, scope-checked), `code-simple`, `code-medium`, `code-hard` (graded by hidden unit tests; editing the visible tests
 scores 0), `qa`, `content`, `review` (graded by constraint counts and keyword checks, so they are
 a smoke test for quality, not a judge).
 

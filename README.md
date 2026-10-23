@@ -244,8 +244,10 @@ $ tether stats
 # 7. Post-mortem: distill friction into <=2 short rules (diff; --apply writes ## Learned Rules)
 $ tether retro ses_8f92a1 [--apply]
 
-# 8. Call Tether from another agent: JSON output, exit codes (0 ok, 2 needs input, 3 gate, 4 max steps, 5 error)
+# 8. Call Tether from another agent: JSON output, exit codes (0 ok, 2 needs input, 3 gate, 4 max steps or stalled, 5 error)
 $ tether run --json --output-schema out.json "goal"
+$ tether stop ses_8f92a1                                 # terminate a running detached session
+$ tether run --param temperature=0 --param think=false "goal"   # per-call model parameters
 $ claude mcp add tether -- tether mcp --workspace "$PWD"   # MCP server (needs: pip install "tether-sdk[mcp]")
 ```
 

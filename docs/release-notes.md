@@ -1,8 +1,8 @@
 # Release Notes
 
-## v0.2.5 (unreleased)
+## v0.2.5 (2026-10-23)
 
-Found by benchmarking the same models inside Tether and inside a plain tool loop (6 tasks, 10+ models): three model idioms made the single-`act` grammar fail invisibly, so small models looped on commands that never ran.
+Found by benchmarking the same models inside Tether and inside a plain tool loop (7 tasks, 10+ models): model idioms made the single-`act` grammar fail invisibly, and loops or oversized prompts burned steps and tokens. Closes #76, #81, #86, #89, #92 and the shell-idiom bugs #109, #110.
 
 ### Fixes
 

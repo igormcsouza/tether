@@ -33,7 +33,7 @@ On Linux, when `bwrap` is available and functional, `bash` subprocesses automati
 - `$HOME` is masked with an empty ephemeral `--tmpfs`.
 - `workspace_root` is bind-mounted (`--bind` in `workspace-write` mode, `--ro-bind` in `read-only` mode).
 - Secret-looking files inside the workspace at any depth (`.env*`, `*.pem`, `*.key`, `id_rsa`, `id_ed25519`, `authorized_keys`), plus `.tether/`, `.git/config` and `.git/hooks`, are masked (`/dev/null` bind or empty `--tmpfs`), so globbing or shell indirection cannot reach them. Files with arbitrary names (for example `creds.json`) cannot be detected; keep them out of the workspace.
-- `/home`, `/media`, `/mnt`, `/srv` and `/var/tmp` are hidden behind empty tmpfs, `/run/user` is hidden, and every unix socket under `/run` (for example `docker.sock`) is masked. A read-only bind does not stop `connect()`, so an exposed `docker.sock` would be a host escape.
+- `/home`, `/media`, `/mnt`, `/srv` and `/var/tmp` are hidden behind empty tmpfs, `/run/user` is hidden, and every unix socket under `/run` (for example `docker.sock`) is masked. A read-only bind does not stop `connect()`, so an exposed `docker.sock` would be a host escape. Existing `PATH` directories that sit under a hidden root (`~/.local/bin` for `uv`, nvm's `bin` for `node`) are re-bound read-only so tools installed there still run in `bash` and `--verify` gates; credential directories (`.ssh`, `.gnupg`, `.aws`, `.kube`, `.docker`, `.config`) and the hidden roots themselves are never re-exposed.
 - `--unshare-pid`, `--unshare-ipc` and `--die-with-parent` ensure runaway child processes are reaped immediately on timeout.
 
 ### 5. Optional network isolation (`--no-network`)
