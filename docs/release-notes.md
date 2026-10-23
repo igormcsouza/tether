@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Store: `SQLiteStore(":memory:")` no longer creates a file literally named `:memory:` in the working directory (#77). The path now maps to a temporary file outside the workspace, so every store method still shares one database.
 - Sandbox: with `bwrap` active, `bash` no longer refuses commands by text for `..`, absolute paths outside the workspace, or `.env`/`.tether`/`.git/config` mentions (#125). The kernel mounts already enforce them (read-only root, hidden `$HOME`, masked secrets), so the text rules only produced false refusals such as `ls ~/..` or `cat /etc/hosts`. They remain the fallback when `bwrap` is missing, and `sudo`, `su`, disk tools, `rm -rf /`, `chmod 777`, fork bombs and `~/.ssh` stay refused in both modes.
 - Sandbox: `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are readable and writable; real `.env`, `.env.local`, `.env.production` stay masked and protected. Templates hold no secrets.
 
