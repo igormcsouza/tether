@@ -45,7 +45,7 @@ Reviewers and the Team Leader cite the failing line when they reject a change.
 - Sessions do **not** terminate simply because the model emitted a text response without a tool call (small 9B models frequently "think out loud" before acting).
 - A task only completes when the agent explicitly calls `act("done", stdin="<final deliverable>")` (or `act("done '<short answer>'")`), pauses for human/parent input via `act("done --ask", stdin="<question>")` (transitioning the session to `WAITING_INPUT` and releasing the worker process until resumed via `send`), or hits `max_steps`.
 - If the model emits plain text without calling `act`, the harness appends a brief deterministic nudge reminding it to either execute a command or call `done`.
-- After 6 consecutive read-only/verification steps following a change, the harness appends a one-shot `[NUDGE]` to that step's observation reminding the model to call `done` if the task is complete (0 static prompt tokens, #74).
+- After 6 consecutive read-only/verification steps following a change, the harness appends a one-shot `[NUDGE]` to that step's observation reminding the model to call `done` if the task is complete (0 static prompt tokens, #74). Seven reads of one file in a row with no change are a `cycle_stall`, and 4 stall warnings without a change end the session `FAILED` as `Stalled` (#92); `tether stop <id>` terminates a detached worker (#89).
 - When `verify` gate commands are configured (via `Harness(verify=[...])`, CLI `--verify`, or Skill YAML `verify: [...]`), `Harness.execute_session` deterministically executes each command inside the session's `SandboxPolicy` before allowing `done` to transition to `COMPLETED` (consuming 0 static prompt tokens until a gate fails). A gate that errors instead of failing (sandbox violation, exit 124/126/127) ends the session `FAILED` at once as `gate_error` ("gate misconfigured"), without counting toward the consecutive-failure abort.
 
 ### Rule 4: Progressive `--help` (JIT Schema Disclosure)
@@ -85,7 +85,7 @@ Reviewers and the Team Leader cite the failing line when they reject a change.
 ```text
 tether/
 ├── __init__.py          # Public SDK exports: Harness, Pipeline, Session, Skill, SandboxPolicy, tool
-├── cli.py               # Headless-capable CLI: `tether run|pipeline|status|read|query|send|list|wait|stats|retro|events|misses|mcp` (`--json` + documented exit codes)
+├── cli.py               # Headless-capable CLI: `tether run|pipeline|status|read|query|send|list|wait|stop|stats|retro|events|misses|mcp` (`--json` + documented exit codes)
 ├── harness.py           # Control Plane: bounded agent loop, pipelines, SQLite inbox, worker spawn
 ├── pipeline.py          # Workflow Plane: declarative multi-stage YAML pipelines & model routing
 ├── api.py               # Agent-facing JSON session view, exit codes, events (`--json`)

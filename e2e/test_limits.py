@@ -29,8 +29,8 @@ def _size(req: dict) -> int:
 
 
 def test_hard_context_budget_trims_old_history(tether: Tether, chaos) -> None:
-    big = "bash python3 -c \"print('y'*1500)\""
-    chaos.script(*[big] * 8, ("done", "ok"))
+    big = [f"bash python3 -c \"print('y'*{1500 + i})\"" for i in range(8)]  # distinct: no stall
+    chaos.script(*big, ("done", "ok"))
     tether.run("budget", "--tools", "bash", "--context-tokens", "700", "--max-steps", "10")
     assert len(chaos.requests) >= 9
     for req in chaos.requests:
@@ -39,6 +39,17 @@ def test_hard_context_budget_trims_old_history(tether: Tether, chaos) -> None:
             req["messages"][:3]
         )
     chaos.requests.clear()
-    chaos.script(*[big] * 8, ("done", "ok"))
+    chaos.script(*big, ("done", "ok"))
     tether.run("budget", "--tools", "bash", "--max-steps", "10")  # default 8192 budget: no trimming
     assert _size(chaos.requests[-1]) > 700 * 1.3, "control: without the small budget history grows"
+
+
+def test_range_shifting_reads_stop_the_session_early(tether: Tether, chaos) -> None:
+    views = [f"edit view big.py --lines {i}:{i + 39}" for i in range(1, 40)]
+    chaos.script(*views)
+    (tether.ws / "big.py").write_text("x = 1\n" * 200)
+    d = tether.run("explore forever", "--tools", "edit", "--max-steps", "30")
+    assert d["rc"] == 4 and d["failure"]["kind"] == "stalled"
+    assert d["steps"] < 30, "the stall guard must end the session before max_steps"
+    assert tether.events(d["id"]).count("cycle_stall") == 4
+    assert any("reads of `big.py`" in o for o in tether.tool_outputs(d["id"]))

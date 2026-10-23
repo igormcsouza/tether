@@ -296,3 +296,20 @@ async def test_mcp_run_accepts_params(tmp_path: Path) -> None:
         )
         assert not res.is_error
     assert SQLiteStore(db).list_sessions()[0].sandbox_config["params"] == {"temperature": 0}
+
+
+def test_stalled_and_stopped_failures_are_classified() -> None:
+    from tether import api
+    from tether.store import SessionRecord
+
+    def rec(msg: str) -> SessionRecord:
+        return SessionRecord(
+            id="ses_x", parent_id=None, status="FAILED", model="m", skill=None, tools=[],
+            sandbox_config={}, goal="g", result=msg, step_count=1, max_steps=2, peak_tokens=0,
+            pid=None, created_at=0.0, updated_at=0.0,
+        )  # fmt: skip
+
+    stalled = api.failure_info(rec("Stalled: 4 loop warnings"))
+    assert stalled and stalled["kind"] == "stalled"
+    assert api.exit_code(rec("Stalled: x")) == api.EXIT_MAX_STEPS
+    assert api.exit_code(rec("Stopped by user.")) == api.EXIT_ERROR
