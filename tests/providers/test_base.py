@@ -112,3 +112,14 @@ def test_action_from_tool_call_maps_wrong_tool_names() -> None:
     assert action_from_tool_call("bash", {"command": "ls"}).cmd == "ls"  # type: ignore[union-attr]
     assert action_from_tool_call("done", "not json").cmd == "done"  # type: ignore[union-attr]
     assert action_from_tool_call("<|x|>", {"a": 1}) is None
+
+
+def test_parse_params_json_values_and_errors() -> None:
+    from tether.providers.base import parse_params
+
+    got = parse_params(["temperature=0", "think=false", "tag=x y", 'o={"a": 1}'])
+    assert got == {"temperature": 0, "think": False, "tag": "x y", "o": {"a": 1}}
+    with pytest.raises(ValueError, match="expected KEY=VALUE"):
+        parse_params(["nope"])
+    with pytest.raises(ValueError, match="expected KEY=VALUE"):
+        parse_params(["=1"])

@@ -164,3 +164,18 @@ async def test_bare_shell_command_runs_through_bash_tool(tmp_path: Path) -> None
     )
     assert (await mux.execute("FOO=1 sh -c 'echo $FOO'")).output.strip() == "1"
     assert (await mux.execute("echo hi")).output.strip() == "hi"
+
+
+def test_register_normalizer_runs_after_built_ins() -> None:
+    from tether import register_normalizer
+    from tether.multiplexer import NORMALIZERS
+
+    @register_normalizer
+    def drop_vendor(s: str) -> str:
+        return s.removeprefix("vendor:")
+
+    try:
+        assert normalize_cmd("`vendor:ls -la`") == "ls -la"
+        assert normalize_cmd("done") == "done"
+    finally:
+        NORMALIZERS.remove(drop_vendor)

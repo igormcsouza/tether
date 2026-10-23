@@ -1,0 +1,1 @@
+Review the research paper in paper.md. List the methodological and reporting problems you find, most serious first, as a numbered list of at most 8 items, each at most 25 words. Deliver only the list via done.

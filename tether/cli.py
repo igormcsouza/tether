@@ -12,6 +12,7 @@ import yaml
 
 from tether import __version__, api
 from tether.harness import Harness
+from tether.providers.base import parse_params
 from tether.sandbox import SandboxPolicy
 from tether.store import SessionRecord, SQLiteStore
 
@@ -89,6 +90,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument(
         "--db", type=str, default=None, help="SQLite DB path (default .tether/tether.db)"
+    )
+    p_run.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Model request parameter, repeatable (e.g. --param temperature=0 --param think=false)",
     )
     p_run.add_argument(
         "--output-schema",
@@ -310,6 +318,7 @@ async def _async_main(argv: list[str]) -> int:
                 db_path=ns.db,
                 max_steps=ns.max_steps,
                 output_schema=schema,
+                params=parse_params(ns.param),
                 max_context_tokens=ns.context_tokens,
                 fold_observations_after=ns.fold_after,
             )

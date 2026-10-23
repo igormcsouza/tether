@@ -37,25 +37,46 @@ def _classify_tool_error(output: str) -> str:
     return "runtime_error"
 
 
-def normalize_cmd(raw_cmd: str) -> str:
-    """Normalize common small-model CLI syntax quirks deterministically."""
-    s = raw_cmd.strip()
-    # Strip wrapping markdown code fences or inline backticks
+def _strip_fences(s: str) -> str:
+    """Strip wrapping markdown code fences or inline backticks."""
     if s.startswith("```") and s.endswith("```"):
         lines = s.splitlines()
         if len(lines) >= 2:
             s = "\n".join(lines[1:-1]).strip()
     if len(s) >= 2 and s.startswith("`") and s.endswith("`") and "`" not in s[1:-1]:
         s = s[1:-1].strip()
-    # Strip leading shell prompt markers ($ or >)
-    if s.startswith("$ "):
-        s = s[2:].strip()
-    elif s.startswith("> "):
-        s = s[2:].strip()
-    # Strip redundant leading `tether ` prefix if the model typed `tether web search ...`
-    if s.startswith("tether "):
-        s = s[len("tether ") :].strip()
-    return _unwrap_shell(s)
+    return s
+
+
+def _strip_prompt(s: str) -> str:
+    """Strip a leading shell prompt marker (`$ ` or `> `)."""
+    return s[2:].strip() if s.startswith(("$ ", "> ")) else s
+
+
+def _strip_tether_prefix(s: str) -> str:
+    """Strip a redundant leading `tether ` (the model typed `tether web search ...`)."""
+    return s[len("tether ") :].strip() if s.startswith("tether ") else s
+
+
+NORMALIZERS: list[Callable[[str], str]] = [_strip_fences, _strip_prompt, _strip_tether_prefix]
+
+
+def register_normalizer(fn: Callable[[str], str]) -> Callable[[str], str]:
+    """Append a command-quirk normalizer (`str -> str`) that runs after the built-in ones.
+
+    Use it to teach Tether a model's habit once for every model, e.g. stripping a vendor
+    prefix. It must be deterministic and return its input unchanged when it does not apply.
+    """
+    NORMALIZERS.append(fn)
+    return fn
+
+
+def normalize_cmd(raw_cmd: str) -> str:
+    """Normalize common small-model CLI syntax quirks deterministically."""
+    s = raw_cmd.strip()
+    for fn in NORMALIZERS:
+        s = fn(s)
+    return s
 
 
 _SHELL_WRAP_RE = re.compile(
@@ -74,6 +95,9 @@ def _unwrap_shell(s: str) -> str:
     if m.group("q") == '"':
         body = _DQ_ESCAPES.sub(r"\1", body)
     return f"bash {body}"
+
+
+NORMALIZERS.append(_unwrap_shell)
 
 
 _SHELL_BUILTINS = frozenset(

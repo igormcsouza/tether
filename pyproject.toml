@@ -63,6 +63,7 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+extend-exclude = ["bench"]  # developer tooling and task fixtures, not shipped
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

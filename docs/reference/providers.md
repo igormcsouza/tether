@@ -121,3 +121,25 @@ On one small bug-fix task (v0.2.0 test), using `claude -p --tools ""` as the bac
     options:
       show_root_heading: false
       members_order: source
+
+## Request parameters (`params`)
+
+HTTP kinds (`openai`, `ollama`, `anthropic`) accept `params`, merged into the request body over the adapter's defaults (temperature 0.2). For `ollama`, `think`, `keep_alive`, `format` and `stream` are request-level keys and everything else (`temperature`, `top_p`, ...) goes into `options`.
+
+```yaml
+nvidia:
+  kind: openai
+  base_url: https://integrate.api.nvidia.com/v1
+  api_key_env: NVIDIA_API_KEY
+  params: {temperature: 0, reasoning_effort: low}
+```
+
+The yaml values are defaults; a call overrides them key by key:
+
+| Surface | How |
+|---|---|
+| CLI | `tether run --param temperature=0.7 --param think=false "goal"` (repeatable, JSON values) |
+| SDK | `Harness(model=..., params={"temperature": 0.7})` |
+| MCP | `tether_run` with `params: {"temperature": 0.7}` |
+
+Params are stored with the session, so `send` and a resumed worker keep using them. Precedence: call > `providers.yaml` > adapter default. Not supported for `kind: command` (put flags in `argv`).

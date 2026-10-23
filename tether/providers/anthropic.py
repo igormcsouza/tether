@@ -34,6 +34,7 @@ class AnthropicProvider:
         timeout: float = 180.0,
         client: httpx.AsyncClient | None = None,
         rpm: int | None = None,
+        params: dict[str, Any] | None = None,
     ) -> None:
         self.model_name = model_name
         self.api_key_env = api_key_env
@@ -45,6 +46,7 @@ class AnthropicProvider:
         self.max_tokens = max_tokens
         self.timeout = timeout
         self._client = client
+        self.params = dict(params or {})
         self._limiter = limiter_for(f"anthropic:{self.base_url}", rpm)
 
     def _get_client(self) -> httpx.AsyncClient:
@@ -131,6 +133,7 @@ class AnthropicProvider:
             "max_tokens": self.max_tokens,
             "messages": chat_msgs,
             "tools": anthropic_tools,
+            **self.params,
         }
         if system_text:
             payload["system"] = [

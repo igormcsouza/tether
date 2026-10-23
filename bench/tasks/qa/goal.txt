@@ -1,0 +1,7 @@
+Answer these 6 questions. Deliver ONLY a JSON array of 6 short strings (one answer per question, in order) via done.
+1. A train leaves at 14:35 and the trip takes 2h 50m. What is the arrival time (24h HH:MM)?
+2. What is 17% of 2,300?
+3. What is the capital of Australia?
+4. In Python 3, what does sorted({3: 'a', 1: 'b'}) return?
+5. How many prime numbers are there below 30?
+6. Which is larger, 2**10 or 10**3, and by how much?

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from tether.decorator import ToolSpec, tool
 from tether.harness import Harness
+from tether.multiplexer import register_normalizer
 from tether.pipeline import (
     Pipeline,
     PipelineSpec,
@@ -57,6 +58,7 @@ __all__ = [
     "load_pipeline",
     "parse_pipeline_yaml",
     "register_dialect",
+    "register_normalizer",
     "register_provider",
     "tool",
 ]

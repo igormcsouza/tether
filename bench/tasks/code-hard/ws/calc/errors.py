@@ -1,0 +1,2 @@
+class CalcError(Exception):
+    pass

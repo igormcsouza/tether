@@ -1,0 +1,1 @@
+The calc library (expression evaluator in calc/) has bugs: `python3 -m unittest discover -s tests -t .` fails. Find and fix the root causes in the library code so it behaves as documented in calc/__init__.py. Do not edit the tests. Other behaviours of the library are covered by hidden tests, so fix the underlying causes, not just the failing inputs.

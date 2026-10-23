@@ -157,3 +157,10 @@ def test_mcp_server_runs_a_session_over_stdio(tether: Tether, chaos) -> None:
         "tether_send",
     }
     assert out["run"]["status"] == "COMPLETED" and out["run"]["result"] == "via mcp"
+
+
+def test_param_flag_reaches_the_model_request(tether: Tether, chaos) -> None:
+    chaos.script(("done", "ok"))
+    tether.run("params", "--param", "temperature=0.9", "--param", "think=false")
+    assert chaos.requests[0]["options"]["temperature"] == 0.9
+    assert chaos.requests[0]["think"] is False
