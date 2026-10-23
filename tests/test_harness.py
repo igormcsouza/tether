@@ -645,3 +645,20 @@ async def test_a_change_resets_the_stall_count(
     run = await _run_commands(tmp_path, [*reads, "ping x", *reads, "ping y"])
     assert run.session.status == "COMPLETED"
     assert run.events.count("cycle_stall") == 6
+
+
+async def test_context_overflow_warns_once_on_stderr(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    script = [
+        ModelResponse(content="", action=ActionCall(cmd="done", stdin="ok"), prompt_tokens=10)
+    ]
+    db = tmp_path / "tether.db"
+    harness = Harness(
+        db_path=db, provider=_InboxOnCall(script, SQLiteStore(db), 0), max_context_tokens=20
+    )
+    rec = harness.create_session("goal")
+    await harness.execute_session(rec.id)
+    err = capsys.readouterr().err
+    assert err.count("over --context-tokens 20") == 1
+    assert "raise the budget" in err

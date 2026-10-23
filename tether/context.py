@@ -175,6 +175,13 @@ class ContextAssembler:
         self.mem_enabled = mem_enabled
         self.workspace_root = workspace_root
         self._static_system_prompt: str | None = None
+        self.calibration = 1.0  # real prompt tokens / our estimate, learned from the provider
+        self.overflow = 0  # estimated tokens still over budget after every deterministic step
+
+    def calibrate(self, estimated: int, actual: int) -> None:
+        """Learn how far the 4-chars/token estimate undercounts for this model (never below 1)."""
+        if estimated > 0 and actual > 0:
+            self.calibration = min(1.5, max(1.0, actual / estimated))
 
     @staticmethod
     def _action_as_text(turn: TurnRecord) -> dict[str, Any]:
@@ -256,8 +263,11 @@ class ContextAssembler:
                 pending = None
 
         keep = live_reads(turns, observations, self.workspace_root)
+        # Live (unfolded) observation messages, oldest first: shrunk in place under budget pressure.
+        live: list[tuple[dict[str, Any], ObservationRecord, str]] = []
         for turn in turns:
             content = turn.content
+            obs = None
             if turn.obs_id and turn.obs_id in observations:
                 obs = observations[turn.obs_id]
                 age = current_step - turn.step
@@ -267,6 +277,7 @@ class ContextAssembler:
                     and obs.id not in keep
                 ):
                     content = tombstone(obs, self.mem_enabled)
+                    obs = None
                 else:
                     content = elide_active_observation(
                         obs.id,
@@ -291,8 +302,12 @@ class ContextAssembler:
                         ]
                     )
                     pending = None
+                    wrap = ""
                 else:
                     groups.append([{"role": "user", "content": f"Observation:\n{content}"}])
+                    wrap = "Observation:\n"
+                if obs is not None:
+                    live.append((groups[-1][-1], obs, wrap))
             else:
                 flush_pending()
                 groups.append([{"role": turn.role, "content": content}])
@@ -303,15 +318,31 @@ class ContextAssembler:
             pin_lines = ["[PINNED MEMORY]"] + [f"- {k}: {v}" for k, v in pins.items()]
             pin_block = "\n".join(pin_lines)
 
-        # Enforce max_context_tokens by dropping oldest groups (call + result together)
+        # Enforce max_context_tokens deterministically, cheapest loss first (#81):
+        # 1. fold live observations oldest-first, 2. drop oldest groups (call + result together),
+        # 3. shrink the newest observation. `overflow` > 0 means even that was not enough.
         base_tokens = estimate_messages_tokens(messages, [ACT_TOOL_SCHEMA]) + estimate_tokens(
             pin_block
         )
-        while len(groups) > 1 and sum(len(g) for g in groups) > 2:
+        limit = int(self.max_context_tokens / self.calibration)
+
+        def over() -> int:
             flat = [m for g in groups for m in g]
-            if base_tokens + estimate_messages_tokens(flat) <= self.max_context_tokens:
+            return base_tokens + estimate_messages_tokens(flat) - limit
+
+        for msg, obs, wrap in live[:-1]:
+            if over() <= 0:
                 break
+            msg["content"] = wrap + tombstone(obs, self.mem_enabled)
+        while len(groups) > 1 and over() > 0:
             groups.pop(0)
+        if over() > 0 and live and live[-1][0] in groups[-1]:
+            msg, obs, wrap = live[-1]
+            cap = max(400, min(self.active_char_cap, len(msg["content"])) - over() * 4)
+            msg["content"] = wrap + elide_active_observation(
+                obs.id, obs.raw_output, max_chars=cap, mem_enabled=self.mem_enabled
+            )
+        self.overflow = max(0, over())
         history_msgs = [m for g in groups for m in g]
 
         if pin_block:

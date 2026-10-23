@@ -14,6 +14,8 @@ Found by benchmarking the same models inside Tether and inside a plain tool loop
 
 - Harness: reading one file over varying ranges (`edit view f --lines 1:40`, `sed -n`, `cat`, `grep f`) 7 times in a row without any change is now a `cycle_stall` with a `[CYCLE DETECTED]` hint, and 4 stall warnings without an intervening change end the session `FAILED` as `Stalled: ...` (exit code 4, `failure.kind` `stalled`) instead of using every step (#92). Before, `gpt-oss-20b` looped on reads until `max_steps`.
 
+- Context: `--context-tokens` is now enforced in three deterministic steps instead of only dropping the oldest history: fold live observations oldest-first (even inside the `--fold-after` window and the last-8-files exception), then drop the oldest call+result groups, then shrink the newest observation. The budget also adapts to the model: the assembler learns `real prompt tokens / estimate` (between 1.0 and 1.5) from the provider's usage and tightens the target, so the 4-chars/token estimate no longer lets a code-heavy prompt run past the limit. When goal, system prompt and the latest step alone exceed the budget, one warning goes to stderr (#81). Before, 8 unfolded `edit view` results reached ~24k tokens on a 16,384 budget.
+
 ### Features
 
 - CLI: `tether stop <id>` sends SIGTERM to a running detached worker and marks the session `FAILED` as `Stopped by user.` (exit 5 on `status`/`wait`, `failure.kind` `stopped`) (#89).

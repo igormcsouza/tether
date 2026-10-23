@@ -264,3 +264,53 @@ def test_ranges_of_one_file_stay_live_together(tmp_path: Path) -> None:
     assert _live(text, 1) and _live(text, 2)
     text = _text(tmp_path / "r", ["edit view a.py --lines 1:5", "edit view a.py --lines 1:5"])
     assert "obs_1 folded" in text and _live(text, 2)
+
+
+def _budget_run(n_obs: int, size: int, budget: int, **kw: Any) -> tuple[ContextAssembler, list]:
+    from tether.store import ObservationRecord
+
+    turns: list[TurnRecord] = []
+    obs: dict[str, ObservationRecord] = {}
+    for i in range(1, n_obs + 1):
+        o = ObservationRecord(f"obs_{i}", "s", i, f"bash echo {i}", f"{i}" * size, "", size)
+        obs[o.id] = o
+        turns.append(TurnRecord(2 * i, "s", i, "assistant", "", f"bash echo {i}", None, None, 0.0))
+        turns.append(TurnRecord(2 * i + 1, "s", i, "tool", "x", None, None, o.id, 0.0))
+    ca = ContextAssembler(max_context_tokens=budget, structured=True, **kw)
+    msgs = ca.assemble(
+        system_prompt="Sys", goal="Goal", turns=turns, observations=obs, pins={}, current_step=n_obs
+    )
+    return ca, msgs
+
+
+def test_budget_folds_live_observations_before_dropping_history() -> None:
+    # 8 live observations (fold window 8) of ~600 tokens each, budget 2,000: fold, do not drop
+    ca, msgs = _budget_run(8, 2400, 2000, fold_after_turns=8)
+    assert estimate_messages_tokens(msgs, [ACT_TOOL_SCHEMA]) <= 2000 and ca.overflow == 0
+    text = "\n".join(str(m.get("content")) for m in msgs)
+    assert "[obs_1 folded" in text and "[obs_8] 8888" in text  # old folded, newest intact
+    assert sum(1 for m in msgs if m["role"] == "tool") == 8  # nothing dropped
+
+
+def test_budget_shrinks_the_newest_observation_as_a_last_resort() -> None:
+    ca, msgs = _budget_run(1, 9000, 700)
+    assert ca.overflow == 0
+    assert estimate_messages_tokens(msgs, [ACT_TOOL_SCHEMA]) <= 700
+    assert "elided" in str(msgs[-1]["content"])
+
+
+def test_budget_overflow_is_reported_when_nothing_fits() -> None:
+    ca, _ = _budget_run(1, 100, 10)  # system + goal + schema alone exceed 10 tokens
+    assert ca.overflow > 0
+
+
+def test_calibration_tightens_the_budget_and_never_loosens_it() -> None:
+    ca = ContextAssembler()
+    ca.calibrate(1000, 1250)
+    assert ca.calibration == 1.25
+    ca.calibrate(1000, 400)  # cached-prefix counts must not widen the budget
+    assert ca.calibration == 1.0
+    ca.calibrate(1000, 9000)
+    assert ca.calibration == 1.5
+    ca.calibrate(0, 5)
+    assert ca.calibration == 1.5

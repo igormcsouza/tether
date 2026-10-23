@@ -53,3 +53,16 @@ def test_range_shifting_reads_stop_the_session_early(tether: Tether, chaos) -> N
     assert d["steps"] < 30, "the stall guard must end the session before max_steps"
     assert tether.events(d["id"]).count("cycle_stall") == 4
     assert any("reads of `big.py`" in o for o in tether.tool_outputs(d["id"]))
+
+
+def test_budget_holds_with_a_wide_fold_window(tether: Tether, chaos) -> None:
+    (tether.ws / "big.py").write_text("".join(f"line_{i} = {i}  # padding\n" for i in range(400)))
+    views = [f"edit view big.py --lines {i * 40 + 1}:{i * 40 + 40}" for i in range(8)]
+    chaos.script(*views, ("done", "ok"))
+    d = tether.run(
+        "read it", "--tools", "edit", "--context-tokens", "1500", "--fold-after", "8",
+        "--max-steps", "10",
+    )  # fmt: skip
+    assert d["rc"] == 0
+    for req in chaos.requests:
+        assert _size(req) <= 1500 * 1.3, f"prompt grew past the budget: ~{_size(req)} tokens"
