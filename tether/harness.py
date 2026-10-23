@@ -51,7 +51,7 @@ def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list
 # Stall guard: warn after N reads of one file with varying ranges, abort after M warnings
 RANGE_STALL_READS = 7  # after the 6-step quiet [NUDGE], which gets the first word
 STALL_ABORT = 4
-_READERS = {"cat", "head", "tail", "grep", "rg", "sed", "wc"}
+_READERS = {"cat", "head", "tail", "grep", "rg", "sed", "wc", "awk", "gawk", "mawk"}
 
 
 def read_target(cmd: str) -> str | None:
@@ -68,12 +68,21 @@ def read_target(cmd: str) -> str | None:
 
 # Quiet nudge: one-shot completion hint after N consecutive read-only/verification steps
 QUIET_NUDGE_STEPS = 6
+# Exploration nudge (#127): same hint when nothing was changed yet, first at 12 quiet steps,
+# then every 8 more while the model keeps only reading.
+EXPLORE_NUDGE_STEPS = 12
+EXPLORE_NUDGE_EVERY = 8
 _QUIET = {"cat", "head", "tail", "grep", "rg", "ls", "find", "wc", "pytest", "ruff", "mypy"}
 
 
 _WRITES = re.compile(
     r"(?:^|[^<>&\d\s])\s*>{1,2}\s*[^&\s]|\d>{1,2}\s*[^&\s]|\b(?:open|write|write_text|write_bytes|"
     r"unlink|remove|rmtree|rename|replace|system|Popen|touch|mkdir|sed\s+-i|tee)\b"
+)
+_AWK = ("awk", "gawk", "mawk")
+# awk is read-only unless it prints to a file, pipes to a shell or edits in place; `NR>=5` is a test
+_AWK_WRITES = re.compile(
+    r"\bprintf?\b[^;}|]*>|\bsystem\s*\(|\|\s*[\"']?\s*(?:sh|bash|tee)\b|inplace"
 )
 _PY = ("python", "python3")
 _PY_TESTS = (["-m", "unittest"], ["-m", "pytest"], ["-m", "doctest"])
@@ -85,6 +94,8 @@ def is_quiet(cmd: str) -> bool:
     argv = argv[1:] if argv[:1] == ["bash"] else argv
     if not argv:
         return False
+    if argv[0] in _AWK:
+        return not _AWK_WRITES.search(cmd)
     if _WRITES.search(cmd):
         return False
     if argv[0] in _PY and (
@@ -1024,6 +1035,15 @@ class Harness:
                         "complete call `done`; otherwise make your next edit."
                     )
                     nudged = True
+                elif (
+                    not changed
+                    and quiet_run >= EXPLORE_NUDGE_STEPS
+                    and (quiet_run - EXPLORE_NUDGE_STEPS) % EXPLORE_NUDGE_EVERY == 0
+                ):
+                    out += (
+                        f"\n[NUDGE] No file changes in {quiet_run} steps. Make your edit now, or "
+                        "call `done` with what you found."
+                    )
 
                 # Record tool observation in SQLite (auto-chunks into FTS5)
                 obs = self.store.add_observation(

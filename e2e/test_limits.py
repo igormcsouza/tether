@@ -66,3 +66,20 @@ def test_budget_holds_with_a_wide_fold_window(tether: Tether, chaos) -> None:
     assert d["rc"] == 0
     for req in chaos.requests:
         assert _size(req) <= 1500 * 1.3, f"prompt grew past the budget: ~{_size(req)} tokens"
+
+
+def test_awk_ranges_of_one_file_count_as_range_shift_reads(tether: Tether, chaos) -> None:
+    (tether.ws / "big.py").write_text("x = 1\n" * 300)
+    reads = [f"bash awk 'NR>={i * 20 + 1} && NR<={i * 20 + 20}' big.py" for i in range(12)]
+    chaos.script(*reads)
+    d = tether.run("explore one file", "--tools", "bash", "--max-steps", "30")
+    assert any("reads of `big.py`" in o for o in tether.tool_outputs(d["id"]))
+
+
+def test_explore_nudge_after_twelve_reads_without_a_change(tether: Tether, chaos) -> None:
+    for i in range(14):
+        (tether.ws / f"f{i}.txt").write_text(f"file {i}\n")
+    chaos.script(*[f"bash cat f{i}.txt" for i in range(14)], ("done", "ok"))
+    d = tether.run("read everything", "--tools", "bash", "--max-steps", "30")
+    outs = tether.tool_outputs(d["id"])
+    assert sum("[NUDGE] No file changes in 12 steps" in o for o in outs) == 1, outs[-3:]

@@ -53,6 +53,8 @@ Dogfooding fixes: the four milestone bugs (#74 #75 #85 #88) plus the friction fo
 
 ### Fixes
 
+- Harness: a session that only reads gets a deterministic hint (#127). After 12 consecutive read-only steps with no change at all, then every 8 more, the observation ends with `[NUDGE] No file changes in N steps. Make your edit now, or call `done` with what you found.` (0 static prompt tokens). Before, the quiet nudge started only after a first change, so a model that never edited (nemotron-3-ultra and glm-5.3 on scoped briefs: 40 steps, 150k to 215k prompt tokens, no change) was never told.
+- Harness: `awk`/`gawk`/`mawk` count as read-only (unless they print to a file, pipe to a shell, call `system()` or edit in place) and as range-shift reads of one file, so the #92 stall guard sees `awk 'NR>=a && NR<=b' f` loops. `NR>=5` used to look like a redirect.
 - Store: a `RUNNING` session whose worker pid no longer exists is flipped to `FAILED` (`Worker died (pid N) before finishing`) when read via `get_session`/`list_sessions`, so `status`, `list`, `wait` and `read` no longer report a killed worker as running forever (#85). A pid owned by another user counts as alive.
 - Providers: `429` retries wait `Retry-After` (else 10s doubling, capped 30s) and get up to 5 attempts instead of 3 quick ones, so rate-limited hosted models (NVIDIA free tier) no longer fail the session after 3 quick attempts.
 - Providers: each `post_with_retry` attempt is now bounded by a total `asyncio.wait_for(timeout)` deadline, so a trickling/stalled response cannot hang past the configured timeout; the deadline is retried like other transient errors and shows as `TimeoutError` (vs `ReadTimeout`) in the final `ProviderError` (#88).
