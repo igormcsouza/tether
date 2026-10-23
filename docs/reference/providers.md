@@ -122,6 +122,17 @@ On one small bug-fix task (v0.2.0 test), using `claude -p --tools ""` as the bac
       show_root_heading: false
       members_order: source
 
+## NVIDIA free tier
+
+One `nvidia:` entry (above, with `rpm: 36` for the 40 requests/min cap) serves every model on `integrate.api.nvidia.com`; the model is whatever follows the prefix, e.g. `--model nvidia/nvidia/nemotron-3-ultra-550b-a55b`. Checked with one chat request on a free key (2026-10-23); availability changes per account, so a `404 Function ... Not found for account` means the model is not enabled for your key:
+
+| Model | Id after `nvidia/` | Status |
+|---|---|---|
+| Nemotron 3 Ultra | `nvidia/nemotron-3-ultra-550b-a55b` | works |
+| Kimi K2.6 | `moonshotai/kimi-k2.6` | listed, 404 for the checked account |
+| GLM-5.2 | `z-ai/glm-5.2` | end of life (410); use `z-ai/glm-5.3` |
+| Mistral Large 3 | `mistralai/mistral-large-3-675b-instruct-2512` | gone (410); `mistralai/mistral-large*` 404 |
+
 ## Request parameters (`params`)
 
 HTTP kinds (`openai`, `ollama`, `anthropic`) accept `params`, merged into the request body over the adapter's defaults (temperature 0.2). For `ollama`, `think`, `keep_alive`, `format` and `stream` are request-level keys and everything else (`temperature`, `top_p`, ...) goes into `options`.
