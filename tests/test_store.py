@@ -326,3 +326,14 @@ def test_count_chunks_and_prefix_fallback(tmp_path: Path) -> None:
     hits = store.search_chunks("loop", session_ids=[rec.id])  # prefix: loop -> looping
     assert hits and "looping" in hits[0].content
     assert store.search_chunks("zz", session_ids=[rec.id]) == []  # too short for a prefix match
+
+
+def test_memory_path_does_not_create_a_file_in_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    store = SQLiteStore(":memory:")
+    rec = store.create_session("g")
+    assert store.get_session(rec.id) is not None
+    assert not (tmp_path / ":memory:").exists()
+    assert store.db_path.parent != tmp_path
