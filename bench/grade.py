@@ -135,8 +135,49 @@ def _focus(task, ws, result):
     return r
 
 
+def _steps(t):
+    return len(re.findall(r"^\s*\d+[.)]", t, re.M))
+
+
+def _plan(_task, _ws, result):
+    t = result or ""
+    c = {
+        "6-10 numbered steps": 6 <= _steps(t) <= 10,
+        "names client.py": "client.py" in t,
+        "names config.py": "config.py" in t,
+        "names get/post": bool(re.search(r"\bget\b", t)) and bool(re.search(r"\bpost\b", t)),
+        "backoff+jitter": bool(re.search(r"exponential", t, re.I)) and bool(re.search(r"jitter", t, re.I)),
+        "retry settings": bool(re.search(r"max[_ -]?(retries|attempts)|retry[_ -]?(limit|count)", t, re.I)) and bool(re.search(r"base[_ -]?(delay|backoff)|backoff[_ -]?(base|factor)", t, re.I)),
+        "429 and 5xx": "429" in t and bool(re.search(r"5xx|50\d", t)),
+        "not retried (4xx)": bool(re.search(r"4xx|not retr|never retr|do not retry|don't retry|non-retry", t, re.I)),
+        "Retry-After": bool(re.search(r"retry-after", t, re.I)),
+        "tests without network": bool(re.search(r"mock|fake|stub|patch|monkeypatch|inject", t, re.I)) and bool(re.search(r"test", t, re.I)),
+        "idempotency of post": bool(re.search(r"idempot|post.{0,60}(retry|retri)|(retry|retri).{0,60}post", t, re.I)),
+    }
+    return {"score": round(sum(c.values()) / len(c), 3), "pass": sum(c.values()) >= 9, "detail": {"missed": [k for k, v in c.items() if not v]}}
+
+
+BUGS = {
+    "page off-by-one": r"page.{0,200}(off.by.one|number\s*-\s*1|\(number - 1\)|1-based|zero|skips? the first)|(off.by.one|1-based).{0,200}page",
+    "mutable default": r"mutable default|tags=\[\]|default (argument|arg|list)|shared (between|across)",
+    "float money": r"float.{0,120}(money|price|currenc|rounding|precision|decimal)|decimal",
+    "float equality": r"(==|equal).{0,100}(float|0\.0)|is_free|float.{0,60}(compar|equal)|isclose",
+    "sql injection": r"sql.?inject|parameteri[sz]|placeholder|string concat|bind (var|param)",
+    "file not closed": r"(not|never) clos|resource leak|context manager|with open|leak",
+    "keyerror/missing": r"keyerror|missing (key|item|name)|\.get\(|unknown name|not in (the )?(stock|dict)",
+    "split malformed": r"split.{0,100}(more than|exactly|two|malformed|blank|empty|valueerror)|blank line|malformed|empty line|valueerror",
+}
+
+
+def _codereview(_task, _ws, result):
+    t = result or ""
+    hit = {k: bool(re.search(v, t, re.I | re.S)) for k, v in BUGS.items()}
+    must = ["page off-by-one", "mutable default", "sql injection", "file not closed", "keyerror/missing"]
+    return {"score": round(sum(hit.values()) / len(hit), 3), "pass": all(hit[k] for k in must), "detail": {"missed": [k for k, v in hit.items() if not v], "items": _steps(t)}}
+
+
 def grade(task, ws, result):
-    fn = {"qa": _qa, "content": _content, "review": _review, "focus": _focus}.get(task, _code)
+    fn = {"qa": _qa, "content": _content, "review": _review, "focus": _focus, "plan": _plan, "codereview": _codereview}.get(task, _code)
     try:
         return fn(task, ws, result)
     except Exception as e:  # grader bug must never look like a model result
