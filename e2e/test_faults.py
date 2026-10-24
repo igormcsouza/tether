@@ -26,6 +26,18 @@ def test_persistent_5xx_fails_loudly_with_exit_5(tether: Tether, chaos) -> None:
     assert "unavailable after 3 attempts" in r["failure"]["message"]
 
 
+def test_rejected_tool_call_reaches_the_model_instead_of_ending_the_session(
+    tether: Tether, chaos
+) -> None:
+    """#138: a 500 naming an invalid tool call is model feedback, not a provider outage."""
+    chaos.fault("status", code=500, error='invalid tool call arguments for "act": unexpected end')
+    chaos.script(("done", "ok"))
+    r = tether.run("go", "--max-steps", "6")
+    assert (r["rc"], r["status"]) == (0, "COMPLETED"), r
+    assert len(chaos.requests) == 2, "the rejected call must not be retried"
+    assert "cut off" in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
+
+
 def test_trickling_response_hits_the_per_attempt_deadline(tmp_path: Path, chaos) -> None:
     """#88: bytes keep arriving so httpx's read timeout never fires; the deadline must."""
     chaos.fault("trickle", times=3, seconds=60)

@@ -718,3 +718,16 @@ def test_awk_is_quiet_unless_it_writes(cmd: str, quiet: bool) -> None:
 )
 def test_comparison_operators_are_not_redirects(cmd: str, quiet: bool) -> None:
     assert is_quiet(cmd) is quiet
+
+
+async def test_provider_hint_reaches_the_model_and_the_session_continues(tmp_path: Path) -> None:
+    provider = FakeScriptedProvider(
+        [
+            ModelResponse(content="", hint="Your last call was cut off."),
+            ModelResponse(content="", action=ActionCall(cmd="done", stdin="ok")),
+        ]
+    )
+    harness = Harness(provider=provider, db_path=tmp_path / "t.db", max_steps=5)
+    rec = await harness.run("go")
+    assert rec.status == "COMPLETED"
+    assert any("Your last call was cut off." in str(m) for m in provider.recorded_calls[-1])
