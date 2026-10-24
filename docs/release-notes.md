@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixes
+
+- Context: the hard budget now keeps an eighth of `max_context_tokens` free for the model's reply (#144). On the Polyglot-Python fast set with `qwen3.5:9b` (`num_ctx` 8192) the prompt before a cut-off tool call had a median of 7,553 tokens, so the longest calls (file writes) were cut and each cut wasted a step. Older observations fold earlier to make room; 0 static prompt tokens.
+
 ## v0.2.7 (2026-10-24)
 
 Found by running Tether on the Polyglot-Python benchmark (34 Aider polyglot Python exercises) and reading why runs failed instead of guessing: sessions that ended mid-task on a server error, and models that re-read one file until the step cap. Closes #138, #141.
