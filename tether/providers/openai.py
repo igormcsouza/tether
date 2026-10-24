@@ -15,6 +15,7 @@ from tether.providers.base import (
     extract_fallback_action,
     limiter_for,
     post_with_retry,
+    rejected_call,
 )
 
 
@@ -95,6 +96,8 @@ class OpenAIProvider:
             limiter=self._limiter,
             json=payload,
         )
+        if rejected := rejected_call(resp):
+            return rejected
         resp.raise_for_status()
         data = resp.json()
 

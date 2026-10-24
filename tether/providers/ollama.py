@@ -9,13 +9,13 @@ from typing import Any
 import httpx
 
 from tether.providers.base import (
-    MODEL_FAULT,
     ActionCall,
     ModelResponse,
     action_from_tool_call,
     extract_fallback_action,
     limiter_for,
     post_with_retry,
+    rejected_call,
 )
 
 # Request-level keys of /api/chat; everything else in `params` is a sampling option.
@@ -134,14 +134,8 @@ class OllamaProvider:
                 self.model_name = fallback
                 payload["model"] = fallback
                 resp = await self._chat(client, payload)
-        if resp.status_code == 500 and MODEL_FAULT in resp.text:
-            return ModelResponse(
-                content="",
-                hint=(
-                    "Your last call was rejected: the tool-call JSON was invalid or cut off. "
-                    "Send a shorter call, e.g. write long files in smaller pieces."
-                ),
-            )
+        if rejected := rejected_call(resp):
+            return rejected
         resp.raise_for_status()
         data = resp.json()
 
