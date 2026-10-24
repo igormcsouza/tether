@@ -1,6 +1,12 @@
 # Release Notes
 
-## v0.2.7 (unreleased)
+## v0.2.7 (2026-10-24)
+
+Found by running Tether on the Polyglot-Python benchmark (34 Aider polyglot Python exercises) and reading why runs failed instead of guessing: sessions that ended mid-task on a server error, and models that re-read one file until the step cap. Closes #138, #141.
+
+### Benchmark
+
+- `bench/run.py --tasks polyglot|polyglot-fast` runs the Polyglot-Python exercises, graded by each exercise's own tests; `bench/report.py` prints pass rate, mean score and a failure breakdown that keeps provider outages apart from harness outcomes. On the 12-exercise fast set (2 trials), the observation-cap fix below moved `qwen3.5:9b` from mean 0.64 to 0.80 and cut re-reads of one file from 32% to 19% of steps; `nemotron-3.5-lightning` went from 10 to 12 passes of 24.
 
 ### Fixes
 
