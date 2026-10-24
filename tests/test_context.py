@@ -245,7 +245,7 @@ def test_tombstone_hint_follows_mem_availability(tmp_path: Path) -> None:
     # active (not yet folded) head+tail elision marker follows the same rule
     store = SQLiteStore(db_path=tmp_path / "c.db")
     rec = store.create_session("g")
-    obs = store.add_observation(rec.id, step=1, cmd="bash ls", raw_output="x" * 5000)
+    obs = store.add_observation(rec.id, step=1, cmd="bash ls", raw_output="x" * 20000)
     store.add_turn(rec.id, step=1, role="tool", content="", obs_id=obs.id)
     msgs = ContextAssembler(mem_enabled=False).assemble(
         system_prompt="S",
@@ -320,3 +320,26 @@ def test_mem_recall_results_are_not_folded_again(tmp_path: Path) -> None:
     # Folding a recall's own output sent GLM-5.3 on a 10-step `mem recall obs_N` chain (#86).
     text = _text(tmp_path, ["bash ls", "mem recall obs_1", "bash echo a", "bash echo b"])
     assert _live(text, 2) and "obs_1 folded" in text and "obs_3 folded" in text
+
+
+def test_active_observation_cap_follows_the_context_budget(tmp_path: Path) -> None:
+    """A 9 KB test file is shown whole on the default budget, head+tail on a tiny one."""
+    store = SQLiteStore(db_path=tmp_path / "c.db")
+    rec = store.create_session("g")
+    obs = store.add_observation(rec.id, step=1, cmd="bash cat t.py", raw_output="x" * 9000)
+    store.add_turn(rec.id, step=1, role="tool", content="", obs_id=obs.id)
+
+    def shown(**kw: int) -> str:
+        msgs = ContextAssembler(**kw).assemble(
+            system_prompt="S",
+            goal="g",
+            turns=store.get_turns(rec.id),
+            observations={obs.id: obs},
+            pins={},
+            current_step=1,
+        )
+        return str(msgs)
+
+    assert "elided" not in shown()
+    assert "elided" in shown(max_context_tokens=2048)
+    assert ContextAssembler(max_context_tokens=100).active_char_cap == 2400

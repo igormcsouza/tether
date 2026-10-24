@@ -159,7 +159,7 @@ class ContextAssembler:
         *,
         fold_after_turns: int = 2,
         fold_char_threshold: int = 200,
-        active_char_cap: int = 2400,
+        active_char_cap: int | None = None,
         max_context_tokens: int = 8192,
         structured: bool = False,
         mem_enabled: bool = True,
@@ -167,7 +167,11 @@ class ContextAssembler:
     ) -> None:
         self.fold_after_turns = fold_after_turns
         self.fold_char_threshold = fold_char_threshold
-        self.active_char_cap = active_char_cap
+        # One observation may use a third of the context (4 chars/token); the budget still folds
+        # older ones first, so a 12 KB test file is seen whole instead of head+tail, then re-read.
+        self.active_char_cap = (
+            max(2400, max_context_tokens * 4 // 3) if active_char_cap is None else active_char_cap
+        )
         self.max_context_tokens = max_context_tokens
         # True: replay past actions as tool_calls + tool results (provider adapters translate);
         # False: textual fallback for providers without tool messages.

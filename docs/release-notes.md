@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Context: one active observation may now use up to a third of the context budget (`max_context_tokens * 4 / 3` chars, at least 2,400) before head+tail elision, instead of a fixed 2,400 chars. Before, a 6-12 KB test file or a 100-line slice of one was always cut to head+tail, so the model asked for another slice, got that cut too, and re-read the same file 10+ times: on the Polyglot-Python fast set 24 of 48 runs ended at the step cap, 45% of their steps were reads and only 19% were edits. The hard budget still folds older observations first, so the prompt cannot overflow; `ContextAssembler(active_char_cap=...)` still sets a fixed cap.
 - Providers: when a server (Ollama, vLLM, llama.cpp behind `openai`, `anthropic`) answers HTTP 500 because it rejected the model's own tool call (`invalid tool call arguments for "act": unexpected end of JSON input`), the call is no longer retried and no longer ends the session as `worker_error` (#138). The model gets one line (`Your last call was rejected: the tool-call JSON was invalid or cut off. Send a shorter call, e.g. write long files in smaller pieces.`) through the existing no-action reminder and carries on, bounded by `max_steps`. Before, 13 of 34 Polyglot-Python runs on `qwen3.5:9b` died this way, mid-task and often with most tests passing. `ModelResponse` gains an optional `hint`. 0 static prompt tokens.
 
 ## v0.2.6 (2026-10-23)
