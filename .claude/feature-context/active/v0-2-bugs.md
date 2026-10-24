@@ -1,7 +1,7 @@
 # v0.2 bugs
 - Slug: v0-2-bugs
 - Status: active
-- Started: 2026-10-20   Updated: 2026-10-20   Closed: —
+- Started: 2026-10-20   Updated: 2026-10-24   Closed: —
 - Branches / PRs: branch `claude/keep-feature-context-resume-0ec918` (worktree); base `main` at 125b386 (release v0.2.2)
 
 ## Goal
@@ -10,6 +10,9 @@ Track and fix bugs found in Tether v0.2.x. Exact bug list not yet given by PO.
 ## Requests
 - 2026-10-20: Close v0.2.2 milestone; implement v0.2.3 issues (#40 #39 #33 #24) via swe+tether(GLM), watch tether behavior and report bugs; open v0.2.4 issue for provider docs (YAML + Python, generic example, where providers.yaml lives); review docs overall and report.
 - 2026-10-20: `/keep-feature-context new v0.2 bugs` (start log for v0.2 bugs work)
+- 2026-10-21..24 (backfilled, close to verbatim): choose 4 issues for v0.2.5 and move the rest; fix #92 (+#89 `tether stop`), #81, #76, #86; register NVIDIA models (Nemotron 3 Ultra, Kimi K2.6, GLM-5.2, Mistral Large 3); post-release check v0.2.4 vs v0.2.5 with 3 models; viability of Harness-Bench (harness-bench.ai); sandbox explanation and an issue for 10/10; start using tether as SWE agent; release v0.2.5 and v0.2.6; file new issues and keep 4-5 issues per milestone.
+- 2026-10-24 (backfilled): install v0.2.6 and find a smaller benchmark. Then: "Our main impossible goal is to get the highest score on Polyglot! Leave aside new features unless they help the score." Implement what is needed, release v0.2.7, run the benchmark, plan v0.2.8 from the results.
+- 2026-10-24: PO: v0.2.7 improved or not (answer in plain words); "reading the whole file at once will fill the context faster?"; "are you logging with the keep-feature skill?" (answer: no, resumed and backfilled now).
 
 ## Decisions
 - 2026-10-20: PO convention: v0.X.0 = feature releases (many issues OK), v0.X.Y = bug releases (small, 3-4). All 13 features now in single milestone v0.3 (v0.3.1-v0.3.3 deleted). Bug releases v0.2.4-v0.2.8 unchanged.
@@ -20,6 +23,10 @@ Track and fix bugs found in Tether v0.2.x. Exact bug list not yet given by PO.
 - 2026-10-20: PO made me act as Team Leader (no product code; dispatch swe/qa/reviewer). swe delegates coding to tether; PO wants it run with GLM and observed for tether bugs.
 - 2026-10-20: #24 -> opt-in kept + load-time warning + docs fix (maintainer lean, PO approved).
 - 2026-10-20: Added `## Dev team specifics` to AGENTS.md (PR per task, hard stop = force push/history rewrite, store in-repo `.claude/feature-context/`).
+- 2026-10-24 (backfilled): PO: 4-5 issues per milestone, create v0.2.X as needed; run `TETHER_E2E=1 uv run pytest e2e` before merging and put it in the PR; merges and releases only on explicit PO yes (classifier blocked one merge until PO said go).
+- 2026-10-24: ONE focus = Polyglot-Python score (Aider polyglot, 34 Python exercises, graded by the exercise tests, test file restored before grading). Fast set = 12 exercises, 2 trials. Models: ollama/qwen3.5:9b (main), nemotron-3.5-lightning-30b-a3b on NVIDIA (second), Ultra only as an occasional ceiling check. `think=false` not adopted (79s vs 72s per run on 3 exercises, no clear gain).
+- 2026-10-24: v0.2.7 ships only #138 and #141 (what the failure breakdown justified). Nudge issues (#132-#136) parked until the score says they matter. v0.2.8 starts with #144 (generation headroom).
+- 2026-10-24: milestones now v0.2.8 {#144,#27,#132,#136,#137}, v0.2.9 {#145,#79,#133,#134,#135}, v0.2.10 {#60-#64}, v0.2.11 {#65,#66}; v0.3 holds the 14 feature issues (sandbox #124, Harness-Bench #123, edit tool #78/#34).
 
 ## Problems
 - 2026-10-20: reviewer agent's own `gh pr review --comment` got blocked ('Unrequested Commit in a Connected App') and its merge condition needs a 'QA: GOOD TO GO' comment; TL posted the review+merge itself on PO instruction, works. Project has no QA layer beyond CI.
@@ -27,6 +34,11 @@ Track and fix bugs found in Tether v0.2.x. Exact bug list not yet given by PO.
 - 2026-10-20 TETHER+GLM BUGS (from swe #24): (a) ses_bde86e86 glm-5.3 with --tools bash,edit: 38 steps/90k prompt tokens, read-loop alternating `sed -n 1,40p` / `40,100p` of same file, never edited; every assistant turn empty text + command only; no nudge/loop_stall recorded (= issue #39, cycle detection needed); ended `ReadTimeout` raised as tool_error/Worker error after ~5 min (httpx timeout not retried/handled). (b) ses_6176f368: without --tools bash,edit GLM had only `done`, spent 38 steps probing "unknown command", then WAITING_INPUT asking for a shell (tether default zero tools; unknown-command loops not nudged; could hint 'enabled tools: done' / tools to enable). (c) 401 shows raw HTTPStatusError, doesn't name NVIDIA_API_KEY. (d) swe worktree guard blocks eval/export/time in bash -> key loading needs a script file.
 - 2026-10-20: swe #40 blocked: tether session ses_29d41cff (nvidia/z-ai/glm-5.3) -> 401 Unauthorized, 0 steps. NVIDIA_API_KEY missing/invalid in tether MCP server env. #24 swe confirmed same (ses_4a589057, 401, 686 ms). Both local branches empty, no PRs. Tether finding: 401 surfaces as raw HTTPStatusError, should name NVIDIA_API_KEY. Needs PO to supply key to MCP server env (not via me).
 (none yet)
+- 2026-10-24 (backfilled) FOUND BY POLYGLOT BASELINE (tether 0.2.6, qwen3.5:9b, 34 exercises: 14 pass, 41%; naive loop 8, 24%): 13 of 34 runs died as worker_error: 11 Ollama HTTP 500 `invalid tool call arguments for "act": unexpected end of JSON input`, 2 chat-template 500s (`CallExpression`, unknown cause, #145). post_with_retry retried the same request 3x. FIXED in #138/PR #139 (provider-agnostic `rejected_call`, hint to the model).
+- 2026-10-24: ROOT CAUSE of step-cap runs (fast set, 24/48 hit 30 steps): fixed 2,400-char observation cap cut 6-12 KB test files to head+tail, so models re-read the same file 10+ times (45% of capped-run steps were reads, 19% edits). FIXED in #141/PR #142 (cap = max(2400, max_context_tokens*4/3)). Measured: qwen mean 0.64->0.80, re-reads 32%->19% of steps; Lightning pass 10->12/24 (8 of its 24 runs invalid, NVIDIA timeouts). Cost: prompt/step 5.3k->6.4k tokens, run total 106k->126k.
+- 2026-10-24 OPEN (#144): cut-off tool-call hint still fires 42-45 times per 24 qwen runs (about half the runs); prompt before a cut-off median 7,553 tokens vs 5,453 normal, num_ctx 8,192: prompt fills the window, no room for the reply. The cap change did not reduce it.
+- 2026-10-24: bench pitfalls fixed/known: naive_agent needs httpx (run bench with `uv run --with httpx`); `pgrep -f` in a wait loop matches its own shell (use PID); `bench/run.py is_infra` treats ProviderError as infra and hides real failures (report.py now splits); uv index lags PyPI (`uv tool install --refresh`); after `pkill` on bench, a cell dir can be deleted mid-run.
+- 2026-10-24: verify gate at `done` gave only +0.08 mean on the 20 failing exercises (1 more pass): gate alone is not the lever. check-on-change prototype parked at /tmp/claude-1000/poly/check-on-change.snippet (not in repo).
 
 ## Progress log
 - 2026-10-20: RELEASED v0.2.3: release PR #94 merged (ec32d63), GitHub Release v0.2.3 'Small-Model Robustness', delivery.yml success, PyPI tether-sdk 0.2.3 live, milestone v0.2.3 closed. Next: v0.2.4 (#27 #60 #74-#79 #81-#82 #85-#86 #88-#90 #92-#93) and v0.2.5 docs (#61-#66).
@@ -56,20 +68,25 @@ Track and fix bugs found in Tether v0.2.x. Exact bug list not yet given by PO.
 - 2026-10-20: milestone v0.2.2 closed. Issue #60 created (v0.2.4, provider docs). Docs review agent launched (read-only).
 - 2026-10-20 (backfilled): preflight ran; AGENTS.md section + `.claude/feature-context/{active,archive}` created (uncommitted).
 - Checks: `uv run ruff check . && uv run ruff format --check .`; `uv run mypy tether/`; `uv run pytest`.
+- 2026-10-24 (backfilled) RELEASES: v0.2.5 (#76 #81 #86 #89 #92 + NVIDIA models docs), v0.2.6 (#77 #93 #125 #127; PR #131), v0.2.7 (#138 #141 + Polyglot bench; PRs #139 #140 #142, release PR #143, merge 97cbf3e, GitHub Release v0.2.7, PyPI tether-sdk 0.2.7 live, milestone closed). All with e2e 65/65 and 100% coverage before merge.
+- 2026-10-24: post-release check v0.2.4 vs v0.2.5 (3 models, 8 tasks): Ultra 0.943->0.946, Lightning 0.721->0.902, qwen3.5:9b 0.668->0.813. Issues filed: #123 Harness-Bench real run, #124 sandbox 10/10, #132-#137 findings.
+- 2026-10-24: v0.2.6 vs v0.2.7 on the same 12 exercises, qwen: 3/12 pass mean 0.66 -> 9/24 pass mean 0.80 (1 vs 2 runs per exercise, modest evidence).
+- 2026-10-24: PRs: #139 (#138 rejected tool call, +follow-up commit making it agnostic across ollama/openai/anthropic after PO asked), #140 bench, #142 cap, #143 release. Issues: #138, #141 (closed), #144 headroom (v0.2.8), #145 template 500 (v0.2.9).
+- 2026-10-24: re-run of Lightning infra-failed cells on installed 0.2.7 running (out dir /tmp/claude-1000/poly/cap-027, log log-redo-027.txt); results not read yet.
 
 ## Next steps
-- [x] Release v0.2.3 done
-- [ ] Start v0.2.4: #85 #88 #75 #74
-- [ ] PO OK to merge #73 (post review comment first, then squash merge); then swe #33 (harness.py), then #69-#72, #74-#79 as scheduled
-- [ ] Get GLM model id from PO (not in ~/.tether/providers.yaml; only claude-cli + nvidia entries; no 'glm' anywhere on disk). PO says it was added, maybe in another worktree/host: not found.
-- [ ] Dispatch swe for #40 #39 #33 #24 (own PRs; #39/#33 both touch harness -> sequence), then qa+reviewer
-- [ ] swe for #60 docs
-- [ ] Relay docs review report to PO
-- [ ] PO to list the v0.2 bugs
-- [ ] Commit AGENTS.md + feature-context log on this branch
+- [x] Release v0.2.3, v0.2.4(not logged), v0.2.5, v0.2.6, v0.2.7
+- [ ] Read the re-run of Lightning cells (cap-027) and update the v0.2.7 numbers
+- [ ] v0.2.8: #144 headroom first (test on fast set vs cap-027: hint rate, no-action steps, prompt size, score), then #27, #132, #136, #137
+- [ ] v0.2.9: #145 template 500 (reproduce), #79, #133, #134, #135
+- [ ] Narrow `is_infra` in bench/run.py (known, noted in #138)
+- [ ] Harness-Bench #123 blocked: docker bridge->host firewall (sudo) + NVIDIA key file from PO
+- [ ] MCP server still on an old process: PO to reconnect (0.2.7 installed locally)
 
 ## Sessions
 | Date | Session note |
-| 2026-10-20 | Current session: created log |
+| 2026-10-20 | created log |
+| 2026-10-24 | resumed, backfilled v0.2.4-v0.2.7 (log had stopped at v0.2.3) |
+| 2026-10-24 | resumed in worktree token-usage-analysis-de8182; copied this newer log from worktree tether-v0-2-mcp-89325e (release/v0.2.7), the live one |
 
 - 2026-10-20: PO asked: add Philosophy Gate to AGENTS.md (done, uncommitted; also fixed coverage line: CI enforces 100%). Switch swe tether model to `nvidia/nvidia/nemotron-3-ultra-550b-a55b` (exists on NVIDIA API, smoke test `done pong` passed via tether 0.2.3; no providers.yaml change needed, `nvidia` prefix covers it). Upgraded installed tether 0.2.2 -> 0.2.3 (`uv tool upgrade tether-sdk`). MCP server still on old process: needs reconnect to load 0.2.3 + key wrapper.
