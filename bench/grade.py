@@ -176,10 +176,55 @@ def _codereview(_task, _ws, result):
     return {"score": round(sum(hit.values()) / len(hit), 3), "pass": all(hit[k] for k in must), "detail": {"missed": [k for k, v in hit.items() if not v], "items": _steps(t)}}
 
 
-def grade(task, ws, result):
-    fn = {"qa": _qa, "content": _content, "review": _review, "focus": _focus, "plan": _plan, "codereview": _codereview}.get(task, _code)
+# Fast set (12): easy passes, partials and hard failures from the 0.2.6 baseline; tether's weak spots.
+POLY_FAST = ("affine-cipher bottle-song list-ops paasio dot-dsl food-chain forth go-counting poker pov react "
+             "rest-api").split()
+
+
+def poly_dir(ex=""):
+    """Aider polyglot-benchmark Python exercises (cloned once, never vendored)."""
+    root = os.environ.get("POLYGLOT_DIR") or os.path.expanduser("~/.cache/tether-bench/polyglot-benchmark")
+    if not os.path.isdir(root):
+        subprocess.run(["git", "clone", "--depth", "1", "https://github.com/Aider-AI/polyglot-benchmark", root], check=True)
+    return os.path.join(root, "python", "exercises", "practice", ex)
+
+
+def poly_goal(ex):
+    d = poly_dir(ex)
+    docs = "\n\n".join(open(os.path.join(d, ".docs", f)).read() for f in ("instructions.md", "instructions.append.md")
+                        if os.path.exists(os.path.join(d, ".docs", f)))
+    sol = ex.replace("-", "_") + ".py"
+    return (f"Implement `{sol}` in the current directory so that `python3 -m unittest discover -p '*_test.py'` passes. "
+            f"Do not edit the test file.\n\n{docs}")
+
+
+def _poly(task, ws, _result):
+    ex = task.removeprefix("poly-")
+    tmp = tempfile.mkdtemp(prefix="g_")
     try:
-        return fn(task, ws, result)
+        shutil.copytree(ws, tmp, dirs_exist_ok=True)
+        test = ex.replace("-", "_") + "_test.py"
+        shutil.copy(os.path.join(poly_dir(ex), test), os.path.join(tmp, test))  # restore: editing tests cannot pass
+        try:
+            p = subprocess.run([sys.executable, "-m", "unittest", "-v", test[:-3]], cwd=tmp, capture_output=True, text=True, timeout=90)
+        except subprocess.TimeoutExpired:
+            return {"score": 0.0, "pass": False, "detail": {"error": "tests timed out"}}
+        out = p.stderr + p.stdout
+        ok = len(re.findall(r"\.\.\. ok$", out, re.M))
+        bad = len(re.findall(r"\.\.\. (FAIL|ERROR)$", out, re.M))
+        total = ok + bad
+        return {"score": round(ok / total, 3) if total else 0.0, "pass": p.returncode == 0 and total > 0, "detail": {"ok": ok, "total": total}}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def grade(task, ws, result):
+    orig = task
+    if task.startswith("poly-"):
+        task = "poly"
+    fn = {"poly": _poly, "qa": _qa, "content": _content, "review": _review, "focus": _focus, "plan": _plan, "codereview": _codereview}.get(task, _code)
+    try:
+        return fn(orig, ws, result)
     except Exception as e:  # grader bug must never look like a model result
         return {"score": 0.0, "pass": False, "detail": {"grader_error": repr(e)}}
 

@@ -9,6 +9,14 @@ Nine tasks in `tasks/<name>/` (workspace in `ws/`, goal in `goal.txt`, hidden te
 scores 0), `qa`, `content`, `review` (graded by constraint counts and keyword checks, so they are
 a smoke test for quality, not a judge).
 
+**Polyglot-Python** is the score we answer to. `--tasks polyglot` runs the 34 Python exercises of Aider's
+[polyglot-benchmark](https://github.com/Aider-AI/polyglot-benchmark) (cloned once into
+`~/.cache/tether-bench/polyglot-benchmark`, or set `POLYGLOT_DIR`); `--tasks polyglot-fast` runs a 12-exercise
+subset that mixes passes, partials and failures. Each task is graded by the exercise's own tests (the test file is
+restored before grading, so editing it cannot pass), `--poly-verify` adds a `--verify` gate on those tests. Then
+`python3 bench/report.py <out>` prints pass rate and mean score with a failure breakdown that keeps provider outages
+(`outage`, `timeout`) apart from harness outcomes (`max_steps`, `stalled`, `wrong_answer`, `worker_error`).
+
 Three runners, so a gap can be attributed:
 
 | runner | what it is |

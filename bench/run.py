@@ -25,6 +25,17 @@ TASK_CFG = {  # tether tools / step cap / wall timeout
 }
 
 
+POLY_VERIFY = False
+
+
+def cfg(task):
+    return ("edit,bash", 30, 600) if task.startswith("poly-") else TASK_CFG[task]
+
+
+def poly_tasks():
+    return ",".join("poly-" + e for e in sorted(os.listdir(grade.poly_dir())))
+
+
 def group(model):
     return "nvidia" if model.startswith("openai/") else "ollama" if model.startswith("ollama/") else "claude" if model.startswith(("claude", "cc/")) else "nvidia"
 
@@ -40,7 +51,7 @@ def flags(tether_bin):
 
 
 def build_cmd(runner, model, task, goal, ws, rd, tether_bin, params=()):
-    tools, steps, _ = TASK_CFG[task]
+    tools, steps, _ = cfg(task)
     if runner == "tether":
         h = flags(tether_bin)
         cmd = [tether_bin, "run", "--model", model, "--max-steps", str(steps), "--db", f"{rd}/t.db"]
@@ -50,6 +61,8 @@ def build_cmd(runner, model, task, goal, ws, rd, tether_bin, params=()):
             cmd += ["--tools", tools]
         for item in params:
             cmd += ["--param", item]
+        if task.startswith("poly-") and POLY_VERIFY:
+            cmd += ["--verify", "python3 -m unittest discover -p '*_test.py'"]
         return cmd + [goal]
     if runner == "naive":
         base, key = ("http://localhost:11435/v1", "") if model.startswith("ollama/") else ("https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY")
@@ -99,8 +112,13 @@ async def one(sem, rec, args, results):
     async with sem[group(model)]:
         shutil.rmtree(rd, ignore_errors=True)
         os.makedirs(rd)
-        shutil.copytree(f"{HERE}/tasks/{task}/ws", ws)
-        goal = open(f"{HERE}/tasks/{task}/goal.txt").read().strip()
+        if task.startswith("poly-"):
+            ex = task[5:]
+            shutil.copytree(grade.poly_dir(ex), ws, ignore=shutil.ignore_patterns(".meta", ".docs"))
+            goal = grade.poly_goal(ex)
+        else:
+            shutil.copytree(f"{HERE}/tasks/{task}/ws", ws)
+            goal = open(f"{HERE}/tasks/{task}/goal.txt").read().strip()
         cmd = build_cmd(runner, model, task, goal, ws, rd, args.tether_bin, args.param)
         env = dict(os.environ, OLLAMA_HOST="http://localhost:11435", PYTHONDONTWRITEBYTECODE="1")
         if model.startswith("openai/"):  # old tether has no providers.yaml: route openai/ to NVIDIA's OpenAI-compatible API
@@ -109,7 +127,7 @@ async def one(sem, rec, args, results):
         p = await asyncio.create_subprocess_exec(*cmd, cwd=ws, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True)
         status = "ok"
         try:
-            out, err = await asyncio.wait_for(p.communicate(), TASK_CFG[task][2])
+            out, err = await asyncio.wait_for(p.communicate(), cfg(task)[2])
         except asyncio.TimeoutError:
             os.killpg(p.pid, signal.SIGKILL)
             out, err = await p.communicate()
@@ -161,7 +179,14 @@ async def main():
     ap.add_argument("--par", default="nvidia=4,ollama=1,claude=3")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--redo-infra", action="store_true", help="rerun cells that failed on provider errors")
+    ap.add_argument("--poly-verify", action="store_true", help="verify gate on the exercise tests: gate runs at `done`")
     args = ap.parse_args()
+    global POLY_VERIFY
+    POLY_VERIFY = args.poly_verify
+    if args.tasks == "polyglot":
+        args.tasks = poly_tasks()
+    elif args.tasks == "polyglot-fast":
+        args.tasks = ",".join("poly-" + e for e in grade.POLY_FAST)
     os.makedirs(args.out, exist_ok=True)
     sem = {k: asyncio.Semaphore(int(v)) for k, v in (x.split("=") for x in args.par.split(","))}
     recs = [(r, m, t, k) for r in args.runners.split(",") for m in args.models.split(",") for t in args.tasks.split(",") for k in range(args.trials)
