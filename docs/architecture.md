@@ -53,12 +53,12 @@ In *"MemGPT: Towards LLMs as Operating Systems"*, Packer et al. (2023) introduce
 
 Tether implements a deterministic three-tier memory hierarchy backed by `.tether/tether.db` (SQLite WAL + FTS5):
 
-1. **Head + Tail L1 Active Elision**: Even within the active $K=2$ turn window, if a command emits an oversized output (`> 2,400 chars`), `ContextAssembler` keeps the first 900 chars (headers/command summary) + last 900 chars (stack trace/exit status) and elides the middle with a pointer to `mem recall <obs_id>`.
+1. **Head + Tail L1 Active Elision**: Even within the active $K=2$ turn window, if a command emits an oversized output (more than a third of `max_context_tokens` in chars, at least 2,400), `ContextAssembler` keeps the first 60% of the cap (headers/command summary) + the last 40% (stack trace/exit status) and elides the middle with a pointer to `mem recall <obs_id>`.
 2. **Ephemeral $K$-Turn Folding**: Once an observation ages past $K=2$ steps, it is folded into a single-line tombstone:
    ```text
    [obs_1 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_1` or `mem search <query>`]
    ```
-   Exception (#69): the latest read of each of the last 8 files (`edit view <p>`, `bash cat/head/tail/sed -n <p>`; paths normalized against the workspace) is not folded until `<p>` is edited (`edit write|replace`, or any other bash command naming it: `sed -i`, `tee`, redirects, `python -c`) or re-read. The 2,400-char head+tail elision still applies, and the hard context budget remains #81. The `mem recall` hint is shown only when `mem` is enabled (else "re-run the command").
+   Exception (#69): the latest read of each of the last 8 files (`edit view <p>`, `bash cat/head/tail/sed -n <p>`; paths normalized against the workspace) is not folded until `<p>` is edited (`edit write|replace`, or any other bash command naming it: `sed -i`, `tee`, redirects, `python -c`) or re-read. The head+tail elision still applies (an observation may use up to a third of `max_context_tokens`, at least 2,400 chars), and the hard context budget remains #81. The `mem recall` hint is shown only when `mem` is enabled (else "re-run the command").
 3. **Sub-Millisecond SQLite FTS5 BM25 RAG**: Every raw observation and final deliverable is automatically chunked (~150 tokens per paragraph/section) and indexed into an FTS5 virtual table (`chunks_fts`) so the agent (or a parent agent) can retrieve exact passages via `mem search` or `agent query`.
 
 ---
