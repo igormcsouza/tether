@@ -1,5 +1,11 @@
 # Release Notes
 
+## v0.2.7 (unreleased)
+
+### Fixes
+
+- Providers: when a server (Ollama, vLLM, llama.cpp behind `openai`, `anthropic`) answers HTTP 500 because it rejected the model's own tool call (`invalid tool call arguments for "act": unexpected end of JSON input`), the call is no longer retried and no longer ends the session as `worker_error` (#138). The model gets one line (`Your last call was rejected: the tool-call JSON was invalid or cut off. Send a shorter call, e.g. write long files in smaller pieces.`) through the existing no-action reminder and carries on, bounded by `max_steps`. Before, 13 of 34 Polyglot-Python runs on `qwen3.5:9b` died this way, mid-task and often with most tests passing. `ModelResponse` gains an optional `hint`. 0 static prompt tokens.
+
 ## v0.2.6 (2026-10-23)
 
 Found by using tether as its own SWE agent and by the v0.2.5 post-release check: a sandbox that refused harmless commands, sessions that only read, and a `query` that could not say why it found nothing. Closes #77, #93, #125, #127.

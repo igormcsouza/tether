@@ -15,6 +15,7 @@ from tether.providers.base import (
     extract_fallback_action,
     limiter_for,
     post_with_retry,
+    rejected_call,
 )
 
 # Request-level keys of /api/chat; everything else in `params` is a sampling option.
@@ -133,6 +134,8 @@ class OllamaProvider:
                 self.model_name = fallback
                 payload["model"] = fallback
                 resp = await self._chat(client, payload)
+        if rejected := rejected_call(resp):
+            return rejected
         resp.raise_for_status()
         data = resp.json()
 

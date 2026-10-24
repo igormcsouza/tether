@@ -125,3 +125,33 @@ async def test_cli_param_flag(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert stored == {"temperature": 0, "think": False}
     assert await _async_main([*argv, "--param", "oops", "g"]) == 1
     assert "KEY=VALUE" in capsys.readouterr().err
+
+
+async def test_ollama_rejected_tool_call_is_model_feedback_not_an_outage() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            500, text='{"error":"invalid tool call arguments for \\"act\\": unexpected end"}'
+        )
+
+    prov = OllamaProvider("m", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    resp = await prov.generate([{"role": "user", "content": "x"}], [])
+    assert calls == 1  # the same request would fail the same way
+    assert resp.action is None and "cut off" in resp.hint
+
+
+@pytest.mark.parametrize("make", [OpenAIProvider, AnthropicProvider])
+async def test_other_http_providers_also_turn_a_rejected_tool_call_into_feedback(make: Any) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(500, text="invalid tool call arguments")
+
+    prov = make("m", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    resp = await prov.generate([{"role": "user", "content": "x"}], [])
+    assert calls == 1 and resp.action is None and "cut off" in resp.hint

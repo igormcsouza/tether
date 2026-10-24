@@ -761,7 +761,8 @@ class Harness:
                         session_id=session_id,
                         step=step,
                         role="user",
-                        content=(
+                        content=resp.hint
+                        or (
                             "System reminder: Use `act(cmd, stdin)` to execute a tool command, "
                             'or call `act("done", stdin="<final deliverable>")` to finish.'
                         ),
@@ -1027,8 +1028,8 @@ class Harness:
                     nudged = False
                     stalls = 0
 
-                # One-shot nudge after QUIET_NUDGE_STEPS quiet steps following a change
                 out = dispatch.output
+                # One-shot nudge after QUIET_NUDGE_STEPS quiet steps following a change
                 if changed and not nudged and quiet_run >= QUIET_NUDGE_STEPS:
                     out += (
                         f"\n[NUDGE] No file changes for {QUIET_NUDGE_STEPS} steps. If the task is "

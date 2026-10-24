@@ -35,6 +35,7 @@ class ModelResponse:
     action: ActionCall | None = None
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    hint: str = ""  # shown to the model instead of the generic reminder when it sent no usable call
 
 
 ProviderResponse = ModelResponse
@@ -69,6 +70,21 @@ def auth_message(
 
 
 RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
+# A server that rejects the model's own tool call (cut-off JSON) answers the same way every time.
+MODEL_FAULT = "tool call"
+REJECTED_CALL_HINT = (
+    "Your last call was rejected: the tool-call JSON was invalid or cut off. "
+    "Send a shorter call, e.g. write long files in smaller pieces."
+)
+
+
+def rejected_call(resp: httpx.Response) -> ModelResponse | None:
+    """Turn a server's 500 about the model's own bad tool call into feedback for the model."""
+    if resp.status_code == 500 and MODEL_FAULT in resp.text:
+        return ModelResponse(content="", hint=REJECTED_CALL_HINT)
+    return None
+
+
 _TRANSIENT = (httpx.TimeoutException, httpx.NetworkError, TimeoutError)
 
 
@@ -167,7 +183,7 @@ async def post_with_retry(
             continue
         if resp.status_code in (401, 403):
             raise ProviderError(auth_message(provider, key_env, resp.status_code, resp.text))
-        if resp.status_code not in RETRY_STATUS:
+        if resp.status_code not in RETRY_STATUS or rejected_call(resp):
             return resp
         last = f"HTTP {resp.status_code}: {resp.text[:120]!r}"
         if resp.status_code == 429:  # rate limits reset per minute: wait longer, honor Retry-After
