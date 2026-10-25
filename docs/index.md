@@ -13,6 +13,22 @@ Most agent frameworks drown small models in 3,000–8,000 tokens of nested JSON 
 
 ---
 
+## Which page do I read?
+
+| I want to... | Read |
+|---|---|
+| Have a small local model fix a failing test | [Fix a failing test](guides/fix-a-failing-test.md) |
+| Delegate work from Claude Code, Codex or Cursor | [Use tether from your agent](guides/use-tether-from-your-agent.md) |
+| Run a multi-stage job with checks | [A pipeline where each stage has its own job](guides/a-pipeline-with-checks.md) |
+| Give the model my own function | [Give the model a tool of your own](guides/add-your-own-tool.md) |
+| Look up a command or flag | [CLI reference](reference/cli.md) |
+| Point tether at a different model server | [Model providers](reference/providers.md) |
+| Understand what a session can touch | [Security and sandbox](tutorial/security-and-sandbox.md) |
+| Fix something that does not work | [Troubleshooting](troubleshooting.md) |
+| Know what a word means | [Glossary](glossary.md) |
+
+(For agents: [`llms.txt`](llms.txt) lists every page with a one-line description.)
+
 ## Works inside your harness
 
 Tether does not replace your TUI. Keep Claude Code, Codex, Cursor, Gemini CLI or Copilot as the cockpit and let Tether run as a subagent over MCP (`pip install "tether-sdk[mcp]"`), on a local model or any provider, so routine work costs fewer tokens. See [Use Tether Inside Your Harness](tutorial/agent-interface.md).
