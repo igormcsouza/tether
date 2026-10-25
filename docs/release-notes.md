@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Ollama: a prompt that outgrew `num_ctx` no longer ends the session with `HTTP 500 ... No user query found in messages` (#145). Ollama drops the oldest messages (the goal) when the prompt does not fit and the chat template (Qwen 3.5) refuses; 3 of 34 Polyglot runs on `qwen3.5:9b` died this way, mid-task, and the 3 identical retries could not help. The adapter now retries once with `num_ctx` doubled (capped at 4x the configured value) and keeps the larger window for later calls; if even that does not fit it raises `the prompt does not fit num_ctx N; lower --context-tokens or raise the model's context window`. Found by replaying a dead session's last request: our estimate was 5,541 tokens, Ollama counted 8,266. 0 static prompt tokens.
 - Sandbox: a virtualenv in the workspace whose interpreter lives under `$HOME` (uv-managed Python in `~/.local/share/uv/python`) now starts inside the `bwrap` sandbox. Before, `.venv/bin/pytest` and `.venv/bin/python` failed with `required file not found` because the interpreter prefix was hidden with the rest of `/home`, so a verify gate or a model could not run the project's tests (found while tether implemented #136: 10 of 40 steps lost). The interpreter prefix named by `pyvenv.cfg` is re-bound read-only, with uv's version alias recreated as a symlink; same rules as the PATH directories (#76), never `$HOME` itself or credential directories.
 
 ## Unreleased

@@ -12,8 +12,8 @@ import pytest
 from tether import Harness
 from tether.cli import _async_main
 from tether.providers import resolve_provider
-from tether.providers.base import ProviderError
 from tether.providers.anthropic import AnthropicProvider
+from tether.providers.base import ProviderError
 from tether.providers.declarative import build_declared, load_declared
 from tether.providers.ollama import OllamaProvider
 from tether.providers.openai import OpenAIProvider
@@ -193,3 +193,20 @@ async def test_ollama_overflow_gives_up_with_an_actionable_error() -> None:
     )
     with pytest.raises(ProviderError, match="num_ctx.*--context-tokens"):
         await prov.generate([{"role": "user", "content": "x"}], [])
+
+
+async def test_ollama_overflow_at_the_window_cap_does_not_resend() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(500, text="No user query found in messages.")
+
+    prov = OllamaProvider(
+        "m", num_ctx=1024, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    prov.num_ctx = 4096  # already at 4x the base window
+    with pytest.raises(ProviderError, match="4096"):
+        await prov.generate([{"role": "user", "content": "x"}], [])
+    assert calls == 1
