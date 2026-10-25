@@ -1,0 +1,45 @@
+# tether
+
+> Tether is a small, headless-first harness that lets small local models and frontier models do real work with a tiny prompt: one `act(cmd, stdin)` tool, commands off by default, SQLite for state and memory, a deterministic sandbox and verification gates. Python 3.12+, `pip install tether-sdk`, command `tether`.
+
+## Start here
+- [Home](https://igormcsouza.github.io/tether/): what tether is, install, first run.
+- [Fix a failing test with a local model](https://igormcsouza.github.io/tether/guides/fix-a-failing-test/): a verification gate decides when the job is done.
+- [Use tether from Claude Code, Codex or Cursor](https://igormcsouza.github.io/tether/guides/use-tether-from-your-agent/): MCP setup, the JSON result, exit codes.
+- [A pipeline where each stage has its own job](https://igormcsouza.github.io/tether/guides/a-pipeline-with-checks/): stages, per-stage model, tools and gate.
+- [Give the model a tool of your own](https://igormcsouza.github.io/tether/guides/add-your-own-tool/): turn a Python function into a command.
+
+## Guides
+- [Guides index](https://igormcsouza.github.io/tether/tutorial/): every layer, from the first session to multi-agent workflows.
+- [CLI and headless sessions](https://igormcsouza.github.io/tether/tutorial/cli-and-headless/): run, watch, resume and read back sessions.
+- [Python SDK and custom tools](https://igormcsouza.github.io/tether/tutorial/sdk-and-custom-tools/): Harness, @tool, stdin payloads.
+- [Built-in tools](https://igormcsouza.github.io/tether/tutorial/built-in-tools/): done, bash, edit, web, mem, skill, agent.
+- [Progressive skills](https://igormcsouza.github.io/tether/tutorial/skills/): package a repeatable job.
+- [Async multi-agent orchestration](https://igormcsouza.github.io/tether/tutorial/multi-agent/): spawn, wait, query sub-agents.
+- [Gates, memory, pipelines and telemetry](https://igormcsouza.github.io/tether/tutorial/workflows-and-telemetry/): verification gates, pipelines, tether stats.
+- [Security and sandbox](https://igormcsouza.github.io/tether/tutorial/security-and-sandbox/): what a session can touch.
+- [Use tether inside your harness](https://igormcsouza.github.io/tether/tutorial/agent-interface/): MCP and CLI twins for other agents.
+- [Extending tether](https://igormcsouza.github.io/tether/extending/): add tools and model backends.
+
+## Concepts
+- [Architecture and literature](https://igormcsouza.github.io/tether/architecture/): why it works this way.
+- [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/): Polyglot-Python results and how to reproduce them.
+- [Glossary](https://igormcsouza.github.io/tether/glossary/): the terms used across the docs.
+
+## Reference
+- [CLI](https://igormcsouza.github.io/tether/reference/cli/): every subcommand, flag and exit code.
+- [Model providers](https://igormcsouza.github.io/tether/reference/providers/): built-in prefixes, providers.yaml, Python providers.
+- [Agent interface](https://igormcsouza.github.io/tether/reference/agent-interface/): JSON shape, exit codes, MCP tools.
+- [Harness and CLI (API)](https://igormcsouza.github.io/tether/reference/harness/)
+- [Context and SQLite store](https://igormcsouza.github.io/tether/reference/context-and-store/)
+- [Multiplexer and decorator](https://igormcsouza.github.io/tether/reference/multiplexer-and-decorator/)
+- [Sandbox and skills](https://igormcsouza.github.io/tether/reference/sandbox-and-skills/)
+- [Built-in tools (API)](https://igormcsouza.github.io/tether/reference/tools/)
+
+## Help
+- [Troubleshooting](https://igormcsouza.github.io/tether/troubleshooting/): by symptom, cause and fix.
+- [Release notes](https://igormcsouza.github.io/tether/release-notes/)
+
+## Optional
+- [Source and issues](https://github.com/igormcsouza/tether)
+- [Contributing](https://github.com/igormcsouza/tether/blob/main/CONTRIBUTING.md)

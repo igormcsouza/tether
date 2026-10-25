@@ -110,6 +110,7 @@ nav:
   - Concepts:
       - Architecture and Literature: architecture.md
       - Benchmark Evaluation: benchmarks.md
+      - Glossary: glossary.md
   - Reference:
       - reference/index.md
       - CLI: reference/cli.md

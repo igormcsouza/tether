@@ -4,6 +4,7 @@
 
 ### Docs
 
+- A "Which page do I read?" table on the home page, a glossary of the terms used across the docs, and `llms.txt` at the site root listing every page with a one-line description, for agents (#64, #66).
 - The README is now the project pitch, about a hundred lines: why tether, the current Polyglot-Python result, how it works, the decisions behind it and what each replaced, a short install, and how to contribute. The CLI walkthrough, provider setup and toolbox moved to the docs site (#63).
 - Four story guides, each with a real command and its real output: fix a failing test with a local model, use tether from Claude Code or Codex, a pipeline where each stage has its own job, and give the model a tool of your own (#152).
 - The benchmarks page now reports the Polyglot-Python score (v0.2.7 against v0.2.8 on `qwen3.5:9b`), how the exercises are graded, the noise to expect and the two commands that reproduce it. The old single-task video benchmark is gone (#154).
