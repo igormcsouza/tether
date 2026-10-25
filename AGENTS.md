@@ -218,6 +218,8 @@ uv run mypy tether/
 - E2E / QA: `e2e/` scenarios (real CLI + ollama behind a fault-injecting proxy, local only); shared resource: the `tether-ollama` container (port 11435)
 - Branches/commits/PRs: Conventional Commits (`feat(scope): ... (#N)`, `release: vX.Y.Z ...`); PR per task, squash-merged to `main`; docs updated in the same PR (see section 5.4)
 - Delivery: PR per task
-- Hard stops (ask first): force push / history rewrite
+- Hard stops (ask first): force push / history rewrite; merging a PR and cutting a release need the PO's explicit yes each time
 - Design docs: `AGENTS.md` sections 1-3, `docs/architecture.md`, `docs/reference/*`
-- feature-context store: .claude/feature-context/
+- Orchestration: **`/gru` runs this repo** (Team Leader + router). Strong model plans, writes the failing acceptance tests first, reviews and decides; tether does the typing as the minion at Tier 0 on the strongest free model (`nvidia/nvidia/nemotron-3-ultra-550b-a55b`, fallback `nvidia/z-ai/glm-5.3`), escalating one tier only on evidence. Tiers, context sizes and sensitive paths: `.claude/gru.json`. tether's own failures while doing a card are logged as friction and filed as issues (with the PO's OK).
+- Improvement loop: **every PR leaves tether a little better**, measured, not asserted: a behaviour change ships with a bench or e2e delta (Polyglot-Python fast set on `ollama/qwen3.5:9b`, `bench/`) in the PR body, reported honestly even when it is flat. After a merge, gru re-reads the next planned milestone and the other open bug issues and picks the one that clearly improves tether most (evidence from bench failure breakdowns and `tether stats` friction beats guesses); features and docs wait behind bugs that cost steps or pass rate.
+- gru store: .claude/gru/   (committed; legacy `feature-context` logs were moved here)
