@@ -1,0 +1,12 @@
+{
+  "tether_repo": "igormcsouza/tether",
+  "timeout_min": 15,
+  "tiers": {
+    "0": ["tether:nvidia/nvidia/nemotron-3-ultra-550b-a55b", "tether:nvidia/z-ai/glm-5.3", "opencode/nemotron-3-ultra-free"],
+    "1": ["opencode:anthropic/claude-haiku-5-5"],
+    "2": ["opencode:anthropic/claude-sonnet-5-5"]
+  },
+  "context": {"nvidia/nvidia/nemotron-3-ultra-550b-a55b": 128000, "nvidia/z-ai/glm-5.3": 128000},
+  "sensitive": [{"path": ".github/**", "min_tier": 2}, {"path": "tether/sandbox.py", "min_tier": 2}],
+  "verified": {}
+}

@@ -86,6 +86,7 @@ Track and fix bugs found in Tether v0.2.x. Exact bug list not yet given by PO.
 - [ ] MCP server still on an old process: PO to reconnect (0.2.7 installed locally)
 
 ## Sessions
+| 2026-10-25 | /gru takes over: store moved to .claude/gru/, AGENTS.md + .claude/gru.json updated (PR chore/gru-takeover) |
 | Date | Session note |
 | 2026-10-20 | created log |
 | 2026-10-24 | resumed, backfilled v0.2.4-v0.2.7 (log had stopped at v0.2.3) |
