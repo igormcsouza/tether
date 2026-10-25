@@ -74,6 +74,18 @@ def test_identical_repeat_is_a_loop_stall(tether: Tether, chaos) -> None:
     assert "[LOOP DETECTED]" in _last_prompt(chaos)
 
 
+def test_stall_after_a_change_with_a_passing_gate_is_completed(tether: Tether, chaos) -> None:
+    chaos.script(*(["bash touch fixed.txt"] * 6), ("done", "ok"))  # #163: fixed, then only repeats
+    r = tether.run("loop", "--tools", "bash", "--verify", "test -f fixed.txt")
+    assert r["status"] == "COMPLETED" and "Finished by the harness" in r["result"]
+
+
+def test_stall_with_a_failing_gate_stays_failed(tether: Tether, chaos) -> None:
+    chaos.script(*(["bash touch fixed.txt"] * 6), ("done", "ok"))
+    r = tether.run("loop", "--tools", "bash", "--verify", "test -f missing.txt")
+    assert r["status"] == "FAILED" and r["failure"]["message"].startswith("Stalled")
+
+
 def test_two_command_cycle_is_a_cycle_stall(tether: Tether, chaos) -> None:
     chaos.script(*(["bash echo a", "bash echo b"] * 3), ("done", "ok"))
     r = tether.run("cycle", "--tools", "bash")

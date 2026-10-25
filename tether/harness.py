@@ -807,11 +807,21 @@ class Harness:
                 if is_loop_stall or cycle or range_stall:
                     stalls += 1
                     if stalls >= STALL_ABORT:
+                        # A model that fixed the task and then only repeats its check has
+                        # finished: if every verify gate passes after a change, say so (#163)
+                        gate_ok = (
+                            changed
+                            and verify_commands
+                            and await self._run_verification_gates(sandbox, verify_commands) is None
+                        )
                         self.store.update_session(
                             session_id,
-                            status="FAILED",
+                            status="COMPLETED" if gate_ok else "FAILED",
                             result=(
-                                f"Stalled: {stalls} loop warnings without a change; "
+                                "Finished by the harness: the model stopped calling tools after "
+                                "its change and every verification gate passes."
+                                if gate_ok
+                                else f"Stalled: {stalls} loop warnings without a change; "
                                 "stopped early instead of using all steps."
                             ),
                         )

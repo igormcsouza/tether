@@ -731,3 +731,29 @@ async def test_provider_hint_reaches_the_model_and_the_session_continues(tmp_pat
     rec = await harness.run("go")
     assert rec.status == "COMPLETED"
     assert any("Your last call was cut off." in str(m) for m in provider.recorded_calls[-1])
+
+
+async def _stalled_after_a_change(tmp_path: Path, gate: str) -> Any:
+    @tool(name="ping", description="Ping a host")
+    def ping(host: str) -> str:
+        return "pong"
+
+    script = [
+        ModelResponse(content="", action=ActionCall(cmd="ping x"), prompt_tokens=10)
+        for _ in range(8)
+    ]
+    db = tmp_path / "tether.db"
+    harness = Harness(db_path=db, tools=[ping], provider=FakeScriptedProvider(script), verify=gate)
+    rec = harness.create_session("goal")
+    return await harness.execute_session(rec.id)
+
+
+async def test_stall_after_a_change_with_passing_gate_is_completed(tmp_path: Path) -> None:
+    # #163: the work was done and checked; the model only forgot to call `done`
+    session = await _stalled_after_a_change(tmp_path, "true")
+    assert session.status == "COMPLETED" and "Finished by the harness" in (session.result or "")
+
+
+async def test_stall_with_failing_gate_stays_failed(tmp_path: Path) -> None:
+    session = await _stalled_after_a_change(tmp_path, "false")
+    assert session.status == "FAILED" and (session.result or "").startswith("Stalled")
