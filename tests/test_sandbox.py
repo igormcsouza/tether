@@ -177,3 +177,56 @@ async def test_tool_on_path_under_home_runs_inside_the_sandbox(
     sp = SandboxPolicy(workspace_root=ws)
     code, out = await sp.execute_bash_with_code("mytool; ls ~/..; echo end")
     assert "tool-ok" in out and "secret.txt" not in out, out
+
+
+def _venv_with_home_interpreter(home: Path, ws: Path) -> Path:
+    root = home / ".local" / "share" / "uv" / "python"
+    (root / "cpython-3.14.4").mkdir(parents=True)
+    prefix = root / "cpython-3.14"
+    prefix.symlink_to(root / "cpython-3.14.4")
+    (prefix / "bin").mkdir()
+    interp = prefix / "bin" / "mytool"
+    interp.write_text("#!/bin/sh\necho venv-ok\n")
+    interp.chmod(0o755)
+    (ws / ".venv" / "bin").mkdir(parents=True)
+    (ws / ".venv" / "bin" / "mytool").symlink_to(interp)
+    (ws / ".venv" / "pyvenv.cfg").write_text(f"home = {prefix / 'bin'}\nuv = 0.1\n")
+    return prefix
+
+
+def test_venv_interpreter_prefix_is_re_exposed_read_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #76: a workspace .venv whose python lives under ~/.local/share/uv must still start
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", "/usr/bin")
+    ws = home / "proj"
+    ws.mkdir(parents=True)
+    prefix = _venv_with_home_interpreter(home, ws)
+    sp = SandboxPolicy(workspace_root=ws)
+    assert sp._venv_prefixes() == [str(prefix)]
+    real = str(prefix.resolve())
+    assert sp._tool_path_mounts([str(home)]) == [
+        *("--ro-bind", real, real),
+        *("--symlink", real, str(prefix)),
+    ]
+    (ws / ".venv" / "pyvenv.cfg").write_text("home = /nowhere\n")  # no bin/ suffix kept as is
+    assert sp._venv_prefixes() == ["/nowhere"]
+    (ws / ".venv" / "pyvenv.cfg").write_text("nothing here\n")
+    assert sp._venv_prefixes() == []
+
+
+@pytest.mark.skipif(shutil.which("bwrap") is None, reason="needs bwrap")
+async def test_workspace_venv_runs_inside_the_sandbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    ws = home / "proj"
+    ws.mkdir(parents=True)
+    _venv_with_home_interpreter(home, ws)
+    (home / "secret.txt").write_text("nope")
+    monkeypatch.setenv("HOME", str(home))
+    sp = SandboxPolicy(workspace_root=ws)
+    code, out = await sp.execute_bash_with_code(".venv/bin/mytool; ls ~/..; echo end")
+    assert "venv-ok" in out and "secret.txt" not in out, out
