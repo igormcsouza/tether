@@ -1,33 +1,50 @@
 # Benchmark Evaluation
 
-*For: people comparing tether with other harnesses. It shows what was measured and how.*
+*For: people comparing tether with other harnesses, and anyone checking that a release did not make small models worse. It shows what is measured, how, and the latest numbers.*
 
-To evaluate how Tether's micro-harness architecture performs on a complex, real-world software engineering and multimedia pipeline task, we benchmarked three configurations on the exact same end-to-end objective:
+Tether is judged on one score: **how many real coding exercises a small local model finishes** when tether is the harness around it. That is the number every change has to improve, or at least not lower.
 
-> **Task:** Research a trending 2026 science/AI breakthrough, write a 4-scene vertical (`1080×1920`, 9:16) **Manim** animation script (`Scene1`–`Scene4`), synthesize 4 voiceover tracks using `edge-tts`, render all 4 scenes at `1080×1920 @ 30fps`, mux audio + video with `ffmpeg` (`apad` + `-shortest`), and concatenate into a final YouTube Short `.mp4`.
+## What is measured
 
-## Compared Configurations
+The **Polyglot-Python** set: the 34 Python exercises of Aider's [polyglot benchmark](https://github.com/Aider-AI/polyglot-benchmark) (poker hands, a Forth interpreter, a REST API, a reactive spreadsheet, ...). For each exercise the model gets a workspace with a stub and the exercise's own test file, and a goal: make the tests pass.
 
-1. **Tether + Local `ollama/gemma4:e4b` (8B Parameters)** — Running 100% locally on an NVIDIA RTX 3060 Laptop GPU (6 GB VRAM).
-2. **Tether + `anthropic/claude-sonnet-4-6`** — Frontier model orchestrated by Tether's single `act(cmd, stdin)` multiplexer and bounded L1 context.
-3. **Native `claude` CLI (Claude Code + `claude-sonnet-4-6`)** — Standard frontier agent harness with full built-in JSON tool schemas and append-only context.
+- **Graded by the exercise's own tests.** The test file is restored before grading, so editing it cannot pass.
+- **Score** is the fraction of tests that pass (so a partial solution counts); a *pass* is every test green.
+- The **fast set** is 12 exercises that mix passes, partial results and failures, run twice each (24 runs): about an hour and a half on one local GPU, enough to see a change without waiting for the full 34.
 
----
+## Latest result
 
-## Results Summary
+`qwen3.5:9b` through Ollama (`num_ctx` 8192), fast set, 2 trials per exercise:
 
-| Metric | Tether + `gemma4:e4b` (Local 8B) | Tether + `claude-sonnet-4-6` | Native `claude` CLI (`claude-sonnet-4-6`) |
-|---|---|---|---|
-| **Task Completion** | **COMPLETED** (`1080×1920`, 43.25s video) | **COMPLETED** (`1080×1920`, 42.19s video) | **COMPLETED** (`1080×1920`, 41.29s video) |
-| **Total Steps / Turns** | 9 steps | **7 steps** | 13 turns |
-| **Wall-Clock Time** | 150.7s *(includes local LLM inference)* | **138.8s** | 254.6s |
-| **Peak Prompt Context (L1)** | **2,440 tokens** | **2,764 tokens** | ~24,900 tokens |
-| **Cumulative Input Tokens** | **13,420 tokens** (`$0.00` local) | **15,180 tokens** | **256,829 tokens** |
-| **Token Reduction vs Native CLI** | **94.8% fewer input tokens** | **94.1% fewer input tokens** | Baseline (1.0×) |
+| | v0.2.7 | v0.2.8 |
+|---|---|---|
+| Passes | 10 of 24 | 11 of 24 |
+| Mean score | 0.741 | 0.756 |
+| Mean score, runs without a provider outage | 0.772 | 0.775 |
+| "Tool call cut off" hints (runs that had one) | 29 (9) | 2 (1) |
+| Steps that did nothing (no tool call) | 19% | 2.2% |
 
----
+What changed between them: tether now keeps a quarter of the context window free for the model's reply. Before, a prompt that filled the window cut off the longest tool calls (file writes), and every cut cost a step. Pass counts and scores moved little; the waste almost disappeared.
 
-## Key Takeaways
+**Read these numbers with care.** One run of one exercise is noisy (about 0.1 of score), 24 runs are a small sample, and a local server can time out for reasons that have nothing to do with tether. A difference smaller than that noise is not a result. The *failure breakdown* in the report keeps provider outages and timeouts apart from harness outcomes (`max_steps`, `stalled`, `wrong_answer`, `worker_error`) so you can see which one moved.
 
-1. **94.1% Token Reduction with Frontier Models**: On the exact same model (`claude-sonnet-4-6`) and task, Tether consumed **15,180 cumulative input tokens** across 7 steps compared to **256,829 input tokens** in Native Claude Code—a **16.9× reduction in token cost** and **45% faster wall-clock execution** (`138.8s` vs `254.6s`).
-2. **8B Local Models Succeed Where Traditional Harnesses Fail**: Because Tether keeps peak L1 context at **2,440 tokens** via Progressive `--help` and Ephemeral Observation Folding, an 8B model running on a 6 GB laptop GPU (`gemma4:e4b`) completed a multi-stage Manim + TTS + FFmpeg video production pipeline—including self-healing a Manim API deprecation (`ShowCreation` $\rightarrow$ `Create`) on step 5.
+## Run it yourself
+
+The benchmark lives in `bench/` of the repository (not in the package, not in CI). It needs the exercises cloned once and a model to run:
+
+```bash
+# fast set, two trials, one local model
+uv run python bench/run.py --runners tether --models ollama/qwen3.5:9b \
+    --tasks polyglot-fast --trials 2 --out /tmp/bench
+
+# pass rate, mean score and the failure breakdown
+python3 bench/report.py /tmp/bench
+```
+
+Use `--tasks polyglot` for all 34 exercises, `--tether-bin /path/to/venv/bin/tether` to compare two versions on the same machine, and `--redo-infra` to rerun cells that failed on a provider outage. To attribute a gap to the harness rather than the model, add `--runners tether,naive`: the `naive` runner is a plain tool loop with the same model and the same exercises. Details and the smaller non-coding tasks: [`bench/README.md`](https://github.com/igormcsouza/tether/blob/main/bench/README.md).
+
+## How to compare fairly
+
+- Same model, same server, same `num_ctx`, same machine; run both versions in the same session (a busy GPU changes timeouts).
+- Report pass count **and** mean score, with the failure breakdown.
+- Do not draw a conclusion from a single trial of a single exercise.
