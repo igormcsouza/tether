@@ -4,6 +4,7 @@
 
 ### Docs
 
+- Four story guides, each with a real command and its real output: fix a failing test with a local model, use tether from Claude Code or Codex, a pipeline where each stage has its own job, and give the model a tool of your own (#152).
 - The benchmarks page now reports the Polyglot-Python score (v0.2.7 against v0.2.8 on `qwen3.5:9b`), how the exercises are graded, the noise to expect and the two commands that reproduce it. The old single-task video benchmark is gone (#154).
 - Troubleshooting is now organised by what you see (the session ends badly, the model misbehaves, setup and providers, tools and skills), each entry with a cause and a fix, and without version history. Problems that are known and not fixed yet are on GitHub under the `known-issue` label (#153).
 - The site is organised by what you want to do: Start here, Guides, Concepts, Reference, Help. Every page opens with who it is for and what you can do after reading it. The contributor pages (golden traces, e2e, releasing) moved out of the user site into `CONTRIBUTING.md` in the repository (#151).
