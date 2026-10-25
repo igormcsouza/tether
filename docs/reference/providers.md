@@ -76,9 +76,9 @@ class MyGatewayProvider:
         return ModelResponse(content=text, action=extract_fallback_action(text), prompt_tokens=128)
 
 
-register_provider("my-gateway", MyGatewayProvider)          # then: model="my-gateway/anything"
+register_provider("my-gateway", MyGatewayProvider)  # then: model="my-gateway/anything"
 harness = Harness(model="my-gateway/anything")
-harness = Harness(provider=MyGatewayProvider("anything"))   # or inject it directly
+harness = Harness(provider=MyGatewayProvider("anything"))  # or inject it directly
 ```
 
 ## Entry settings
