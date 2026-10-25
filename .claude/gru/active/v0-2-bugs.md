@@ -93,3 +93,8 @@ Track and fix bugs found in Tether v0.2.x. Exact bug list not yet given by PO.
 | 2026-10-24 | resumed in worktree token-usage-analysis-de8182; copied this newer log from worktree tether-v0-2-mcp-89325e (release/v0.2.7), the live one |
 
 - 2026-10-20: PO asked: add Philosophy Gate to AGENTS.md (done, uncommitted; also fixed coverage line: CI enforces 100%). Switch swe tether model to `nvidia/nvidia/nemotron-3-ultra-550b-a55b` (exists on NVIDIA API, smoke test `done pong` passed via tether 0.2.3; no providers.yaml change needed, `nvidia` prefix covers it). Upgraded installed tether 0.2.2 -> 0.2.3 (`uv tool upgrade tether-sdk`). MCP server still on old process: needs reconnect to load 0.2.3 + key wrapper.
+
+## Gru run 2026-10-25
+- PRs: #146 (#144 headroom, 1/8; testing 1/4 on bench), #148 (gru takeover), #136 branch fix/136-escalate-loop-stall (worktree .claude/worktrees/gru-136, commit pending PR until codereview bench).
+- Ledger: #136 | Tier 0 | nvidia/nemotron-3-ultra-550b-a55b | tether | ses_2a9da3da | attempt 1 | peak 8.5k ctx, 40 steps | result: code correct (consecutive counter), but FAILED max_steps; I fixed line length (E501), added e2e + release note. Acceptance test (pre-written) passes.
+- Tether friction (ses_2a9da3da): steps 30-40 wasted because `.venv/bin/pytest` is not runnable inside the bash sandbox (venv python symlinks live under hidden /home; `which pytest` empty, `pip install` impossible). Related #76 (PATH under $HOME) but for venvs in the workspace. Also ~13 of 40 steps were `sed -n a,bp` re-reads of harness.py before the first edit (#78/#27 family), and the card's --verify gate used the same unrunnable path. Not yet filed.
