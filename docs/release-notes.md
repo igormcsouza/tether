@@ -132,7 +132,7 @@ Add model backends without code.
 
 ### Features
 
-- Declarative providers (#49): add model backends without code via `~/.tether/providers.yaml` (override with `TETHER_PROVIDERS`, never read from the workspace). Kinds `openai`, `ollama`, `anthropic` and `command` (wrap any CLI that prints JSON, run without a shell). Works in `tether run`, `tether pipeline`, the SDK and `tether mcp`. See [Declarative providers](reference/providers.md#declarative-providers).
+- Declarative providers (#49): add model backends without code via `~/.tether/providers.yaml` (override with `TETHER_PROVIDERS`, never read from the workspace). Kinds `openai`, `ollama`, `anthropic` and `command` (wrap any CLI that prints JSON, run without a shell). Works in `tether run`, `tether pipeline`, the SDK and `tether mcp`. See [Declarative providers](reference/providers.md#add-your-own-with-providersyaml).
 
 ## v0.2.0 (2026-10-19)
 
