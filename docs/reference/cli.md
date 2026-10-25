@@ -1,5 +1,7 @@
 # CLI reference
 
+*For: people and agents calling the `tether` command. After this page you know every subcommand, flag and exit code.*
+
 The `tether` command is the primary entry point for running, inspecting, and controlling headless LLM sessions. Add `--json` (where a command lists it) for machine-readable output.
 
 ## Exit codes

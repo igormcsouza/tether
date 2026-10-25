@@ -1,5 +1,7 @@
 # Python SDK and Custom Tools
 
+*For: Python developers embedding tether. After this page you can run a `Harness` and expose your own functions as tools.*
+
 Tether's Python SDK lets you embed the micro-harness directly inside your application and expose domain-specific Python functions as POSIX-style CLI commands inside the single `act(cmd, stdin)` multiplexer.
 
 ## Turning Functions into CLI Commands with `@tool`

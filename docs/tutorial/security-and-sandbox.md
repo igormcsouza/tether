@@ -1,5 +1,7 @@
 # Security and Sandbox
 
+*For: anyone running tether on a real machine. After this page you know exactly what a session can touch and how to narrow it.*
+
 Tether never relies on system prompt instructions ("please do not read `.env` or run `rm -rf`") for safety. Security boundaries around `bash` and `edit` are enforced **deterministically by `SandboxPolicy` and the OS kernel**.
 
 ## Sandbox Profiles

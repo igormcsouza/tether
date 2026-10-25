@@ -1,5 +1,7 @@
 # Benchmark Evaluation
 
+*For: people comparing tether with other harnesses. It shows what was measured and how.*
+
 To evaluate how Tether's micro-harness architecture performs on a complex, real-world software engineering and multimedia pipeline task, we benchmarked three configurations on the exact same end-to-end objective:
 
 > **Task:** Research a trending 2026 science/AI breakthrough, write a 4-scene vertical (`1080×1920`, 9:16) **Manim** animation script (`Scene1`–`Scene4`), synthesize 4 voiceover tracks using `edge-tts`, render all 4 scenes at `1080×1920 @ 30fps`, mux audio + video with `ffmpeg` (`apad` + `-shortest`), and concatenate into a final YouTube Short `.mp4`.

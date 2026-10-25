@@ -1,5 +1,7 @@
 # Gates, Memory, Pipelines & Telemetry
 
+*For: people who need results they can trust. After this page you can add verification gates, memory and pipelines, and read what happened with `tether stats`.*
+
 Everything on this page is deterministic harness behavior: it costs **0 static prompt tokens** until it fires.
 
 ## Verification gates (`--verify`)

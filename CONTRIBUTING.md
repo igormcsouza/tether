@@ -1,4 +1,24 @@
-# Testing: golden traces
+# Contributing to tether
+
+Thanks for helping. Tether stays **lightweight, reliable, extensible, model-agnostic, easy to use, resourceful and a token saver**: that list (the *Philosophy Gate*) and the architectural rules live in [AGENTS.md](AGENTS.md), which is the authoritative guide for contributors and coding agents. Read its sections 1-3 before changing behaviour.
+
+## Setup and checks
+
+```bash
+uv sync                                                        # environment
+uv run ruff check . && uv run ruff format --check .            # lint and format (also formats Python in docs)
+uv run mypy tether/                                            # types
+uv run pytest --cov=tether --cov-report=term-missing --cov-fail-under=100   # unit tests, 100% coverage (CI)
+TETHER_E2E=1 uv run pytest e2e                                 # e2e, local only (needs the tether-ollama container)
+```
+
+## Pull requests
+
+- One PR per task, Conventional Commits (`feat(scope): ... (#N)`, `fix(...)`, `docs(...)`, `release: vX.Y.Z ...`), squash-merged to `main`.
+- Update the docs in the same PR (README, the MkDocs pages, `docs/release-notes.md`); see *Two audiences, two jobs* in AGENTS.md section 5.6 for what belongs where.
+- A behaviour change carries a measured result in the PR body (bench or e2e delta), reported honestly even when it is flat. Put the `TETHER_E2E=1 uv run pytest e2e` result in the PR; CI cannot run it.
+
+## Testing: golden traces, e2e scenarios and the model bench
 
 Tether is a deterministic envelope around a random model, so a change to framing, folding,
 nudges, tools or retries can silently change what the model is shown. Golden traces make that
@@ -20,7 +40,7 @@ Shipped traces: a real researcher run (web stubbed, plain-text `done` nudges), a
 coding run covering the edit failure modes seen with small models, and a `done --ask` /
 `send` resume, and a range ping-pong (alternating views of one file; the latest read of each range stays unfolded, older ones fold). Add one for every behaviour that must not regress.
 
-## End-to-end scenarios (local, real processes, real ollama)
+### End-to-end scenarios (local, real processes, real ollama)
 
 `e2e/` drives the real `tether` CLI in a throwaway workspace. A small fault-injecting proxy
 (`e2e/proxy.py`) sits between tether and ollama, so a scenario can force the situation instead of
@@ -83,7 +103,7 @@ judge (answer quality).
 **Rule:** a new feature or bug fix ships with a scenario here. If a model must misbehave to
 trigger it, script the reply; if infrastructure must fail, add a fault to the proxy.
 
-## Model conformance bench (developers only)
+### Model conformance bench (developers only)
 
 `bench/` holds nine tasks (the `focus` task checks that an exact single-file goal is not lost in a distractor-heavy repo) with hidden-test graders and three runners (Tether, a plain tool loop,
 Claude Code) so the same model can be compared across harnesses and releases. It needs real
@@ -91,3 +111,13 @@ models, so it is not in CI and not in the package: use it when onboarding a mode
 release to see friction that scripted tests cannot (the shell-wrapper, bare-command and
 tool-name failures behind #109 were found this way). Anything it finds that can be scripted
 becomes a unit, golden or e2e test. See `bench/README.md`.
+
+## Releasing
+
+PyPI is published only from a GitHub Release, never from a push or tag.
+
+1. Bump `__version__` in `tether/__init__.py` (and the version assertion in `tests/test_tether.py`) and update `docs/release-notes.md`.
+2. Merge to `main`.
+3. Create a GitHub Release with tag `v<version>` (for example `v0.1.0`). The tag must match `__version__` (a leading `v` is ignored) or the workflow fails before building.
+
+The `delivery.yml` workflow then verifies the tag, builds the sdist and wheel, publishes to PyPI with trusted publishing (no secrets) and attaches both files to the release. Pre-releases are skipped: nothing is published or attached.

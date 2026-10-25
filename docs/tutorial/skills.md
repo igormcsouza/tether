@@ -1,5 +1,7 @@
 # Progressive Skills
 
+*For: people packaging a repeatable job. After this page you can write a skill with its own model, tools, gates and instructions.*
+
 Skills let you package domain-specific instructions, preferred model defaults, enabled built-in tools, and custom `@tool` Python functions into a self-contained unit.
 
 Tether searches for skills in:

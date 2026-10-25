@@ -1,4 +1,6 @@
-# Tutorial
+# Guides
+
+*For: people using tether day to day. Each guide is a job to be done; pick the one that matches yours.*
 
 This tutorial walks through every layer of **Tether**, from running your first local 9B session in the terminal to orchestrating multi-agent workflows with custom Python tools and SQLite FTS5 retrieval.
 

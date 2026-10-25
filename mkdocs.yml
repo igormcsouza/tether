@@ -91,8 +91,8 @@ extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 nav:
-  - Home: index.md
-  - Tutorial:
+  - Start here: index.md
+  - Guides:
       - tutorial/index.md
       - CLI and Headless Sessions: tutorial/cli-and-headless.md
       - Python SDK and Custom Tools: tutorial/sdk-and-custom-tools.md
@@ -102,25 +102,23 @@ nav:
       - Gates, Memory, Pipelines & Telemetry: tutorial/workflows-and-telemetry.md
       - Security and Sandbox: tutorial/security-and-sandbox.md
       - Use Tether Inside Your Harness: tutorial/agent-interface.md
-  - Advanced:
-      - Architecture and Literature: architecture.md
       - Extending Tether: extending.md
+  - Concepts:
+      - Architecture and Literature: architecture.md
       - Benchmark Evaluation: benchmarks.md
   - Reference:
       - reference/index.md
       - CLI: reference/cli.md
-      - Harness and CLI: reference/harness.md
+      - Harness and CLI (API): reference/harness.md
       - Context and SQLite Store: reference/context-and-store.md
       - Multiplexer and Decorator: reference/multiplexer-and-decorator.md
       - Sandbox and Skills: reference/sandbox-and-skills.md
       - Model Providers: reference/providers.md
       - Built-in Tools: reference/tools.md
       - Agent Interface (JSON, MCP): reference/agent-interface.md
-  - Project:
+  - Help:
       - Troubleshooting: troubleshooting.md
-      - Testing (golden traces): testing.md
       - Release Notes: release-notes.md
-      - Releasing: releasing.md
 
 validation:
   links:

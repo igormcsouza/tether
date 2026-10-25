@@ -1,5 +1,7 @@
 # Built-in Tools
 
+*For: anyone choosing what a session may do. After this page you can enable exactly the tools a task needs and nothing more.*
+
 By default, Tether loads **only** the `done` command so pure reasoning tasks pay zero tool-schema overhead. You can enable any combination of built-in tools via `--tools` (CLI), `Harness(tools=[...])` (SDK), or `tools: [...]` (Skill frontmatter).
 
 | Namespace | Summary Line (`<= 12 tokens`) | Purpose |

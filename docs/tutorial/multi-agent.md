@@ -1,5 +1,7 @@
 # Async Multi-Agent Orchestration
 
+*For: people splitting work across sessions. After this page you can spawn sub-agents and read their results without flooding the parent's context.*
+
 In multi-agent workflows, returning a sub-agent's full 10,000-token research output directly into a parent 9B model's prompt immediately overflows its context window.
 
 Tether solves this by making sub-agents **always asynchronous** and storing all child observations and deliverables in the shared `.tether/tether.db` **SQLite FTS5 BM25 index**.

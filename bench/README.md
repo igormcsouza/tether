@@ -2,7 +2,7 @@
 
 Not part of the `tether` package, not run in CI. Use it to onboard a new model or to check a
 release for regressions that deterministic tests cannot see (unit, golden and e2e tests stay the
-gate; see `docs/testing.md`).
+gate; see `CONTRIBUTING.md`).
 
 Nine tasks in `tasks/<name>/` (workspace in `ws/`, goal in `goal.txt`, hidden tests in `hidden/`):
 `focus` (one exact edit in a distractor-heavy repo, scope-checked), `plan` (an implementation plan, checked for named files, failure handling and tests), `codereview` (eight seeded bugs to find, no edits), `code-simple`, `code-medium`, `code-hard` (graded by hidden unit tests; editing the visible tests

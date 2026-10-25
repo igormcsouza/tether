@@ -1,5 +1,7 @@
 # tether
 
+*For: anyone deciding whether to use tether, and agents looking for the right page. After this page you can install it, run a first task and find where to go next.*
+
 **Tether** is a general-purpose, headless-first **LLM-Native Micro-Harness** in Python (`3.12+`) built to orchestrate both Small Language Models (`ollama/qwen3.5:9b`, `ollama/gemma4:e4b`) and frontier models (`Anthropic Claude`, `OpenAI GPT`, `OpenRouter`, `vLLM`) with **under 150 tokens of fixed prompt framing**.
 
 Most agent frameworks drown small models in 3,000–8,000 tokens of nested JSON tool schemas and unbounded append-only transcripts before the model emits a single token. Tether flips this architecture:

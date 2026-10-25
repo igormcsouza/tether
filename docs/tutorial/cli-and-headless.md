@@ -1,5 +1,7 @@
 # CLI and Headless Sessions
 
+*For: people running tether from a terminal or a script. After this page you can start, watch, resume and read back sessions.*
+
 The `tether` CLI is designed for both interactive developer workflows and headless shell automation. Every session is persisted in an ACID SQLite WAL database (`.tether/tether.db` by default, or overridden via `--db` / `TETHER_DB`).
 
 ## Installing the CLI from PyPI
