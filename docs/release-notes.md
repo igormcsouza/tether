@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Docs
+
+- The site is organised by what you want to do: Start here, Guides, Concepts, Reference, Help. Every page opens with who it is for and what you can do after reading it. The contributor pages (golden traces, e2e, releasing) moved out of the user site into `CONTRIBUTING.md` in the repository (#151).
+
 ## v0.2.8 (2026-10-25)
 
 Found by reading why Polyglot-Python runs on `qwen3.5:9b` wasted steps or died, and by using tether as its own SWE agent: a prompt that filled the whole window, a sandbox that could not start the project's own virtualenv, and an Ollama error that no retry could fix. Closes #144, #145.

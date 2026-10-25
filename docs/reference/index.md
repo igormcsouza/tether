@@ -1,5 +1,7 @@
 # Reference
 
+*For: people looking up an exact flag, class or format.*
+
 API reference generated directly from the Python docstrings.
 
 - [Harness and CLI](harness.md): `tether.harness`, `tether.cli`

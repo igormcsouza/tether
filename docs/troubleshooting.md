@@ -1,5 +1,7 @@
 # Troubleshooting
 
+*For: when something does not work. Find your symptom, read the cause, apply the fix.*
+
 Symptom, cause, fix. Most entries come from building the [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) on small local models.
 
 | Symptom | Cause | Fix |

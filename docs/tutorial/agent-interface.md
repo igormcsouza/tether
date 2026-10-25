@@ -1,5 +1,7 @@
 # Use Tether Inside Your Harness
 
+*For: people who already work in Claude Code, Codex, Cursor or another agent. After this page you can delegate tasks to tether from that tool.*
+
 Tether does not ask you to give up your cockpit. Keep Claude Code, Codex, Cursor, Gemini CLI, Copilot or whatever TUI you already use as the main agent, and let Tether run as a **subagent** (or as the main agent for narrow tasks) behind MCP or plain CLI.
 
 Why that is useful:

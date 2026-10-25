@@ -1,5 +1,7 @@
 # Extending Tether
 
+*For: developers adding tools or model backends. After this page you can extend tether without touching its core.*
+
 Tether is designed around small, explicit protocols so you can plug in custom model gateways, local inference engines, or domain tool suites without subclassing framework base classes.
 
 ## 1. Custom Model Providers

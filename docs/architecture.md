@@ -1,5 +1,7 @@
 # Architecture and Literature
 
+*For: people who want to understand why tether works the way it does, and what each design choice costs or saves.*
+
 Most agent frameworks were designed around massive frontier models with 200k-token context windows. When you point those same frameworks at a local 8B or 9B model (`ollama/qwen3.5:9b`, `ollama/gemma4:e4b`), they immediately fail—not because the model cannot reason, but because **3,000 to 8,000 tokens of nested JSON tool schemas and raw tool outputs** flood the attention window before the agent takes its second step.
 
 Tether's design translates four foundational works in recent AI systems research into a compact, zero-bloat Python micro-harness.
