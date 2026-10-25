@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Docs
+
+- New CLI reference page: every `tether` subcommand with its flags, the exit codes and a copy-paste example. A test fails if a subcommand or flag is added to the CLI without being documented (#61).
+
 ### Fixes
 
 - Sandbox: a virtualenv in the workspace whose interpreter lives under `$HOME` (uv-managed Python in `~/.local/share/uv/python`) now starts inside the `bwrap` sandbox. Before, `.venv/bin/pytest` and `.venv/bin/python` failed with `required file not found` because the interpreter prefix was hidden with the rest of `/home`, so a verify gate or a model could not run the project's tests (found while tether implemented #136: 10 of 40 steps lost). The interpreter prefix named by `pyvenv.cfg` is re-bound read-only, with uv's version alias recreated as a symlink; same rules as the PATH directories (#76), never `$HOME` itself or credential directories.
