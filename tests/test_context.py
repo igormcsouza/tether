@@ -345,7 +345,7 @@ def test_active_observation_cap_follows_the_context_budget(tmp_path: Path) -> No
     assert ContextAssembler(max_context_tokens=100).active_char_cap == 2400
 
 
-def test_budget_reserves_an_eighth_of_the_window_for_the_reply() -> None:
+def test_budget_reserves_a_quarter_of_the_window_for_the_reply() -> None:
     # #144: a prompt that fills the window cuts off the model's file writes
     ca, msgs = _budget_run(8, 2400, 2000, fold_after_turns=8)
-    assert estimate_messages_tokens(msgs, [ACT_TOOL_SCHEMA]) <= 2000 * 7 // 8
+    assert estimate_messages_tokens(msgs, [ACT_TOOL_SCHEMA]) <= 2000 * 3 // 4

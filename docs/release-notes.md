@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- Context: the hard budget now keeps an eighth of `max_context_tokens` free for the model's reply (#144). On the Polyglot-Python fast set with `qwen3.5:9b` (`num_ctx` 8192) the prompt before a cut-off tool call had a median of 7,553 tokens, so the longest calls (file writes) were cut and each cut wasted a step. Older observations fold earlier to make room; 0 static prompt tokens.
+- Context: the hard budget now keeps a quarter of `max_context_tokens` free for the model's reply (#144). On the Polyglot-Python fast set with `qwen3.5:9b` (`num_ctx` 8192) the prompt before a cut-off tool call had a median of 7,553 tokens, so the longest calls (file writes) were cut and each cut wasted a step. Older observations fold earlier to make room; 0 static prompt tokens.
 
 ## v0.2.7 (2026-10-24)
 
