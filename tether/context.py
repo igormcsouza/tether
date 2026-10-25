@@ -329,7 +329,8 @@ class ContextAssembler:
         base_tokens = estimate_messages_tokens(messages, [ACT_TOOL_SCHEMA]) + estimate_tokens(
             pin_block
         )
-        limit = int(self.max_context_tokens / self.calibration)
+        # Keep a quarter of the window free for the reply; a full prompt cuts off writes (#144).
+        limit = int(self.max_context_tokens * 3 // 4 / self.calibration)
 
         def over() -> int:
             flat = [m for g in groups for m in g]
