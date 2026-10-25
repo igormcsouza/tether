@@ -265,25 +265,7 @@ Cursor, Gemini CLI, VS Code and Claude Desktop configs, a "let your harness inst
 
 ### Any model, no code: providers.yaml
 
-Declare extra providers in `~/.tether/providers.yaml` (override the path with `TETHER_PROVIDERS`). The entry key is the model-id prefix, so `claude-cli/sonnet` uses the entry `claude-cli`. It works in `tether run`, `tether pipeline`, the SDK and `tether mcp`, and the file is never read from the workspace.
-
-Kinds: `openai`, `ollama`, `anthropic` and `command`. The `command` kind wraps any program that takes a prompt and prints JSON (a `claude -p`, `codex exec` or `gemini -p` style command), and runs `argv` directly, never through a shell. Keys are given as env var names, never values.
-
-```yaml
-claude-cli:
-  kind: command
-  argv: [claude, -p, --model, "{model}", --tools, "", --system-prompt, "{system}", --output-format, json, --no-session-persistence, --setting-sources, "", --disable-slash-commands, --strict-mcp-config]
-  stdin: "{conversation}"
-  reply: result
-  usage: {prompt: [usage.input_tokens, usage.cache_creation_input_tokens, usage.cache_read_input_tokens], completion: usage.output_tokens}
-  timeout: 180
-```
-
-```bash
-tether run --model claude-cli/sonnet "fix the failing test"
-```
-
-On one small bug-fix task (v0.2.0 test), this backend used about 15x fewer tokens than plain `claude -p` (21k vs 330k). That is a single small task, not a benchmark. See [Declarative providers](docs/reference/providers.md#declarative-providers).
+Declare extra model backends (a gateway, a remote Ollama, a `claude -p` style command) in `~/.tether/providers.yaml`. One entry per prefix, four kinds, no code. Worked examples, the Python route and every setting: [Model providers](https://igormcsouza.github.io/tether/reference/providers/).
 
 ### Python SDK Usage
 
@@ -316,46 +298,9 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-### Custom SDK Provider Routing (`register_provider` / `provider=...`)
+### Custom providers in Python
 
-Want to route Tether through a custom transport—such as an internal corporate gateway, a custom local inference server, or a mock/replay harness for testing? Implement the 1-method `ModelProvider` protocol or register a custom URL prefix with `register_provider`:
-
-```python
-import httpx
-from tether import (
-    Harness,
-    ModelResponse,
-    extract_fallback_action,
-    register_provider,
-)
-
-
-class CustomGatewayProvider:
-    """Routes Tether turns through a custom internal LLM gateway."""
-
-    def __init__(self, model_name: str) -> None:
-        self.model_name = model_name
-
-    async def generate(self, messages: list[dict], tools: list[dict]) -> ModelResponse:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                "https://llm-gateway.internal/v1/generate",
-                json={"model": self.model_name, "messages": messages, "tools": tools},
-            )
-            data = resp.json()
-        text = str(data.get("text") or "").strip()
-        return ModelResponse(
-            content=text,
-            action=extract_fallback_action(text),
-            prompt_tokens=int(data.get("total_tokens") or 0),
-        )
-
-
-# Register as a custom `<prefix>/<model>` for Harness, Skills, and Sub-Agents:
-register_provider("gateway", CustomGatewayProvider)
-
-harness = Harness(model="gateway/qwen-enterprise-32b", tools=["web", "mem"])
-```
+Route Tether through your own transport with `register_provider(prefix, factory)` or `Harness(provider=...)`: see [Model providers](https://igormcsouza.github.io/tether/reference/providers/#add-your-own-in-python).
 
 ---
 

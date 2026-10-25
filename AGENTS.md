@@ -211,6 +211,10 @@ uv run mypy tether/
 6. **Documentation Integrity:**
    - Keep `README.md` and `AGENTS.md` synchronized whenever architectural interfaces or built-in tool signatures change.
    - **Always update documentation in the same PR** when introducing a new feature, changing an existing behavior, or altering a CLI/SDK interface. This covers `README.md`, `AGENTS.md`, the MkDocs pages under `docs/` (including `docs/reference/*` for new modules), and a `docs/release-notes.md` entry. A change without matching docs is incomplete.
+   - **Two audiences, two jobs.** Every doc change is judged against the one it serves:
+     - **Docs site (`docs/`, mkdocs on GitHub Pages)** is for people who *use* tether as a tool and for agents that integrate it. It explains how tether works and how to get a job done, in plain language, with a story and a real, re-runnable example per guide (command + real output). It does **not** carry our bug history ("fixed in vX"), half-finished work, internal experiments or stale benchmarks; a known problem is a link to its GitHub issue (label `known-issue`). Contributor material (golden traces, releasing) lives in `CONTRIBUTING.md`, not in the user nav. Each page opens with who it is for and what you can do after reading it. One canonical page per topic (e.g. providers); everything else links to it, nothing is copied.
+     - **`README.md`** is for people evaluating tether, building their own harness on it, or contributing: why tether is interesting (the **current** benchmark, regenerated each release by `bench/report.py`), the architecture and *why this and not the alternative*, a short install + first run, and how to contribute. It points to the docs site for everything else and stays short (target ~150 lines).
+   - The step plan is tracked in epic #150; a docs PR names the step it completes.
 
 ## Dev team specifics
 - Stack: Python 3.12+, package `tether/`, tests in `tests/`, docs in `docs/` (MkDocs); `uv`, ruff, mypy
