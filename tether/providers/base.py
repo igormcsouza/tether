@@ -85,6 +85,11 @@ def rejected_call(resp: httpx.Response) -> ModelResponse | None:
     return None
 
 
+def context_overflow(resp: httpx.Response) -> bool:
+    """True when Ollama drops the first (goal) message because prompt > num_ctx."""
+    return resp.status_code == 500 and "No user query found" in resp.text
+
+
 _TRANSIENT = (httpx.TimeoutException, httpx.NetworkError, TimeoutError)
 
 
@@ -183,7 +188,7 @@ async def post_with_retry(
             continue
         if resp.status_code in (401, 403):
             raise ProviderError(auth_message(provider, key_env, resp.status_code, resp.text))
-        if resp.status_code not in RETRY_STATUS or rejected_call(resp):
+        if resp.status_code not in RETRY_STATUS or rejected_call(resp) or context_overflow(resp):
             return resp
         last = f"HTTP {resp.status_code}: {resp.text[:120]!r}"
         if resp.status_code == 429:  # rate limits reset per minute: wait longer, honor Retry-After

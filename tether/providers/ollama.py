@@ -11,7 +11,9 @@ import httpx
 from tether.providers.base import (
     ActionCall,
     ModelResponse,
+    ProviderError,
     action_from_tool_call,
+    context_overflow,
     extract_fallback_action,
     limiter_for,
     post_with_retry,
@@ -48,6 +50,7 @@ class OllamaProvider:
         )
         self.host = (host or os.environ.get("OLLAMA_HOST") or "http://localhost:11434").rstrip("/")
         self.num_ctx = num_ctx
+        self._base_ctx = num_ctx
         self.keep_alive = keep_alive
         self.timeout = timeout
         self._client = client
@@ -136,6 +139,17 @@ class OllamaProvider:
                 resp = await self._chat(client, payload)
         if rejected := rejected_call(resp):
             return rejected
+        if context_overflow(resp):
+            # Prompt longer than num_ctx: grow the window once (capped at 4x), the larger one sticks
+            if self.num_ctx < self._base_ctx * 4:
+                self.num_ctx = min(self.num_ctx * 2, self._base_ctx * 4)
+                payload["options"]["num_ctx"] = self.num_ctx
+                resp = await self._chat(client, payload)
+            if context_overflow(resp):
+                raise ProviderError(
+                    f"ollama model `{self.model_name}`: the prompt does not fit num_ctx "
+                    f"{self.num_ctx}; lower --context-tokens or raise the model's context window"
+                )
         resp.raise_for_status()
         data = resp.json()
 

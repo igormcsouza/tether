@@ -13,6 +13,7 @@ from tether import Harness
 from tether.cli import _async_main
 from tether.providers import resolve_provider
 from tether.providers.anthropic import AnthropicProvider
+from tether.providers.base import ProviderError
 from tether.providers.declarative import build_declared, load_declared
 from tether.providers.ollama import OllamaProvider
 from tether.providers.openai import OpenAIProvider
@@ -155,3 +156,57 @@ async def test_other_http_providers_also_turn_a_rejected_tool_call_into_feedback
     prov = make("m", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     resp = await prov.generate([{"role": "user", "content": "x"}], [])
     assert calls == 1 and resp.action is None and "cut off" in resp.hint
+
+
+async def test_ollama_prompt_over_num_ctx_is_retried_with_a_larger_window() -> None:
+    # #145: past num_ctx Ollama drops the goal message and the chat template answers HTTP 500
+    # "No user query found in messages."; the call used to be retried 3x and killed the session
+    sent: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        num_ctx = json.loads(request.content)["options"]["num_ctx"]
+        sent.append(num_ctx)
+        if num_ctx <= 8192:
+            return httpx.Response(
+                500, text="While executing CallExpression ... No user query found in messages."
+            )
+        return httpx.Response(
+            200,
+            json={"message": {"content": "hi"}, "prompt_eval_count": 8266, "eval_count": 2},
+        )
+
+    prov = OllamaProvider(
+        "m", num_ctx=8192, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    first = await prov.generate([{"role": "user", "content": "x"}], [])
+    second = await prov.generate([{"role": "user", "content": "x"}], [])
+    assert first.content == "hi" and second.content == "hi"
+    assert sent == [8192, 16384, 16384]  # one retry, then the larger window sticks
+
+
+async def test_ollama_overflow_gives_up_with_an_actionable_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="No user query found in messages.")
+
+    prov = OllamaProvider(
+        "m", num_ctx=16384, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    with pytest.raises(ProviderError, match="num_ctx.*--context-tokens"):
+        await prov.generate([{"role": "user", "content": "x"}], [])
+
+
+async def test_ollama_overflow_at_the_window_cap_does_not_resend() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(500, text="No user query found in messages.")
+
+    prov = OllamaProvider(
+        "m", num_ctx=1024, client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    prov.num_ctx = 4096  # already at 4x the base window
+    with pytest.raises(ProviderError, match="4096"):
+        await prov.generate([{"role": "user", "content": "x"}], [])
+    assert calls == 1
