@@ -106,25 +106,7 @@ If status is `WAITING_INPUT`, answer with `tether_send`. Keep architecture and r
 
 ## Any model, no code: providers.yaml
 
-Tether can route to any backend you declare in `~/.tether/providers.yaml` (override the path with `TETHER_PROVIDERS`). The entry key is the model-id prefix, so `claude-cli/sonnet` uses the entry `claude-cli`. It works the same in `tether run`, `tether pipeline`, the SDK and `tether mcp`, and it is never read from the workspace.
-
-The `command` kind wraps any program that reads a prompt and prints JSON, for example a `claude -p`, `codex exec` or `gemini -p` style command (check each tool's own docs for its flags). Tether runs `argv` directly, never through a shell.
-
-```yaml
-claude-cli:
-  kind: command
-  argv: [claude, -p, --model, "{model}", --tools, "", --system-prompt, "{system}", --output-format, json, --no-session-persistence, --setting-sources, "", --disable-slash-commands, --strict-mcp-config]
-  stdin: "{conversation}"
-  reply: result
-  usage: {prompt: [usage.input_tokens, usage.cache_creation_input_tokens, usage.cache_read_input_tokens], completion: usage.output_tokens}
-  timeout: 180
-```
-
-```bash
-tether run --model claude-cli/sonnet "fix the failing test"
-```
-
-On one small bug-fix task, this backend used about 15x fewer tokens than plain `claude -p` (21k vs 330k). It is a single small task, not a benchmark. Full reference: [Declarative providers](../reference/providers.md#declarative-providers).
+Delegate to any backend you declare in `~/.tether/providers.yaml` (a gateway, a remote Ollama, a `claude -p` style command). Location, worked examples and every setting are on one page: [Model providers](../reference/providers.md).
 
 ## Patterns
 

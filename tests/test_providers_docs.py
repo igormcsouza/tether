@@ -32,5 +32,5 @@ def test_other_pages_link_instead_of_copying() -> None:
     for rel in ("README.md", "docs/tutorial/agent-interface.md", "docs/extending.md"):
         text = (ROOT / rel).read_text()
         assert "kind: openai" not in text and "kind: command" not in text, rel
-        assert "register_provider(" not in text or rel == "docs/extending.md", rel
+        assert "async def generate" not in text, rel  # the Python example lives on the page
         assert "reference/providers" in text or "/providers/" in text, rel
