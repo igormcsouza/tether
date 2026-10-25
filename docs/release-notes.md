@@ -1,11 +1,12 @@
 # Release Notes
 
-## Unreleased
+## v0.2.8 (2026-10-25)
 
-### Docs
+Found by reading why Polyglot-Python runs on `qwen3.5:9b` wasted steps or died, and by using tether as its own SWE agent: a prompt that filled the whole window, a sandbox that could not start the project's own virtualenv, and an Ollama error that no retry could fix. Closes #144, #145.
 
-- One canonical page for model providers (`reference/providers.md`): built-in prefixes, where `providers.yaml` lives and why it is never read from the workspace, a generic example for each kind, how to check it works, and the Python route (`register_provider`, `Harness(provider=...)`). README, the agent-interface tutorial and Extending now link to it instead of copying it; a test keeps them from drifting (#60, #62).
-- New CLI reference page: every `tether` subcommand with its flags, the exit codes and a copy-paste example. A test fails if a subcommand or flag is added to the CLI without being documented (#61).
+### Benchmark
+
+- On the Polyglot-Python fast set (12 exercises x 2 trials, `qwen3.5:9b`, `num_ctx` 8192) the context headroom below cut the "tool call cut off" hint from 29 occurrences in 9 runs to 2 in 1 run, and no-action steps from 19% to 2.2% of steps, at 11 passes of 24 against 10 and a mean score of 0.756 against 0.741 (inside the ~0.1 noise of a single run).
 
 ### Fixes
 
@@ -13,6 +14,10 @@
 - Sandbox: a virtualenv in the workspace whose interpreter lives under `$HOME` (uv-managed Python in `~/.local/share/uv/python`) now starts inside the `bwrap` sandbox. Before, `.venv/bin/pytest` and `.venv/bin/python` failed with `required file not found` because the interpreter prefix was hidden with the rest of `/home`, so a verify gate or a model could not run the project's tests (found while tether implemented #136: 10 of 40 steps lost). The interpreter prefix named by `pyvenv.cfg` is re-bound read-only, with uv's version alias recreated as a symlink; same rules as the PATH directories (#76), never `$HOME` itself or credential directories.
 - Context: the hard budget now keeps a quarter of `max_context_tokens` free for the model's reply (#144). On the Polyglot-Python fast set with `qwen3.5:9b` (`num_ctx` 8192) the prompt before a cut-off tool call had a median of 7,553 tokens, so the longest calls (file writes) were cut and each cut wasted a step. Older observations fold earlier to make room; 0 static prompt tokens.
 
+### Docs
+
+- One canonical page for model providers (`reference/providers.md`): built-in prefixes, where `providers.yaml` lives and why it is never read from the workspace, a generic example for each kind, how to check it works, and the Python route (`register_provider`, `Harness(provider=...)`). README, the agent-interface tutorial and Extending now link to it instead of copying it; a test keeps them from drifting (#60, #62).
+- New CLI reference page: every `tether` subcommand with its flags, the exit codes and a copy-paste example. A test fails if a subcommand or flag is added to the CLI without being documented (#61).
 
 ## v0.2.7 (2026-10-24)
 
