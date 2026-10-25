@@ -361,6 +361,22 @@ class SandboxPolicy:
             args += ["--ro-bind", "/dev/null", str(git_config)]
         return args
 
+    def _venv_prefixes(self) -> list[str]:
+        """Interpreter prefixes of the workspace venvs (`home =` in pyvenv.cfg), e.g. a uv-managed
+        Python under `~/.local/share/uv`: without it `.venv/bin/pytest` cannot start (#76)."""
+        out: list[str] = []
+        for name in (".venv", "venv"):
+            cfg = self.workspace_root / name / "pyvenv.cfg"
+            try:
+                text = cfg.read_text()
+            except OSError:
+                continue
+            match = re.search(r"^home\s*=\s*(\S.*)$", text, re.MULTILINE)
+            if match:
+                home = Path(match.group(1).strip())
+                out.append(str(home.parent if home.name == "bin" else home))
+        return out
+
     def _tool_path_mounts(self, hidden: list[str]) -> list[str]:
         """Read-only binds for PATH entries that the tmpfs masks hid (`~/.local/bin/uv`, nvm).
 
@@ -371,7 +387,8 @@ class SandboxPolicy:
         masked = [*hidden, os.path.expanduser("~")]
         ws = self.workspace_root
         seen: list[str] = []
-        for entry in os.environ.get("PATH", "").split(os.pathsep):
+        venv = self._venv_prefixes()
+        for entry in [*os.environ.get("PATH", "").split(os.pathsep), *venv]:
             if not entry or not os.path.isabs(entry) or not os.path.isdir(entry):
                 continue
             real = Path(entry).resolve()
@@ -385,7 +402,12 @@ class SandboxPolicy:
             ):
                 continue
             seen.append(str(real))
-        return [a for d in seen[:_MAX_PATH_MOUNTS] for a in ("--ro-bind", d, d)]
+        args = [a for d in seen[:_MAX_PATH_MOUNTS] for a in ("--ro-bind", d, d)]
+        for raw in venv:  # uv names the prefix by a symlink (`cpython-3.14-...` -> `3.14.4-...`)
+            target = str(Path(raw).resolve())
+            if target != raw and target in seen:
+                args += ["--symlink", target, raw]
+        return args
 
     def _build_exec_argv(self, cmd: str) -> list[str]:
         """Wrap command in Linux `bwrap` kernel sandbox if available, else standard bash."""

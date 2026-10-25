@@ -4,6 +4,12 @@
 
 ### Fixes
 
+- Sandbox: a virtualenv in the workspace whose interpreter lives under `$HOME` (uv-managed Python in `~/.local/share/uv/python`) now starts inside the `bwrap` sandbox. Before, `.venv/bin/pytest` and `.venv/bin/python` failed with `required file not found` because the interpreter prefix was hidden with the rest of `/home`, so a verify gate or a model could not run the project's tests (found while tether implemented #136: 10 of 40 steps lost). The interpreter prefix named by `pyvenv.cfg` is re-bound read-only, with uv's version alias recreated as a symlink; same rules as the PATH directories (#76), never `$HOME` itself or credential directories.
+
+## Unreleased
+
+### Fixes
+
 - Context: the hard budget now keeps a quarter of `max_context_tokens` free for the model's reply (#144). On the Polyglot-Python fast set with `qwen3.5:9b` (`num_ctx` 8192) the prompt before a cut-off tool call had a median of 7,553 tokens, so the longest calls (file writes) were cut and each cut wasted a step. Older observations fold earlier to make room; 0 static prompt tokens.
 
 ## v0.2.7 (2026-10-24)
