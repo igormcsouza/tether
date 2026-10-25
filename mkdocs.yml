@@ -108,6 +108,7 @@ nav:
       - Benchmark Evaluation: benchmarks.md
   - Reference:
       - reference/index.md
+      - CLI: reference/cli.md
       - Harness and CLI: reference/harness.md
       - Context and SQLite Store: reference/context-and-store.md
       - Multiplexer and Decorator: reference/multiplexer-and-decorator.md
