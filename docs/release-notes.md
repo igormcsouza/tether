@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixes
+
+- `done`: a bare `done` with no answer now completes the session with the result `Done.` (the `--verify` gates still run first) instead of returning an error the model repeated until `max_steps`. `done --ask` with no question is still an error. A model that types the call as text, `act("done", stdin="...")` or `bash act("done", ...)`, in `cmd` is understood the same way as a real call (#169). Found in the v0.2.9 Polyglot breakdown: 8 of 36 `qwen3.5:9b` runs wasted 1-13 steps on a rejected `done`, and 2 runs that passed every test ended `FAILED` at max steps.
+
 ## v0.2.9 (2026-10-25)
 
 The docs are rebuilt around the people who use tether, and writing the first guide with a real run found a real bug: a small model that fixed a failing test, saw it pass, then repeated the check until the stall guard ended the session as a failure. Closes #163, #61, #60, #62, #63, #64, #151, #152, #153, #154.

@@ -22,6 +22,9 @@ def make_done_tool() -> ToolSpec:
             body_parts.append(stdin.strip())
         final_text = "\n\n".join(body_parts).strip()
         if not final_text:
+            # #169: bare `done` (no args/stdin) completes with "Done."
+            if "--ask" not in args:
+                return "Done."
             return (
                 f"Error: provide final deliverable or question via `stdin` or argument.\n{help_str}"
             )
