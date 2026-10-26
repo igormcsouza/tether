@@ -237,6 +237,37 @@ async def test_pre_done_verification_gates_and_self_healing(tmp_path: Path) -> N
     assert "Fix the reported issues before calling `done` again." in step2_prompt
 
 
+async def test_bare_done_still_runs_verification_gates(tmp_path: Path) -> None:
+    """A bare `done` completes the session only once the gates pass (#169)."""
+    from tether.sandbox import SandboxPolicy
+
+    ws = tmp_path / "ws_bare"
+    ws.mkdir()
+    (ws / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
+    provider = FakeScriptedProvider(
+        [
+            ModelResponse(content="", action=ActionCall(cmd="done")),
+            ModelResponse(
+                content="", action=ActionCall(cmd="edit write module.py", stdin="VALUE = 42\n")
+            ),
+            ModelResponse(content="", action=ActionCall(cmd="done")),
+        ]
+    )
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        tools=["edit"],
+        verify=["python3 -c 'import module, sys; sys.exit(0 if module.VALUE == 42 else 1)'"],
+        sandbox=SandboxPolicy(workspace_root=ws, use_kernel_sandbox=False),
+        provider=provider,
+    )
+    session = await harness.run("Set VALUE = 42 in module.py")
+    assert session.status == "COMPLETED" and session.step_count == 3
+    assert session.result == "Done."
+    assert "[VERIFICATION GATE FAILED:" in "\n".join(
+        m["content"] for m in provider.recorded_calls[1]
+    )
+
+
 async def test_verification_gate_circuit_breaker_and_skill_verify(tmp_path: Path) -> None:
     """Verify circuit breaker trips on consecutive gate failures and skills declare verify gates."""
     from tether.sandbox import SandboxPolicy
