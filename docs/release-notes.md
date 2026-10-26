@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- Stall guard: a model that fixes the task, passes the check, then only repeats the check no longer ends `FAILED: Stalled`. When `--verify` gates are configured and every gate passes after a change, the session ends `COMPLETED` with "Finished by the harness" (#163). Found while writing the first docs guide: `qwen3.5:9b` fixed a failing test in 3 steps, saw the tests pass, then repeated the run until the guard stopped it as a failure. Without gates nothing changes.
+
 ### Docs
 
 - A "Which page do I read?" table on the home page, a glossary of the terms used across the docs, and `llms.txt` at the site root listing every page with a one-line description, for agents (#64, #66).
