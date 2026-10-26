@@ -18,7 +18,7 @@ With `--verify` gates configured, a stall after a change whose gates all pass en
 
 **Cause.** The task needs more steps than allowed, or the model never found the way to finish.
 
-**Fix.** Check `tether read <id> --steps`: if the work is done and the model keeps verifying, tell it to call `done` in the goal. If it needs more room, raise `--max-steps` (for a pipeline, per stage). `tether send <id> "keep going"` resumes a finished session with a fresh budget.
+**Fix.** Check `tether read <id> --steps`: if the work is done and the model keeps verifying, tell it to call `done` in the goal. A bare `done` is enough: it ends the session with the result `Done.` once the gates pass. If it needs more room, raise `--max-steps` (for a pipeline, per stage). `tether send <id> "keep going"` resumes a finished session with a fresh budget.
 
 ### `FAILED` with `Verification gate ... misconfigured`
 

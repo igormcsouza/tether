@@ -113,6 +113,11 @@ def _looks_like_shell(word: str) -> bool:
 _APPLY_PATCH_RE = re.compile(
     r"(?:^|\n)\s*(?:bash\s+)?apply_patch\b[^\n]*\n(?P<patch>\s*\*\*\* Begin Patch.*)", re.DOTALL
 )
+_ACT_CALL_RE = re.compile(
+    r"""(?:bash\s+)?act\(\s*(?:cmd\s*=\s*)?(["'])(?P<cmd>.*?)\1\s*"""
+    r"""(?:,\s*stdin\s*=\s*(["'])(?P<stdin>.*)\3\s*)?\)""",
+    re.DOTALL,
+)
 _HEREDOC_RE = re.compile(r"[ \t]*<<-?[ \t]*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n?\2[ \t]*$", re.DOTALL)
 
 
@@ -175,6 +180,11 @@ class Multiplexer:
                 is_error=True,
                 error_kind="syntax_error",
             )
+
+        call = _ACT_CALL_RE.fullmatch(clean_cmd)
+        if call:  # the model typed the act() call as text (#169)
+            clean_cmd = call["cmd"].strip()
+            stdin = call["stdin"] if stdin is None else stdin
 
         patch = _APPLY_PATCH_RE.search(f"{clean_cmd}\n{stdin or ''}")
         if patch and "edit" in self._tools:  # patch text may sit in cmd, or in stdin of `bash`

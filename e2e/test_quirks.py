@@ -162,3 +162,16 @@ def test_skill_enables_its_tools_without_touching_the_schema(tether: Tether, cha
     sysmsg = req["messages"][0]["content"]
     assert [t["function"]["name"] for t in req["tools"]] == ["act"]
     assert "- bash:" in sysmsg and "[SKILL]" in sysmsg and "Always run `bash true` first." in sysmsg
+
+
+def test_bare_done_completes_instead_of_looping(tether: Tether, chaos) -> None:
+    chaos.script("done")  # #169: was "Error: provide final deliverable", repeated to max_steps
+    r = tether.run("finish", "--tools", "bash")
+    assert r["status"] == "COMPLETED"
+    assert tether.events(r["id"]) == ["completed"]
+
+
+def test_act_call_typed_as_text_is_unwrapped(tether: Tether, chaos) -> None:
+    chaos.script('act("done", stdin="all green")')
+    r = tether.run("finish", "--tools", "bash")
+    assert r["status"] == "COMPLETED" and r["result"] == "all green"

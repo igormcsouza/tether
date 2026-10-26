@@ -17,7 +17,8 @@ async def test_done_tool(tmp_path: Path) -> None:
         model="ollama/qwen3.5:9b",
     )
     assert "Usage: done" in (await mux.execute("done --help")).output
-    assert "Error:" in (await mux.execute("done")).output
+    bare = await mux.execute("done")  # intent to finish is unambiguous: complete, don't loop (#169)
+    assert bare.is_done and not bare.is_error and bare.final_result == "Done."
     assert "Error:" in (await mux.execute("done --ask")).output
     res_inline = await mux.execute("done 'short'")
     assert res_inline.is_done and not res_inline.is_waiting_input and res_inline.output == "short"

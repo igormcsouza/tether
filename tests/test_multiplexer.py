@@ -179,3 +179,32 @@ def test_register_normalizer_runs_after_built_ins() -> None:
         assert normalize_cmd("done") == "done"
     finally:
         NORMALIZERS.remove(drop_vendor)
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        'act("done", stdin="all green")',
+        "act('done', stdin='all green')",
+        'bash act("done", stdin="all green")',
+        'act(cmd="done", stdin="all green")',
+    ],
+)
+async def test_act_call_text_in_cmd_is_unwrapped(tmp_path: Path, cmd: str) -> None:
+    """A model that types the `act(...)` call as text still finishes (#169), never via bash."""
+    sandbox = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
+    harness = Harness(db_path=tmp_path / "t.db", tools=["bash"], sandbox=sandbox)
+    mux = harness.build_multiplexer("ses_act", ["bash"], sandbox, "ollama/qwen3.5:9b")
+    res = await mux.execute(cmd)
+    assert res.is_done and res.final_result == "all green"
+
+
+async def test_act_call_text_without_stdin_and_other_commands(tmp_path: Path) -> None:
+    sandbox = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
+    harness = Harness(db_path=tmp_path / "t.db", tools=["bash"], sandbox=sandbox)
+    mux = harness.build_multiplexer("ses_act2", ["bash"], sandbox, "ollama/qwen3.5:9b")
+    assert (await mux.execute('act("done")')).final_result == "Done."
+    (tmp_path / "m.txt").write_text("x")
+    assert "m.txt" in (await mux.execute('act("ls")')).output
+    # text that merely contains act( is left alone
+    assert "act(" in (await mux.execute("echo 'act(1)'")).output
