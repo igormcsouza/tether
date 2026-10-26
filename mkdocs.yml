@@ -93,6 +93,10 @@ extra_javascript:
 nav:
   - Start here: index.md
   - Guides:
+      - Fix a failing test with a local model: guides/fix-a-failing-test.md
+      - Use tether from Claude Code, Codex or Cursor: guides/use-tether-from-your-agent.md
+      - A pipeline where each stage has its own job: guides/a-pipeline-with-checks.md
+      - Give the model a tool of your own: guides/add-your-own-tool.md
       - tutorial/index.md
       - CLI and Headless Sessions: tutorial/cli-and-headless.md
       - Python SDK and Custom Tools: tutorial/sdk-and-custom-tools.md
@@ -106,6 +110,7 @@ nav:
   - Concepts:
       - Architecture and Literature: architecture.md
       - Benchmark Evaluation: benchmarks.md
+      - Glossary: glossary.md
   - Reference:
       - reference/index.md
       - CLI: reference/cli.md

@@ -116,6 +116,7 @@ becomes a unit, golden or e2e test. See `bench/README.md`.
 
 PyPI is published only from a GitHub Release, never from a push or tag.
 
+0. Re-run the commands in `docs/guides/` against the release candidate and fix any output that changed.
 1. Bump `__version__` in `tether/__init__.py` (and the version assertion in `tests/test_tether.py`) and update `docs/release-notes.md`.
 2. Merge to `main`.
 3. Create a GitHub Release with tag `v<version>` (for example `v0.1.0`). The tag must match `__version__` (a leading `v` is ignored) or the workflow fails before building.
