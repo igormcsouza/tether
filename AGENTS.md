@@ -31,6 +31,7 @@ Reviewers and the Team Leader cite the failing line when they reject a change.
 ### North Star (the one number; see tracker #173)
 **Polyglot-Python pass rate on `ollama/qwen3.5:9b` (our weakest model), default config, full 34 exercises: 80% by v0.3.0.** Nothing important is set aside for it, but everything is ranked by it:
 1. Every issue, PR and benchmark must say how it moves this number (or tokens per solved exercise at the same pass rate). A benchmark that cannot show a change in it is not run; an issue that cannot name the link waits behind one that can.
+1b. Two lanes, both tracked: the **general-purpose default** (no role) is the official number and must reach 80%; the shipped **`swe` role** (#172) is reported next to it, must never score below the default, and gets its own target once its baseline is pinned.
 2. Weakest-model rule: every stronger model must score at least what `qwen3.5:9b` scores (and at least 80% once reached). If we plateau, stronger models may not fall below the plateau.
 3. Other indicators (tokens per pass, steps, wall-clock, prompt size, coverage) may slow or pause but never degrade between releases.
 4. Floor, a promise rather than a goal: every task delivers a real, honest, usable result in a fair time; no unretried outage, no empty result, no unrelated hallucinated deliverable (#171).
