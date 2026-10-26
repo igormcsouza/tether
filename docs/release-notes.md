@@ -1,6 +1,8 @@
 # Release Notes
 
-## Unreleased
+## v0.2.9 (2026-10-25)
+
+The docs are rebuilt around the people who use tether, and writing the first guide with a real run found a real bug: a small model that fixed a failing test, saw it pass, then repeated the check until the stall guard ended the session as a failure. Closes #163, #61, #60, #62, #63, #64, #151, #152, #153, #154.
 
 ### Fixes
 
