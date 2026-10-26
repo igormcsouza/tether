@@ -28,6 +28,14 @@ Tether stays **lightweight, reliable, extensible, model-agnostic, easy to use, r
 
 Reviewers and the Team Leader cite the failing line when they reject a change.
 
+### North Star (the one number; see tracker #173)
+**Polyglot-Python pass rate on `ollama/qwen3.5:9b` (our weakest model), default config, full 34 exercises: 80% by v0.3.0.** Nothing important is set aside for it, but everything is ranked by it:
+1. Every issue, PR and benchmark must say how it moves this number (or tokens per solved exercise at the same pass rate). A benchmark that cannot show a change in it is not run; an issue that cannot name the link waits behind one that can.
+2. Weakest-model rule: every stronger model must score at least what `qwen3.5:9b` scores (and at least 80% once reached). If we plateau, stronger models may not fall below the plateau.
+3. Other indicators (tokens per pass, steps, wall-clock, prompt size, coverage) may slow or pause but never degrade between releases.
+4. Floor, a promise rather than a goal: every task delivers a real, honest, usable result in a fair time; no unretried outage, no empty result, no unrelated hallucinated deliverable (#171).
+5. Every PR body and issue-close comment ends with `north star: <before> -> <after> (runs, noise, run dir)`; the tracker's History table and `bench/history.jsonl` are updated at every release.
+
 ---
 
 ## 2. The Golden Rules (Non-Negotiable Invariants)
@@ -225,5 +233,5 @@ uv run mypy tether/
 - Hard stops (ask first): force push / history rewrite; merging a PR and cutting a release need the PO's explicit yes each time
 - Design docs: `AGENTS.md` sections 1-3, `docs/architecture.md`, `docs/reference/*`
 - Orchestration: **`/gru` runs this repo** (Team Leader + router). Strong model plans, writes the failing acceptance tests first, reviews and decides; tether does the typing as the minion at Tier 0 on the strongest free model (`nvidia/nvidia/nemotron-3-ultra-550b-a55b`, fallback `nvidia/z-ai/glm-5.3`), escalating one tier only on evidence. Tiers, context sizes and sensitive paths: `.claude/gru.json`. tether's own failures while doing a card are logged as friction and filed as issues (with the PO's OK).
-- Improvement loop: **every PR leaves tether a little better**, measured, not asserted: a behaviour change ships with a bench or e2e delta (Polyglot-Python fast set on `ollama/qwen3.5:9b`, `bench/`) in the PR body, reported honestly even when it is flat. After a merge, gru re-reads the next planned milestone and the other open bug issues and picks the one that clearly improves tether most (evidence from bench failure breakdowns and `tether stats` friction beats guesses); features and docs wait behind bugs that cost steps or pass rate.
+- Improvement loop: **every PR leaves tether a little better**, measured, not asserted: a behaviour change ships with a bench or e2e delta (Polyglot-Python on `ollama/qwen3.5:9b`, `bench/`) in the PR body as a `north star:` line (see North Star), reported honestly even when it is flat. After a merge, gru re-reads the next planned milestone and the other open bug issues and picks the one that clearly improves tether most (evidence from bench failure breakdowns and `tether stats` friction beats guesses); features and docs wait behind bugs that cost steps or pass rate.
 - gru store: .claude/gru/   (committed; legacy `feature-context` logs were moved here)
