@@ -230,3 +230,12 @@ async def test_workspace_venv_runs_inside_the_sandbox(
     sp = SandboxPolicy(workspace_root=ws)
     code, out = await sp.execute_bash_with_code(".venv/bin/mytool; ls ~/..; echo end")
     assert "venv-ok" in out and "secret.txt" not in out, out
+
+
+async def test_bash_output_drops_workspace_prefix_and_rule_lines(tmp_path: Path) -> None:
+    """North star: drop the absolute workspace path and ==== / ---- rule lines (tokens)."""
+    sandbox = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
+    cmd = f"printf '{tmp_path}/a.py:3 boom\\n{'=' * 70}\\nFAIL x\\n{'-' * 70}\\nkeep\\n'"
+    out = await sandbox.execute_bash(cmd)
+    assert str(tmp_path) not in out
+    assert out == "a.py:3 boom\nFAIL x\nkeep\n"

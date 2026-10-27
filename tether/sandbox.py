@@ -162,6 +162,14 @@ def _can_use_bwrap() -> bool:
     return _BWRAP_USABLE
 
 
+_RULE_LINE = re.compile(r"^(?:={20,}|-{20,})$\n?", re.M)
+
+
+def _compact_output(text: str, root: Path) -> str:
+    """Token saver: drop `====`/`----` rule lines and the absolute workspace prefix."""
+    return _RULE_LINE.sub("", text.replace(f"{root}/", ""))
+
+
 @dataclass(slots=True)
 class SandboxPolicy:
     """Deterministic security envelope enforced by the harness (never by the LLM)."""
@@ -500,6 +508,7 @@ class SandboxPolicy:
         if stderr_str:
             combined = f"{stdout_str}\n[stderr]\n{stderr_str}".strip()
 
+        combined = _compact_output(combined, self.workspace_root)
         if not combined:
             combined = f"[exit {returncode}: no output]" + (
                 " Command succeeded." if returncode == 0 else ""

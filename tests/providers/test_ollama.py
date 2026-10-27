@@ -109,3 +109,10 @@ async def test_ollama_unknown_model_fails_loudly_by_default() -> None:
     op = OllamaProvider("doesnotexist", client=client, fallback=False)
     with pytest.raises(RuntimeError, match="doesnotexist.*installed: qwen3.5:9b"):
         await op.generate([{"role": "user", "content": "hi"}], [])
+
+
+def test_default_timeout_fits_a_full_window_of_thinking() -> None:
+    """North star: 4/68 baseline runs died on a 120s ReadTimeout while the model was thinking."""
+    from tether.providers.ollama import OllamaProvider
+
+    assert OllamaProvider().timeout >= 300
