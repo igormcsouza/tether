@@ -43,3 +43,11 @@ Rate limits (NVIDIA: 40 requests/min) invalidate results silently; set `rpm:` in
 and keep parallelism low (`--par nvidia=2`).
 
 Caveats: one run per cell is noisy (about 0.1); the scores are regex and hidden-test based.
+
+## History (the north-star ledger)
+
+`bench/history.jsonl` is the single source for the tracker's History table (#173). One JSON object per line: `date`, `version`, `model`, `runner`, `tasks`, `trials`, `context`, `runs`, `passed`, `pass_rate`, `mean_score`, failure counts, mean steps/prompt tokens/wall, `note`.
+
+A PR that changes behaviour the model sees appends one line for its own run (same model, default 8192 context, `--poly-verify`) and ends its body with `north star: <before> -> <after> (runs, noise, run dir)`. Noise is about 0.1 per run, so a claim needs enough runs to beat it; a flat result is appended and reported as flat.
+
+The official number is the full 34 exercises × 2 trials (68 runs) with the 600 s per-run wall cap. Use `--tasks polyglot-fast` for quick checks and label it `polyglot-fast-12`.
