@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -109,3 +111,61 @@ async def test_ollama_unknown_model_fails_loudly_by_default() -> None:
     op = OllamaProvider("doesnotexist", client=client, fallback=False)
     with pytest.raises(RuntimeError, match="doesnotexist.*installed: qwen3.5:9b"):
         await op.generate([{"role": "user", "content": "hi"}], [])
+
+
+def _length_cut() -> dict:
+    return {
+        "message": {"content": "", "thinking": "hmm..."},
+        "done_reason": "length",
+        "prompt_eval_count": 5000,
+        "eval_count": 3000,
+    }
+
+
+async def test_ollama_retries_a_length_cut_empty_turn_without_thinking() -> None:
+    """A turn that ends at the context limit with no reply and no action is retried once."""
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        seen.append(body)
+        if len(seen) == 1:
+            return httpx.Response(200, json=_length_cut())
+        return httpx.Response(
+            200,
+            json={
+                "message": {
+                    "content": "",
+                    "tool_calls": [{"function": {"name": "act", "arguments": {"cmd": "ls"}}}],
+                },
+                "prompt_eval_count": 5000,
+                "eval_count": 40,
+            },
+        )
+
+    op = OllamaProvider(
+        "qwen3.5:9b", client=httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    )
+    r = await op.generate([{"role": "user", "content": "hi"}], [])
+    assert len(seen) == 2
+    assert "think" not in seen[0] and seen[1]["think"] is False
+    assert r.action is not None and r.action.cmd == "ls"
+    assert r.completion_tokens == 3040 and r.prompt_tokens == 10000
+
+
+async def test_ollama_length_retry_is_once_and_respects_explicit_think() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json=_length_cut())
+
+    mk = lambda **kw: OllamaProvider(  # noqa: E731
+        "qwen3.5:9b", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)), **kw
+    )
+    r = await mk().generate([{"role": "user", "content": "hi"}], [])
+    assert calls == 2 and r.action is None  # one retry only, still empty -> caller nudges
+    calls = 0
+    await mk(params={"think": True}).generate([{"role": "user", "content": "hi"}], [])
+    assert calls == 1  # the caller chose `think`: never overridden

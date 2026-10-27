@@ -24,6 +24,16 @@ from tether.providers.base import (
 _TOP_LEVEL = frozenset({"think", "keep_alive", "format", "stream"})
 
 
+def _cut_empty(data: dict[str, Any]) -> bool:
+    """True for a turn the model never finished: cut at the length limit, no reply, no tool call."""
+    msg = data.get("message") or {}
+    return (
+        data.get("done_reason") == "length"
+        and not str(msg.get("content") or "").strip()
+        and not msg.get("tool_calls")
+    )
+
+
 class OllamaProvider:
     """Thin async adapter for Ollama `/api/chat`."""
 
@@ -152,11 +162,20 @@ class OllamaProvider:
                 )
         resp.raise_for_status()
         data = resp.json()
+        extra_prompt = extra_completion = 0
+        if _cut_empty(data) and "think" not in self.params:
+            # Thinking ate the whole window (common on hard turns): retry once
+            extra_prompt = int(data.get("prompt_eval_count") or 0)
+            extra_completion = int(data.get("eval_count") or 0)
+            payload["think"] = False
+            resp = await self._chat(client, payload)
+            resp.raise_for_status()
+            data = resp.json()
 
         msg = data.get("message") or {}
         content = str(msg.get("content") or "").strip()
-        prompt_tokens = int(data.get("prompt_eval_count") or 0)
-        completion_tokens = int(data.get("eval_count") or 0)
+        prompt_tokens = int(data.get("prompt_eval_count") or 0) + extra_prompt
+        completion_tokens = int(data.get("eval_count") or 0) + extra_completion
 
         action: ActionCall | None = None
         tool_calls = msg.get("tool_calls") or []
