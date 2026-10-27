@@ -165,9 +165,37 @@ def _can_use_bwrap() -> bool:
 _RULE_LINE = re.compile(r"^(?:={20,}|-{20,})$\n?", re.M)
 
 
+_CARET = re.compile(r"^\s*[\^~]+\s*$")
+
+
+def _collapse_tracebacks(lines: list[str]) -> list[str]:
+    """Keep the last two frames of each Python traceback (call site + cause), drop `^^^` rows."""
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        out.append(lines[i])
+        i += 1
+        if out[-1] != "Traceback (most recent call last):":
+            continue
+        frames: list[list[str]] = []
+        while i < len(lines) and lines[i].startswith("  File "):
+            frames.append([lines[i]])
+            i += 1
+            while i < len(lines) and lines[i].startswith("    "):
+                if not _CARET.match(lines[i]):
+                    frames[-1].append(lines[i])
+                i += 1
+        if len(frames) > 2:
+            out.append(f"  ... {len(frames) - 2} frames ...")
+            frames = frames[-2:]
+        out.extend(line for frame in frames for line in frame)
+    return out
+
+
 def _compact_output(text: str, root: Path) -> str:
-    """Token saver: drop `====`/`----` rule lines and the absolute workspace prefix."""
-    return _RULE_LINE.sub("", text.replace(f"{root}/", ""))
+    """Token saver: drop rule lines, the workspace prefix and the middle of long tracebacks."""
+    text = _RULE_LINE.sub("", text.replace(f"{root}/", ""))
+    return "\n".join(_collapse_tracebacks(text.split("\n")))
 
 
 @dataclass(slots=True)
