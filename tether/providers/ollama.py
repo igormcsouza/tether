@@ -36,7 +36,7 @@ class OllamaProvider:
         host: str | None = None,
         num_ctx: int = 8192,
         keep_alive: str = "10m",
-        timeout: float = 120.0,
+        timeout: float = 300.0,
         client: httpx.AsyncClient | None = None,
         rpm: int | None = None,
         params: dict[str, Any] | None = None,

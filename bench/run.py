@@ -50,7 +50,7 @@ def flags(tether_bin):
     return _HELP[tether_bin]
 
 
-def build_cmd(runner, model, task, goal, ws, rd, tether_bin, params=()):
+def build_cmd(runner, model, task, goal, ws, rd, tether_bin, params=(), context_tokens=None):
     tools, steps, _ = cfg(task)
     if runner == "tether":
         h = flags(tether_bin)
@@ -61,6 +61,8 @@ def build_cmd(runner, model, task, goal, ws, rd, tether_bin, params=()):
             cmd += ["--tools", tools]
         for item in params:
             cmd += ["--param", item]
+        if context_tokens:
+            cmd += ["--context-tokens", str(context_tokens)]
         if task.startswith("poly-") and POLY_VERIFY:
             cmd += ["--verify", "python3 -m unittest discover -p '*_test.py'"]
         return cmd + [goal]
@@ -119,7 +121,9 @@ async def one(sem, rec, args, results):
         else:
             shutil.copytree(f"{HERE}/tasks/{task}/ws", ws)
             goal = open(f"{HERE}/tasks/{task}/goal.txt").read().strip()
-        cmd = build_cmd(runner, model, task, goal, ws, rd, args.tether_bin, args.param)
+        cmd = build_cmd(
+            runner, model, task, goal, ws, rd, args.tether_bin, args.param, args.context_tokens
+        )
         env = dict(os.environ, OLLAMA_HOST="http://localhost:11435", PYTHONDONTWRITEBYTECODE="1")
         if model.startswith("openai/"):  # old tether has no providers.yaml: route openai/ to NVIDIA's OpenAI-compatible API
             env.update(OPENAI_BASE_URL="https://integrate.api.nvidia.com/v1", OPENAI_API_KEY=os.environ.get("NVIDIA_API_KEY", ""))
@@ -177,6 +181,7 @@ async def main():
     ap.add_argument("--tether-bin", default="tether")
     ap.add_argument("--param", action="append", default=[], help="forwarded to `tether run --param`")
     ap.add_argument("--par", default="nvidia=4,ollama=1,claude=3")
+    ap.add_argument("--context-tokens", type=int, default=None, help="forwarded to `tether run`")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--redo-infra", action="store_true", help="rerun cells that failed on provider errors")
     ap.add_argument("--poly-verify", action="store_true", help="verify gate on the exercise tests: gate runs at `done`")
@@ -185,6 +190,8 @@ async def main():
     POLY_VERIFY = args.poly_verify
     if args.tasks == "polyglot":
         args.tasks = poly_tasks()
+    elif args.tasks == "canary":
+        args.tasks = ",".join("poly-" + e for e in grade.POLY_CANARY)
     elif args.tasks == "polyglot-fast":
         args.tasks = ",".join("poly-" + e for e in grade.POLY_FAST)
     os.makedirs(args.out, exist_ok=True)
