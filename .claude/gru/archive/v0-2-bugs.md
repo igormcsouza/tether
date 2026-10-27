@@ -1,7 +1,7 @@
 # v0.2 bugs
 - Slug: v0-2-bugs
-- Status: active
-- Started: 2026-10-20   Updated: 2026-10-24   Closed: —
+- Status: done
+- Started: 2026-10-20   Updated: 2026-10-24   Closed: 2026-10-27
 - Branches / PRs: branch `claude/keep-feature-context-resume-0ec918` (worktree); base `main` at 125b386 (release v0.2.2)
 
 ## Goal
@@ -127,3 +127,10 @@ Track and fix bugs found in Tether v0.2.x. Exact bug list not yet given by PO.
 - 2026-10-27 PO feedback (verbatim gist): dev is far too slow ("1 line of code and an entire day benching it"), benches finish unreported, results get thrown away because of the impossible goal; gru is losing itself on the work; wants the Opus findings logged. LESSON: stop bench-per-line-of-code loops; decide with a fast tier first, ship deterministic/obviously-correct improvements with unit+e2e evidence, report every bench end immediately (watcher fires on the results file, not on the launcher shell).
 ## Next steps (as of 2026-10-27, awaiting PO decision)
 - [ ] PO to choose: (a) finish blanket think=false fast-12 (~13 runs, 45 min), (b) offline output compaction (no GPU), (c) plan only. Nothing is running; no open PRs.
+
+
+## Wrap-up (2026-10-27, closed by PO request)
+- Outcome: v0.2.3 -> v0.2.9 released (PyPI tether-sdk 0.2.9). Bugs and docs overhaul done; goal shifted to the North Star (#173): Polyglot-Python 80% on qwen3.5:9b by v0.3.0. Baseline 35/68 = 51.5% (main@b25cbbe).
+- Durable lessons: (1) never bench per line of code: decide with a fast tier first (offline replay of recorded t.db, determinism check), GPU only for targeted rows; (2) report every bench end immediately; (3) cards under ~15 lines, one file, worked on tether minions (glm-5.3 7 steps); 2-file cards and docs rewrites on Nemotron Ultra loop or invent API facts; (4) run `ruff format --check` and strict mkdocs before docs pushes; (5) nudge/wording variants and whole-set 24-run A/Bs do not move the number (sd ~2.4 passes).
+- Open debt: #27 #79 #132-#137 #170 #171; branches unmerged: fix/170-bounded-cmd-replay (rejected), fix/135-length-retry (rejected), bench/137-context-tokens; Harness-Bench #123 blocked (docker firewall + key).
+- Tier cost: Tier 0 (Nemotron Ultra, GLM-5.3 on tether) solved only tiny single-file cards; everything else was finished at plan level by gru.

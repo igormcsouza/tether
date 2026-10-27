@@ -180,6 +180,10 @@ def _codereview(_task, _ws, result):
 POLY_FAST = ("affine-cipher bottle-song list-ops paasio dot-dsl food-chain forth go-counting poker pov react "
              "rest-api").split()
 
+# ~15 min: 4 flaky exercises that can flip + 3 fast guards that must not regress (baseline in canary_baseline.json)
+POLY_CANARY = "phone-number tree-building grep pig-latin proverb robot-name list-ops".split()
+GUARDS = ("proverb", "robot-name", "list-ops")
+
 
 def poly_dir(ex=""):
     """Aider polyglot-benchmark Python exercises (cloned once, never vendored)."""

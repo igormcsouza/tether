@@ -190,6 +190,8 @@ async def main():
     POLY_VERIFY = args.poly_verify
     if args.tasks == "polyglot":
         args.tasks = poly_tasks()
+    elif args.tasks == "canary":
+        args.tasks = ",".join("poly-" + e for e in grade.POLY_CANARY)
     elif args.tasks == "polyglot-fast":
         args.tasks = ",".join("poly-" + e for e in grade.POLY_FAST)
     os.makedirs(args.out, exist_ok=True)

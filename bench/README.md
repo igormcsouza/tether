@@ -17,6 +17,10 @@ restored before grading, so editing it cannot pass), `--poly-verify` adds a `--v
 `python3 bench/report.py <out>` prints pass rate and mean score with a failure breakdown that keeps provider outages
 (`outage`, `timeout`) apart from harness outcomes (`max_steps`, `stalled`, `wrong_answer`, `worker_error`).
 
+**Did my change help? (15 min)** `python3 bench/canary.py /tmp/canary-<change> [--tether-bin <venv>/bin/tether]` runs 7 exercises
+once (4 flaky ones that can flip, 3 fast guards) and prints each score next to the pinned baseline with a verdict
+(`REJECT` / `PROMISING` / `FLAT`). Only `PROMISING` earns the full 34x2 run. `--tasks canary` is the same set for `run.py`.
+
 Three runners, so a gap can be attributed:
 
 | runner | what it is |
