@@ -826,3 +826,30 @@ async def test_outage_is_retried_at_turn_level_then_fails_loudly(
     failed = await Harness(db_path=tmp_path / "b.db", provider=dead, max_steps=3).run("go")
     assert failed.status == "FAILED" and "unavailable after 3 attempts" in (failed.result or "")
     assert dead.calls == 4  # first try + 3 turn-level retries
+
+
+async def _unfinished(tmp_path: Path, cmds: list[str], verify: list[str]) -> str:
+    from tether.sandbox import SandboxPolicy
+
+    script = [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
+    h = Harness(
+        db_path=tmp_path / "t.db",
+        tools=["edit"],
+        provider=FakeScriptedProvider(script),
+        max_steps=len(cmds),
+        verify=verify,
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+    )
+    return (await h.run("goal")).result or ""
+
+
+async def test_max_steps_result_reports_changes_and_gate(tmp_path: Path) -> None:
+    """#171 floor: a session that never calls done still ends with something usable."""
+    write = "edit write a.py\nprint(1)"
+    res = await _unfinished(tmp_path, [write], ["false"])
+    assert res.startswith("Max steps (1) reached without calling `done`.")
+    assert "Changed: `edit write a.py" in res and "Gate `false` fails (exit 1)" in res
+    (tmp_path / "ok").mkdir()
+    assert "Gate passes" in await _unfinished(tmp_path / "ok", [write], ["true"])
+    res = await _unfinished(tmp_path, ["ls"], [])
+    assert res.endswith("No change was made.")
