@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.2.10 (2026-10-28)
+
+The run-killers found in the v0.2.9 Polyglot breakdown on `qwen3.5:9b`: provider outages, a window filled by thinking, noisy test output and big test files re-read slice by slice. The full 34x2 benchmark for this release is published separately once it finishes.
+
 ### Fixes
 
 - When a long observation is cut (head + tail), the tests defined in the cut middle are listed as `name:line` (up to 30): a test file too big for the window is no longer re-read slice after slice, which cost 54% of the steps in max-step runs (#170).
