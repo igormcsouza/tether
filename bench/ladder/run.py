@@ -77,7 +77,10 @@ def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think,
         return [sys.executable, f"{HERE}/../naive_agent.py", "--base-url", "http://localhost:11435/v1",
                 "--model", model, "--ws", str(ws), "--goal", task.goal, "--max-turns", str(steps),
                 "--result-file", str(rd / "result.txt"), "--stats-file", str(rd / "stats.json")]
-    if harness == "opencode":  # needs an `ollama` provider in opencode.json (see README) and a num_ctx alias
+    if harness == "opencode":
+        (Path(ws) / "opencode.json").write_text(json.dumps({"$schema": "https://opencode.ai/config.json", "provider": {
+            "ollama": {"npm": "@ai-sdk/openai-compatible", "name": "Ollama", "options": {"baseURL": "http://localhost:11435/v1"},
+                       "models": {model: {"name": model, "limit": {"context": ctx, "output": 8192}}}}}}))
         return [os.path.expanduser("~/.claude/skills/gru/sandbox.sh"), str(ws), "--", "opencode", "run", "--auto",
                 "--format", "json", "-m", f"ollama/{model}", task.goal]
     if harness == "claude":  # Claude Code, print mode, the model alias is the part after cc/
