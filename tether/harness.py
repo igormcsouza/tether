@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 import subprocess
@@ -17,6 +18,7 @@ from tether.decorator import ToolSpec, build_tool_spec
 from tether.multiplexer import Multiplexer, normalize_cmd
 from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
 from tether.providers import ModelProvider, resolve_provider
+from tether.providers.base import ProviderError
 from tether.providers.declarative import load_declared
 from tether.sandbox import SandboxPolicy
 from tether.schema import validate_output
@@ -49,6 +51,9 @@ def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list
 
 
 # Stall guard: warn after N reads of one file with varying ranges, abort after M warnings
+# A provider call that fails after its own retries is tried again at turn level (0 prompt
+# tokens); waits TETHER_OUTAGE_BACKOFF (default 10) seconds, doubling each time.
+OUTAGE_RETRIES = 3
 RANGE_STALL_READS = 7  # after the 6-step quiet [NUDGE], which gets the first word
 STALL_ABORT = 4
 _READERS = {"cat", "head", "tail", "grep", "rg", "sed", "wc", "awk", "gawk", "mawk"}
@@ -723,7 +728,16 @@ class Harness:
                         file=sys.stderr,
                     )
                 t_llm_start = time.perf_counter()
-                resp = await provider.generate(messages, [ACT_TOOL_SCHEMA])
+                for outage in range(OUTAGE_RETRIES + 1):
+                    try:
+                        resp = await provider.generate(messages, [ACT_TOOL_SCHEMA])
+                        break
+                    except ProviderError:
+                        if outage == OUTAGE_RETRIES:
+                            raise
+                        await asyncio.sleep(
+                            float(os.environ.get("TETHER_OUTAGE_BACKOFF", "10")) * 2**outage
+                        )
                 llm_duration_ms = int((time.perf_counter() - t_llm_start) * 1000)
 
                 assembler.calibrate(est_tokens, resp.prompt_tokens)

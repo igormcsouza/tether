@@ -108,6 +108,7 @@ class Tether:
             "HOME": str(self.home),
             "TETHER_PROVIDERS": str(providers),
             "E2E_KEY": "sekret-value-123",
+            "TETHER_OUTAGE_BACKOFF": "0",
         }
 
     def cli(

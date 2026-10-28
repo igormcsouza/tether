@@ -20,10 +20,18 @@ def test_429_is_retried_honoring_retry_after(tmp_path: Path, chaos, model: str) 
 
 
 def test_persistent_5xx_fails_loudly_with_exit_5(tether: Tether, chaos) -> None:
-    chaos.fault("status", times=10, code=503)
+    chaos.fault("status", times=20, code=503)
     r = tether.run("anything")
     assert (r["rc"], r["status"]) == (5, "FAILED")
     assert "unavailable after 3 attempts" in r["failure"]["message"]
+
+
+def test_outage_that_outlasts_provider_retries_is_survived(tether: Tether, chaos) -> None:
+    """#171: 3 failed attempts end one provider call, not the session; the next try succeeds."""
+    chaos.fault("status", times=3, code=503)
+    chaos.script(("done", "ok"))
+    r = tether.run("go", "--max-steps", "6")
+    assert (r["rc"], r["status"]) == (0, "COMPLETED"), r
 
 
 def test_rejected_tool_call_reaches_the_model_instead_of_ending_the_session(
@@ -40,13 +48,13 @@ def test_rejected_tool_call_reaches_the_model_instead_of_ending_the_session(
 
 def test_trickling_response_hits_the_per_attempt_deadline(tmp_path: Path, chaos) -> None:
     """#88: bytes keep arriving so httpx's read timeout never fires; the deadline must."""
-    chaos.fault("trickle", times=3, seconds=60)
+    chaos.fault("trickle", times=12, seconds=60)  # 3 attempts x 4 turn-level tries
     t = Tether(tmp_path, chaos, timeout=3)
     start = time.time()
     r = t.run("anything")
     assert (r["rc"], r["status"]) == (5, "FAILED")
     assert "TimeoutError" in r["failure"]["message"], r["failure"]
-    assert time.time() - start < 40, "must not hang past attempts x timeout"
+    assert time.time() - start < 80, "must not hang past attempts x timeout"
 
 
 def test_auth_error_names_the_variable_never_the_value(tether: Tether, chaos) -> None:

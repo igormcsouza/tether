@@ -12,6 +12,7 @@ from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse, register_provider, tool
 from tether.decorator import ToolSpec
 from tether.harness import detect_cycle, is_quiet, read_target, spawn_detached_worker
+from tether.providers.base import ProviderError
 from tether.store import SQLiteStore
 
 
@@ -788,3 +789,40 @@ async def test_stall_after_a_change_with_passing_gate_is_completed(tmp_path: Pat
 async def test_stall_with_failing_gate_stays_failed(tmp_path: Path) -> None:
     session = await _stalled_after_a_change(tmp_path, "false")
     assert session.status == "FAILED" and (session.result or "").startswith("Stalled")
+
+
+class _FlakyProvider:
+    """Raises ProviderError `fails` times, then calls done."""
+
+    model_name = "qwen3.5:9b"
+
+    def __init__(self, fails: int) -> None:
+        self.fails = fails
+        self.calls = 0
+
+    async def generate(self, messages: Any, tools: Any) -> ModelResponse:
+        self.calls += 1
+        if self.calls <= self.fails:
+            raise ProviderError("ollama model `qwen3.5:9b` unavailable after 3 attempts")
+        return ModelResponse(content="", action=ActionCall(cmd="done ok"))
+
+
+async def test_outage_is_retried_at_turn_level_then_fails_loudly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """North star floor (#171): 4/68 baseline runs died on one provider outage; retry 3 times."""
+    sleeps: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    monkeypatch.setattr("tether.harness.asyncio.sleep", fake_sleep)
+
+    ok = _FlakyProvider(fails=2)
+    done = await Harness(db_path=tmp_path / "a.db", provider=ok, max_steps=3).run("go")
+    assert done.status == "COMPLETED" and ok.calls == 3 and len(sleeps) == 2
+
+    dead = _FlakyProvider(fails=99)
+    failed = await Harness(db_path=tmp_path / "b.db", provider=dead, max_steps=3).run("go")
+    assert failed.status == "FAILED" and "unavailable after 3 attempts" in (failed.result or "")
+    assert dead.calls == 4  # first try + 3 turn-level retries
