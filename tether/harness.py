@@ -93,6 +93,18 @@ _PY = ("python", "python3")
 _PY_TESTS = (["-m", "unittest"], ["-m", "pytest"], ["-m", "doctest"])
 
 
+_TEST_CMD = re.compile(
+    r"\b(pytest|unittest|go test|cargo test|npm (?:run )?test|make test|jest|mocha)\b"
+)
+_TESTS_RED = re.compile(r"\[exit [1-9]\d*\]|\b(FAILED|FAIL|Error|Traceback)\b|\bfailed\b")
+_TESTS_GREEN = re.compile(r"^OK\b|\b\d+ passed\b|^ok\s", re.M)
+
+
+def tests_green(cmd: str, out: str) -> bool:
+    """True when `cmd` is a test runner whose output reports success (#177)."""
+    return bool(_TEST_CMD.search(cmd) and _TESTS_GREEN.search(out) and not _TESTS_RED.search(out))
+
+
 def is_quiet(cmd: str) -> bool:
     """Return True if `cmd` is a read-only or verification command."""
     argv = cmd.split()
@@ -452,6 +464,42 @@ class Harness:
 
         return await self.execute_session(session_id)
 
+    async def _finished_by_harness(
+        self,
+        sandbox: SandboxPolicy,
+        verify_commands: list[str],
+        green_cmd: str | None,
+        changed: bool,
+    ) -> str | None:
+        """Why an unfinished session counts as done, or None (#163, #177).
+
+        The caller's `verify` gates decide when there are any. Otherwise the model's own last
+        passing test run is the gate, if nothing changed since and it still passes now.
+        """
+        if not changed:
+            return None
+        if verify_commands:
+            if await self._run_verification_gates(sandbox, verify_commands) is not None:
+                return None
+            return (
+                "Finished by the harness: the model stopped calling tools after "
+                "its change and every verification gate passes."
+            )
+        if green_cmd is None:
+            return None
+        argv = green_cmd.split()
+        cmd = " ".join(argv[1:]) if argv[:1] == ["bash"] else green_cmd
+        try:
+            code, out = await sandbox.execute_bash_with_code(cmd)
+        except Exception:
+            return None
+        if code != 0 or not tests_green(cmd, out):
+            return None
+        return (
+            f"Finished by the harness: the model stopped calling tools after `{cmd[:60]}` "
+            "passed on its last change."
+        )
+
     async def _unfinished_result(
         self,
         head: str,
@@ -466,11 +514,8 @@ class Harness:
         text = f"{head} Changed: {shown} ({len(changes)} change commands)."
         if verify_commands:
             failure = await self._run_verification_gates(sandbox, verify_commands, 400)
-            text += (
-                " Gate passes."
-                if failure is None
-                else f" Gate `{failure[0]}` fails (exit {failure[1]}):\n{failure[2]}"
-            )
+            if failure is not None:
+                text += f" Gate `{failure[0]}` fails (exit {failure[1]}):\n{failure[2]}"
         return text
 
     async def _run_verification_gates(
@@ -709,6 +754,8 @@ class Harness:
         # Quiet nudge state
         changed = False
         changes: list[str] = []
+        green_cmd: str | None = None  # last passing test run, cleared by any later change
+        green_nudged = False
         quiet_run = 0
         nudged = False
 
@@ -845,19 +892,15 @@ class Harness:
                     if stalls >= STALL_ABORT:
                         # A model that fixed the task and then only repeats its check has
                         # finished: if every verify gate passes after a change, say so (#163)
-                        gate_ok = (
-                            changed
-                            and verify_commands
-                            and await self._run_verification_gates(sandbox, verify_commands) is None
+                        finished = await self._finished_by_harness(
+                            sandbox, verify_commands, green_cmd, changed
                         )
                         self.store.update_session(
                             session_id,
-                            status="COMPLETED" if gate_ok else "FAILED",
+                            status="COMPLETED" if finished else "FAILED",
                             result=(
-                                "Finished by the harness: the model stopped calling tools after "
-                                "its change and every verification gate passes."
-                                if gate_ok
-                                else await self._unfinished_result(
+                                finished
+                                or await self._unfinished_result(
                                     f"Stalled: {stalls} loop warnings without a change; "
                                     "stopped early instead of using all steps.",
                                     sandbox,
@@ -1079,8 +1122,18 @@ class Harness:
                     quiet_run = 0
                     nudged = False
                     stalls = 0
+                    green_cmd = None
+                    green_nudged = False
 
                 out = dispatch.output
+                if changed and not dispatch.is_error and tests_green(cmd, out):
+                    green_cmd = cmd
+                    if not green_nudged:
+                        out += (
+                            "\n[NUDGE] Tests pass after your last change. If the task is complete "
+                            'call `act("done", stdin="...")` now.'
+                        )
+                        green_nudged = True
                 # One-shot nudge after QUIET_NUDGE_STEPS quiet steps following a change
                 if changed and not nudged and quiet_run >= QUIET_NUDGE_STEPS:
                     out += (
@@ -1115,10 +1168,12 @@ class Harness:
                 )
 
             # Max steps reached without explicit `done`
+            finished = await self._finished_by_harness(sandbox, verify_commands, green_cmd, changed)
             self.store.update_session(
                 session_id,
-                status="FAILED",
-                result=await self._unfinished_result(
+                status="COMPLETED" if finished else "FAILED",
+                result=finished
+                or await self._unfinished_result(
                     f"Max steps ({rec.max_steps}) reached without calling `done`.",
                     sandbox,
                     verify_commands,

@@ -850,6 +850,115 @@ async def test_max_steps_result_reports_changes_and_gate(tmp_path: Path) -> None
     assert res.startswith("Max steps (1) reached without calling `done`.")
     assert "Changed: `edit write a.py" in res and "Gate `false` fails (exit 1)" in res
     (tmp_path / "ok").mkdir()
-    assert "Gate passes" in await _unfinished(tmp_path / "ok", [write], ["true"])
+    assert "Finished by the harness" in await _unfinished(tmp_path / "ok", [write], ["true"])
     res = await _unfinished(tmp_path, ["ls"], [])
     assert res.endswith("No change was made.")
+
+
+_PASSING_TEST = (
+    "import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n"
+)
+_FAILING_TEST = _PASSING_TEST.replace("pass\n", "self.fail('x')\n")
+
+
+async def _green_run(tmp_path: Path, cmds: list[str], test_src: str = _PASSING_TEST) -> Any:
+    from tether.sandbox import SandboxPolicy
+
+    (tmp_path / "test_ok.py").write_text(test_src)
+    provider = FakeScriptedProvider(
+        [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
+    )
+    h = Harness(
+        db_path=tmp_path / "t.db",
+        tools=["edit", "bash"],
+        provider=provider,
+        max_steps=len(cmds),
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+    )
+    session = await h.run("goal")
+    return session, provider
+
+
+WRITE = "edit write a.txt\nx"
+TEST = "python3 -m unittest test_ok"
+
+
+async def test_green_tests_after_a_change_get_a_done_nudge(tmp_path: Path) -> None:
+    """#177: a passing test run after the last change tells the model it may finish."""
+    _, provider = await _green_run(tmp_path, [WRITE, TEST, "ls"])
+    seen = "\n".join(m["content"] for m in provider.recorded_calls[2])
+    assert "[NUDGE] Tests pass after your last change" in seen
+    assert seen.count("Tests pass after your last change") == 1  # one-shot
+
+
+async def test_failing_tests_get_no_done_nudge(tmp_path: Path) -> None:
+    _, provider = await _green_run(tmp_path, [WRITE, TEST, "ls"], _FAILING_TEST)
+    assert "Tests pass" not in "\n".join(m["content"] for m in provider.recorded_calls[2])
+
+
+async def test_unfinished_session_with_green_last_test_is_completed(tmp_path: Path) -> None:
+    """The model's own passing test run is an implicit gate when it never calls `done`."""
+    session, _ = await _green_run(tmp_path, [WRITE, TEST, "ls"])
+    assert session.status == "COMPLETED"
+    assert (session.result or "").startswith("Finished by the harness")
+    assert "python3 -m unittest test_ok" in (session.result or "")
+
+
+async def test_a_change_after_the_green_run_cancels_it(tmp_path: Path) -> None:
+    session, _ = await _green_run(tmp_path, [WRITE, TEST, "edit write b.txt\ny"])
+    assert session.status == "FAILED" and (session.result or "").startswith("Max steps")
+
+
+async def test_green_run_that_now_fails_stays_failed(tmp_path: Path) -> None:
+    class Flip(FakeScriptedProvider):
+        async def generate(self, messages: Any, tools: Any) -> ModelResponse:
+            if len(self.recorded_calls) == 2:  # break the test between the green run and the end
+                (tmp_path / "test_ok.py").write_text(_FAILING_TEST)
+            return await super().generate(messages, tools)
+
+    from tether.sandbox import SandboxPolicy
+
+    (tmp_path / "test_ok.py").write_text(_PASSING_TEST)
+    cmds = [WRITE, TEST, "ls"]
+    provider = Flip([ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds])
+    h = Harness(
+        db_path=tmp_path / "t.db",
+        tools=["edit", "bash"],
+        provider=provider,
+        max_steps=3,
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+    )
+    session = await h.run("goal")
+    assert session.status == "FAILED" and (session.result or "").startswith("Max steps")
+
+
+async def test_green_rerun_that_crashes_leaves_the_session_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tether.sandbox import SandboxPolicy
+
+    (tmp_path / "test_ok.py").write_text(_PASSING_TEST)
+    cmds = [WRITE, TEST, "ls"]
+    real = SandboxPolicy.execute_bash_with_code
+    calls = {"n": 0}
+
+    async def flaky(self: SandboxPolicy, cmd: str, stdin: str | None = None) -> Any:
+        calls["n"] += cmd == "python3 -m unittest test_ok"
+        if calls["n"] > 1:  # the harness's final re-run of the model's own test command
+            raise RuntimeError("sandbox gone")
+        return await real(self, cmd, stdin)
+
+    monkeypatch.setattr(SandboxPolicy, "execute_bash_with_code", flaky)
+    sandbox = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
+    provider = FakeScriptedProvider(
+        [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
+    )
+    h = Harness(
+        db_path=tmp_path / "t.db",
+        tools=["edit", "bash"],
+        provider=provider,
+        max_steps=3,
+        sandbox=sandbox,
+    )
+    session = await h.run("goal")
+    assert session.status == "FAILED" and (session.result or "").startswith("Max steps")
