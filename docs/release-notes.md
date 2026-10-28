@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- Ollama: when the prompt leaves less than 3072 tokens of `num_ctx` free, the request sends `think=false`. A thinking reply no longer fills the window and comes back empty (45 of 53 empty baseline turns sat at the window limit). An explicit `--param think=...` still wins (#183).
 - A provider outage that outlasts the provider's own retries no longer ends the session: the harness tries the call again up to 3 more times (waits of 10, 20, 40 s; `TETHER_OUTAGE_BACKOFF` changes the first wait) and only then fails with the same `ProviderError`. 4 of 68 baseline Polyglot runs died of one timeout (#171).
 - `bash` observations keep only the last two frames of a Python traceback (the call site and the cause) with `... N frames ...` for the rest, and drop the `^^^^` marker rows: test failures cost fewer tokens.
 - Ollama default timeout is now 300 s (was 120 s): a model that thinks until the context window is full needs 85-110 s per turn, and 4 of 68 baseline Polyglot runs died on the old limit.

@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from tether.context import estimate_messages_tokens
 from tether.providers.base import (
     ActionCall,
     ModelResponse,
@@ -22,6 +23,11 @@ from tether.providers.base import (
 
 # Request-level keys of /api/chat; everything else in `params` is a sampling option.
 _TOP_LEVEL = frozenset({"think", "keep_alive", "format", "stream"})
+
+
+# A thinking reply needs room: below this many free tokens the window fills up mid-thought,
+# Ollama cuts the reply and the turn comes back empty (#183).
+THINK_HEADROOM = 3072
 
 
 class OllamaProvider:
@@ -113,6 +119,8 @@ class OllamaProvider:
             "keep_alive": self.keep_alive,
             "options": {"num_ctx": self.num_ctx, "temperature": 0.2},
         }
+        if self.num_ctx - estimate_messages_tokens(messages, tools) < THINK_HEADROOM:
+            payload["think"] = False  # an explicit `think` param below still wins
         for key, value in self.params.items():  # top-level request keys vs sampling options
             if key in _TOP_LEVEL:
                 payload[key] = value
