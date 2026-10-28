@@ -122,7 +122,8 @@ async def one(sem, rec, args, results):
             shutil.copytree(f"{HERE}/tasks/{task}/ws", ws)
             goal = open(f"{HERE}/tasks/{task}/goal.txt").read().strip()
         cmd = build_cmd(
-            runner, model, task, goal, ws, rd, args.tether_bin, args.param, args.context_tokens
+            runner, model, task, goal, ws, rd, args.tether_bin,
+            [*args.param, f"seed={trial + 1}"] if args.seeded else args.param, args.context_tokens,
         )
         env = dict(os.environ, OLLAMA_HOST="http://localhost:11435", PYTHONDONTWRITEBYTECODE="1")
         if model.startswith("openai/"):  # old tether has no providers.yaml: route openai/ to NVIDIA's OpenAI-compatible API
@@ -182,6 +183,7 @@ async def main():
     ap.add_argument("--param", action="append", default=[], help="forwarded to `tether run --param`")
     ap.add_argument("--par", default="nvidia=4,ollama=1,claude=3")
     ap.add_argument("--context-tokens", type=int, default=None, help="forwarded to `tether run`")
+    ap.add_argument("--seeded", action="store_true", help="seed=<trial+1> per run: same seed, same trajectory, so A/B arms are paired (bench/compare.py)")
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--redo-infra", action="store_true", help="rerun cells that failed on provider errors")
     ap.add_argument("--poly-verify", action="store_true", help="verify gate on the exercise tests: gate runs at `done`")
@@ -192,6 +194,8 @@ async def main():
         args.tasks = poly_tasks()
     elif args.tasks == "canary":
         args.tasks = ",".join("poly-" + e for e in grade.POLY_CANARY)
+    elif args.tasks == "paired":
+        args.tasks = ",".join("poly-" + e for e in grade.POLY_PAIRED)
     elif args.tasks == "polyglot-fast":
         args.tasks = ",".join("poly-" + e for e in grade.POLY_FAST)
     os.makedirs(args.out, exist_ok=True)

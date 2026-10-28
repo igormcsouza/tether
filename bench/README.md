@@ -19,7 +19,7 @@ restored before grading, so editing it cannot pass), `--poly-verify` adds a `--v
 
 **Did my change help? (15 min)** `python3 bench/canary.py /tmp/canary-<change> [--tether-bin <venv>/bin/tether]` runs 7 exercises
 once (4 flaky ones that can flip, 3 fast guards) and prints each score next to the pinned baseline with a verdict
-(`REJECT` / `PROMISING` / `FLAT`). Only `PROMISING` earns the full 34x2 run. `--tasks canary` is the same set for `run.py`.
+(`REJECT` / `PROMISING` / `FLAT`). A `PROMISING` canary only says "worth a paired A/B" (see *Judging a change* below), not "improved". `--tasks canary` is the same set for `run.py`.
 
 Three runners, so a gap can be attributed:
 
@@ -47,6 +47,16 @@ Rate limits (NVIDIA: 40 requests/min) invalidate results silently; set `rpm:` in
 and keep parallelism low (`--par nvidia=2`).
 
 Caveats: one run per cell is noisy (about 0.1); the scores are regex and hidden-test based.
+
+## Judging a change (what a number can and cannot tell you)
+
+Measured on the baseline and v0.2.10 full runs (#173): 13 of 34 exercises never pass, 11 always pass, and only 10 ever flip. 12 of 68 run slots flipped between the two runs, 6 up and 6 down, and the paired score delta was +0.045 with a 95% CI of [-0.029, +0.121]. A pass rate over 68 runs (standard error ~6 points) and a canary of rows picked *because they failed once* (regression to the mean) both mislead. Use this instead:
+
+1. **Mechanism first (minutes, no GPU).** A change must move its own metric before it earns a run: empty turns, test-file reads, tokens per observation, measured on recorded `t.db` files.
+2. **Greedy A/B.** `--param temperature=0` makes a run repeatable: the same code and prompt gave identical command sequences three times, including a run that hit the wall cap. At temperature 0.2 with `--seeded` short runs repeat but runs of 20+ steps drift apart (GPU float order), so seeded sampling only reduces noise. Run the baseline arm once per commit and reuse it; run only the new arm.
+3. **Compare, do not eyeball.** `python3 bench/compare.py <before-dir> <after-dir>` pairs runs by exercise and prints the score delta with a bootstrap 95% CI over exercises, the pass flips with an exact sign test, and the mechanism numbers (wall-cap rate, steps, nudges per run). `BETTER`/`WORSE` only when the CI excludes 0; otherwise `NO EVIDENCE`, with the number of runs it would take.
+4. **Pick rows before you look**, never by one failure. `--tasks paired` is a fixed 10-exercise set that flips or scores partially (about 40 min per arm).
+5. The official number stays the full 34 x 2 run, once per release.
 
 ## History (the north-star ledger)
 
