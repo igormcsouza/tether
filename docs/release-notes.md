@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- `bash` observations keep only the last two frames of a Python traceback (the call site and the cause) with `... N frames ...` for the rest, and drop the `^^^^` marker rows: test failures cost fewer tokens.
 - Ollama default timeout is now 300 s (was 120 s): a model that thinks until the context window is full needs 85-110 s per turn, and 4 of 68 baseline Polyglot runs died on the old limit.
 - `bash` observations no longer carry the absolute workspace path (`<root>/`) or `====`/`----` rule lines: less noise in test output, fewer tokens per step.
 - `done`: a bare `done` with no answer now completes the session with the result `Done.` (the `--verify` gates still run first) instead of returning an error the model repeated until `max_steps`. `done --ask` with no question is still an error. A model that types the call as text, `act("done", stdin="...")` or `bash act("done", ...)`, in `cmd` is understood the same way as a real call (#169). Found in the v0.2.9 Polyglot breakdown: 8 of 36 `qwen3.5:9b` runs wasted 1-13 steps on a rejected `done`, and 2 runs that passed every test ended `FAILED` at max steps.
