@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shlex
 from typing import Any
 
@@ -51,6 +52,22 @@ def estimate_messages_tokens(
     return total
 
 
+_TEST_DEF = re.compile(r"^\s*(?:async\s+)?def (test\w*)", re.M)
+TEST_INDEX_MAX = 30
+
+
+def _elided_tests(raw: str, start: int, end: int) -> str:
+    """`name:line` of tests defined in raw[start:end] (#170): a cut test file is not re-read."""
+    found = [
+        f"{m[1]}:{raw.count(chr(10), 0, start + m.start(1)) + 1}"
+        for m in _TEST_DEF.finditer(raw[start:end])
+    ]
+    if not found:
+        return ""
+    more = f" +{len(found) - TEST_INDEX_MAX} more" if len(found) > TEST_INDEX_MAX else ""
+    return f"\ntests in the elided part: {' '.join(found[:TEST_INDEX_MAX])}{more}"
+
+
 def elide_active_observation(
     obs_id: str, raw_output: str, max_chars: int = 2400, mem_enabled: bool = True
 ) -> str:
@@ -68,7 +85,8 @@ def elide_active_observation(
         else "re-run the command for the full output"
     )
     marker = f"\n... [{obs_id}: {elided_count:,} middle chars elided in L1 | {recall_hint}] ...\n"
-    return f"[{obs_id}] {head}{marker}{tail}"
+    index = _elided_tests(raw_output, head_len, len(raw_output) - tail_len)
+    return f"[{obs_id}] {head}{marker}{index.lstrip(chr(10)) + chr(10) if index else ''}{tail}"
 
 
 def _argv(cmd: str | None) -> list[str]:
