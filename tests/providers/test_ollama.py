@@ -116,3 +116,29 @@ def test_default_timeout_fits_a_full_window_of_thinking() -> None:
     from tether.providers.ollama import OllamaProvider
 
     assert OllamaProvider().timeout >= 300
+
+
+async def _sent_payload(provider_kwargs: dict, text: str) -> dict:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(__import__("json").loads(request.content))
+        return httpx.Response(200, json={"message": {"content": "hi"}})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    provider = OllamaProvider("m", client=client, **provider_kwargs)
+    await provider.generate([{"role": "user", "content": text}], [])
+    return seen
+
+
+async def test_thinking_is_off_when_little_window_is_left_for_the_reply() -> None:
+    """#183: a prompt that leaves < 3072 tokens of num_ctx cannot hold a thinking reply."""
+    small = await _sent_payload({"num_ctx": 8192}, "x" * 400)
+    assert "think" not in small
+    full = await _sent_payload({"num_ctx": 8192}, "x" * 4 * 5200)
+    assert full["think"] is False
+    # an explicit `think` param always wins
+    forced = await _sent_payload({"num_ctx": 8192, "params": {"think": True}}, "x" * 4 * 5200)
+    assert forced["think"] is True
+    # headroom scales with the window: the same prompt is fine in a 32k window
+    assert "think" not in await _sent_payload({"num_ctx": 32768}, "x" * 4 * 5200)
