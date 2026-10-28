@@ -349,3 +349,19 @@ def test_budget_reserves_a_quarter_of_the_window_for_the_reply() -> None:
     # #144: a prompt that fills the window cuts off the model's file writes
     ca, msgs = _budget_run(8, 2400, 2000, fold_after_turns=8)
     assert estimate_messages_tokens(msgs, [ACT_TOOL_SCHEMA]) <= 2000 * 3 // 4
+
+
+def test_elided_test_file_keeps_an_index_of_its_tests() -> None:
+    """#170: the model stops re-reading a test file when the cut part still names its tests."""
+    body = "".join(
+        f"    def test_case_{i}(self):\n        assert f({i}) == {i}\n" for i in range(60)
+    )
+    out = elide_active_observation("obs_1", body, max_chars=600)
+    assert "elided in L1" in out
+    assert "tests in the elided part: " in out and "test_case_30:61" in out
+    index = out.split("tests in the elided part: ")[1].splitlines()[0]
+    assert len(index) < 700  # bounded
+    # nothing to index in an ordinary elided output
+    assert "tests in the elided" not in elide_active_observation(
+        "obs_2", "x\n" * 900, max_chars=600
+    )
