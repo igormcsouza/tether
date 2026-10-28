@@ -452,6 +452,27 @@ class Harness:
 
         return await self.execute_session(session_id)
 
+    async def _unfinished_result(
+        self,
+        head: str,
+        sandbox: SandboxPolicy,
+        verify_commands: list[str],
+        changes: list[str],
+    ) -> str:
+        """A session ending without `done` still reports what it did and where it stands (#171)."""
+        if not changes:
+            return f"{head} No change was made."
+        shown = "; ".join(f"`{c.splitlines()[0][:60]}`" for c in changes[-5:])
+        text = f"{head} Changed: {shown} ({len(changes)} change commands)."
+        if verify_commands:
+            failure = await self._run_verification_gates(sandbox, verify_commands, 400)
+            text += (
+                " Gate passes."
+                if failure is None
+                else f" Gate `{failure[0]}` fails (exit {failure[1]}):\n{failure[2]}"
+            )
+        return text
+
     async def _run_verification_gates(
         self,
         sandbox: SandboxPolicy,
@@ -687,6 +708,7 @@ class Harness:
 
         # Quiet nudge state
         changed = False
+        changes: list[str] = []
         quiet_run = 0
         nudged = False
 
@@ -835,8 +857,13 @@ class Harness:
                                 "Finished by the harness: the model stopped calling tools after "
                                 "its change and every verification gate passes."
                                 if gate_ok
-                                else f"Stalled: {stalls} loop warnings without a change; "
-                                "stopped early instead of using all steps."
+                                else await self._unfinished_result(
+                                    f"Stalled: {stalls} loop warnings without a change; "
+                                    "stopped early instead of using all steps.",
+                                    sandbox,
+                                    verify_commands,
+                                    changes,
+                                )
                             ),
                         )
                         done_rec = self.store.get_session(session_id)
@@ -1048,6 +1075,7 @@ class Harness:
                     quiet_run += 1
                 else:
                     changed = True
+                    changes.append(cmd)
                     quiet_run = 0
                     nudged = False
                     stalls = 0
@@ -1090,7 +1118,12 @@ class Harness:
             self.store.update_session(
                 session_id,
                 status="FAILED",
-                result=f"Max steps ({rec.max_steps}) reached without calling `done`.",
+                result=await self._unfinished_result(
+                    f"Max steps ({rec.max_steps}) reached without calling `done`.",
+                    sandbox,
+                    verify_commands,
+                    changes,
+                ),
             )
         except Exception as exc:
             cur = self.store.get_session(session_id)
