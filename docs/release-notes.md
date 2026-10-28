@@ -8,6 +8,7 @@ The run-killers found in the v0.2.9 Polyglot breakdown on `qwen3.5:9b`: provider
 
 ### Fixes
 
+- A model that writes its tool call as plain-text JSON, `{"name": "edit", "arguments": {...}}`, is understood like a native call to that tool (the registry answers with its JIT usage) instead of getting a "use act" reminder 30 times in a row. Found on `qwen2.5-coder:7b`, which failed every coding-ladder task because of it.
 - When a long observation is cut (head + tail), the tests defined in the cut middle are listed as `name:line` (up to 30): a test file too big for the window is no longer re-read slice after slice, which cost 54% of the steps in max-step runs (#170).
 - A session that ends without `done` (max steps or stall) now says what it did: the last change commands and, with `--verify`, whether the gates pass or which one fails. Status and exit code are unchanged (#171).
 - Ollama: when the prompt leaves less than 3072 tokens of `num_ctx` free, the request sends `think=false`. A thinking reply no longer fills the window and comes back empty (45 of 53 empty baseline turns sat at the window limit). An explicit `--param think=...` still wins (#183).

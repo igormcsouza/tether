@@ -4,3 +4,9 @@
 {"reply": "<invoke name=\"act\">\n<parameter name=\"cmd\">  pytest -q  </parameter>\n</invoke>", "cmd": "pytest -q", "stdin": null}
 {"reply": "<invoke name=\"act\">\n<parameter name=\"cmd\">edit write a.txt</parameter>\n<parameter name=\"stdin\">line1\nline2\n</parameter>\n</invoke>", "cmd": "edit write a.txt", "stdin": "line1\nline2\n"}
 {"reply": "I will think about this and answer in plain prose.", "cmd": null, "stdin": null}
+{"reply": "{\"name\": \"edit\", \"arguments\": {\"file\": \"a.py\", \"mode\": \"view\"}}", "cmd": "edit --file 'a.py' --mode 'view'", "stdin": null}
+{"reply": "```json\n{\"name\": \"edit\", \"arguments\": {\"file\": \"a.py\"}}\n```", "cmd": "edit --file 'a.py'", "stdin": null}
+{"reply": "{\"name\": \"act\", \"arguments\": {\"cmd\": \"edit write a.py\", \"stdin\": \"x=1\"}}", "cmd": "edit write a.py", "stdin": "x=1"}
+{"reply": "{\"name\": \"Bob\", \"age\": 3}", "cmd": null, "stdin": null}
+{"reply": "{\"name\": \"edit\", \"arguments\": \"oops\"}", "cmd": null, "stdin": null}
+{"reply": "see {this} and {that}", "cmd": null, "stdin": null}

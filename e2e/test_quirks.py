@@ -67,6 +67,15 @@ def test_plain_text_reply_gets_a_nudge_not_a_completion(tether: Tether, chaos) -
     assert "done" in tether.tool_outputs(r["id"])[0].lower() or "done" in _last_prompt(chaos)
 
 
+def test_named_json_tool_call_in_text_is_understood(tether: Tether, chaos) -> None:
+    """qwen2.5-coder writes {"name": "edit", "arguments": {...}} as text, not a tool call."""
+    reply = '{"name": "edit", "arguments": {"file": "a.txt", "mode": "view"}}'
+    chaos.script({"text": reply}, ("done", "ok"))
+    r = tether.run("view", "--tools", "edit")
+    assert tether.events(r["id"])[0] != "nudge" and r["status"] == "COMPLETED"
+    assert "edit" in tether.tool_outputs(r["id"])[0].lower()
+
+
 def test_identical_repeat_is_a_loop_stall(tether: Tether, chaos) -> None:
     chaos.script("bash true", "bash true", ("done", "ok"))
     r = tether.run("loop", "--tools", "bash")
