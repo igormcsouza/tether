@@ -37,7 +37,17 @@ def steps_now(rd):
         return None
 
 
-def run_attempt(model, task, attempt, ctx, out, tether_bin, wall):
+def capabilities(model):
+    """Ollama capabilities of a model (`thinking`, `tools`, ...); empty when unknown."""
+    import httpx
+    try:
+        r = httpx.post("http://localhost:11435/api/show", json={"model": model}, timeout=30)
+        return r.json().get("capabilities", [])
+    except Exception:
+        return []
+
+
+def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True):
     think, params, steps, fold = ATTEMPTS[attempt]
     rd = Path(out) / "runs" / f"{model.replace(':', '-').replace('/', '_')}__{task.id}__a{attempt}"
     shutil.rmtree(rd, ignore_errors=True)
@@ -47,7 +57,9 @@ def run_attempt(model, task, attempt, ctx, out, tether_bin, wall):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
     cmd = [tether_bin, "run", "--model", f"ollama/{model}", "--tools", "edit,bash", "--max-steps", str(steps),
-           "--context-tokens", str(ctx), "--db", str(rd / "t.db"), "--param", f"think={str(think).lower()}"]
+           "--context-tokens", str(ctx), "--db", str(rd / "t.db")]
+    if can_think:  # a model without a thinking mode rejects the parameter
+        cmd += ["--param", f"think={str(think).lower()}"]
     for p in params:
         cmd += ["--param", p]
     if fold:
@@ -80,7 +92,7 @@ def run_attempt(model, task, attempt, ctx, out, tether_bin, wall):
     wall_s = time.time() - t0
     score, detail = T.grade(task, ws)
     rec = {"model": model, "task": task.id, "kind": task.kind, "tier": task.tier, "attempt": attempt,
-           "think": think, "params": params, "max_steps": steps, "fold_after": fold, "ctx": ctx,
+           "think": think and can_think, "params": params, "max_steps": steps, "fold_after": fold, "ctx": ctx,
            "wall_s": round(wall_s), "run_status": status, "delivered_steps": delivered_steps, "score": round(score, 3),
            "pass": score >= T.pass_threshold(task), "detail": detail}
     try:
@@ -111,6 +123,8 @@ def main():
     done = [json.loads(l) for l in log.open()] if log.exists() else []
     for model in a.models.split(","):
         ctx = int(ctxs.get(model, 8192))
+        can_think = "thinking" in capabilities(model)
+        print(f"{model}: context {ctx}, thinking {'yes' if can_think else 'no (attempts 0/1 and 2/3 differ only in steps/temperature)'}", flush=True)
         for kind in a.kinds.split(","):
             for tier in range(1, a.max_tier + 1):
                 task = T.TASKS[f"{kind}-{tier}"]
@@ -119,7 +133,7 @@ def main():
                     prev = [r for r in done if (r["model"], r["task"], r["attempt"]) == (model, task.id, attempt)]
                     rec = prev[0] if prev else None
                     if rec is None:
-                        rec = run_attempt(model, task, attempt, ctx, a.out, a.tether_bin, a.wall)
+                        rec = run_attempt(model, task, attempt, ctx, a.out, a.tether_bin, a.wall, can_think)
                         done.append(rec)
                         with log.open("a") as fh:
                             fh.write(json.dumps(rec) + "\n")
