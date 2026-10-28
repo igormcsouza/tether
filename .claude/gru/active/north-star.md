@@ -37,3 +37,4 @@ Polyglot-Python (34 ex, 2 trials, `--poly-verify`, default 8192 ctx) pass rate o
 - [ ] Patch A and B, update docs (providers.md, release notes), unit+e2e, PR with `north star:` line
 - [ ] bench/replay.py offline proof for B
 - [ ] One batched full 34x2 after A+B+C, report at once
+- 2026-10-27 merged #180 (timeout 300s, compact bash, canary). PR #181 traceback collapse (canary +0.12, offline -12.6% obs chars, e2e 69). PR #182 outage retry (#171, e2e new scenario). PO: 80% is the impossible focus goal; wants v0.2.10 plan ranked by north star. Canary tool: bench/canary.py (12 min, 7 rows). Note: bench `pass` is graded by exercise tests, so #177 (done at max steps) does NOT move the bench number, only the user-facing floor.

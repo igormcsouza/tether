@@ -239,3 +239,23 @@ async def test_bash_output_drops_workspace_prefix_and_rule_lines(tmp_path: Path)
     out = await sandbox.execute_bash(cmd)
     assert str(tmp_path) not in out
     assert out == "a.py:3 boom\nFAIL x\nkeep\n"
+
+
+def test_compact_output_collapses_long_tracebacks_to_last_two_frames() -> None:
+    """North star: tracebacks are ~half of observation chars; keep the call site and the cause."""
+    from tether.sandbox import _compact_output
+
+    def frame(n: int) -> str:
+        return f'  File "m.py", line {n}, in f{n}\n    call_{n}()\n           ^^^^^^\n'
+
+    tb = "Traceback (most recent call last):\n" + "".join(frame(n) for n in range(1, 6))
+    out = _compact_output(tb + "ValueError: boom\nok line\n", Path("/ws"))
+    assert out == (
+        "Traceback (most recent call last):\n  ... 3 frames ...\n"
+        '  File "m.py", line 4, in f4\n    call_4()\n'
+        '  File "m.py", line 5, in f5\n    call_5()\n'
+        "ValueError: boom\nok line\n"
+    )
+    short = "Traceback (most recent call last):\n" + frame(1) + "KeyError: 1\n"
+    assert _compact_output(short, Path("/ws")).count("File") == 1
+    assert "^^^" not in _compact_output(short, Path("/ws"))
