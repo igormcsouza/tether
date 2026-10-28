@@ -86,6 +86,13 @@ def test_stall_with_a_failing_gate_stays_failed(tether: Tether, chaos) -> None:
     assert r["status"] == "FAILED" and r["failure"]["message"].startswith("Stalled")
 
 
+def test_unfinished_session_reports_changes_and_gate(tether: Tether, chaos) -> None:
+    chaos.script(*(["bash touch fixed.txt"] * 6), ("done", "ok"))  # #171: never a bare error
+    r = tether.run("loop", "--tools", "bash", "--verify", "test -f missing.txt")
+    msg = r["failure"]["message"]
+    assert "Changed: `bash touch fixed.txt`" in msg and "Gate `test -f missing.txt` fails" in msg
+
+
 def test_two_command_cycle_is_a_cycle_stall(tether: Tether, chaos) -> None:
     chaos.script(*(["bash echo a", "bash echo b"] * 3), ("done", "ok"))
     r = tether.run("cycle", "--tools", "bash")
