@@ -60,6 +60,8 @@ python3 bench/ladder/report.py /tmp/ladder
 
 Per (model, kind) the tiers are climbed in order. A tier gets up to 4 attempts, stopping at the first pass: thinking off; thinking on; thinking on with more steps and later folding; thinking off at temperature 0 with more steps. Four failures end that kind's ladder, so the next tier is never tried. A run is stopped as soon as the work passes its grader ("delivered"), so models that never call `done` do not burn GPU time; the report shows steps at delivery. Pick `--ctx` as the largest window that stays fully in VRAM (`/api/ps`: `size == size_vram`).
 
+**Harness comparison.** `run.py --harness tether|naive|opencode|claude --single` runs all 24 tasks once, no stopping, on the same model, so the harnesses can be set side by side (`report.py` prints one block per harness). `naive` is `bench/naive_agent.py` (a bare tool loop), `opencode` runs through the gru `sandbox.sh` and needs an `ollama` provider in `opencode.json` pointing at `http://localhost:11435/v1` plus a model alias created with the same `num_ctx` (`/v1` cannot set it), `claude` is Claude Code in print mode with a $1 budget cap per task.
+
 ## Judging a change (what a number can and cannot tell you)
 
 Measured on the baseline and v0.2.10 full runs (#173): 13 of 34 exercises never pass, 11 always pass, and only 10 ever flip. 12 of 68 run slots flipped between the two runs, 6 up and 6 down, and the paired score delta was +0.045 with a 95% CI of [-0.029, +0.121]. A pass rate over 68 runs (standard error ~6 points) and a canary of rows picked *because they failed once* (regression to the mean) both mislead. Use this instead:
