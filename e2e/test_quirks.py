@@ -93,6 +93,17 @@ def test_unfinished_session_reports_changes_and_gate(tether: Tether, chaos) -> N
     assert "Changed: `bash touch fixed.txt`" in msg and "Gate `test -f missing.txt` fails" in msg
 
 
+def test_never_calling_done_after_a_green_test_run_is_completed(tether: Tether, chaos) -> None:
+    (tether.ws / "test_ok.py").write_text(
+        "import unittest\n\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n"
+    )
+    cmds = ("bash touch fixed.txt", "bash python3 -m unittest test_ok", "bash ls", "bash ls -a")
+    chaos.script(*cmds)
+    r = tether.run("never done", "--tools", "bash", "--max-steps", "4")  # #177
+    assert r["status"] == "COMPLETED" and "Finished by the harness" in r["result"]
+    assert "[NUDGE] Tests pass after your last change" in "\n".join(tether.tool_outputs(r["id"]))
+
+
 def test_two_command_cycle_is_a_cycle_stall(tether: Tether, chaos) -> None:
     chaos.script(*(["bash echo a", "bash echo b"] * 3), ("done", "ok"))
     r = tether.run("cycle", "--tools", "bash")

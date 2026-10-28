@@ -20,6 +20,8 @@ With `--verify` gates configured, a stall after a change whose gates all pass en
 
 The result is never bare: it lists the last change commands and, with `--verify`, whether the gates pass now (`Stalled` ends the same way). A run that stopped with passing gates already holds a usable result in the workspace.
 
+A session whose last test run passed after its final change ends `COMPLETED` instead ("Finished by the harness"), even without `--verify`.
+
 **Fix.** Check `tether read <id> --steps`: if the work is done and the model keeps verifying, tell it to call `done` in the goal. A bare `done` is enough: it ends the session with the result `Done.` once the gates pass. If it needs more room, raise `--max-steps` (for a pipeline, per stage). `tether send <id> "keep going"` resumes a finished session with a fresh budget.
 
 ### `FAILED` with `Verification gate ... misconfigured`
