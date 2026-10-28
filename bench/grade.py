@@ -182,6 +182,7 @@ POLY_FAST = ("affine-cipher bottle-song list-ops paasio dot-dsl food-chain forth
 
 # ~15 min: 4 flaky exercises that can flip + 3 fast guards that must not regress (baseline in canary_baseline.json)
 POLY_CANARY = "phone-number tree-building grep pig-latin proverb robot-name list-ops".split()
+POLY_PAIRED = "grep go-counting pov dominoes beer-song hangman wordy forth paasio poker".split()  # A/B set, see README
 GUARDS = ("proverb", "robot-name", "list-ops")
 
 
