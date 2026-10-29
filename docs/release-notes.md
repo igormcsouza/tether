@@ -8,6 +8,7 @@ The run-killers found in the v0.2.9 Polyglot breakdown on `qwen3.5:9b`: provider
 
 ### Fixes
 
+- `done --stdin 'answer'` (and `done --ask --stdin 'question'`) now passes the text as the answer instead of returning it with a literal `--stdin` in front; `edit --file p --method create --content c` is read like `--action`. Both are habits of `qwen2.5-coder:7b`.
 - A session that only reads (a review, a plan, a question) and keeps re-reading no longer ends empty at its first stall: with no change made, the harness adds one `[WRAP UP]` turn asking for the final answer from what it has read, and that answer completes the session. A second stall still ends it `Stalled`. Found in the Coding Ladder: review and plan tasks were stopped by the stall guard before the file was written.
 - `edit --file 'p' --content 'c'` (and `--path`, `--action view|write`) is understood as `edit write p` / `edit view p`: models that remember `edit` as a function with named parameters no longer loop on the usage error (`qwen2.5-coder:7b`). Appending is not rewritten.
 - A model that writes its tool call as plain-text JSON, `{"name": "edit", "arguments": {...}}`, is understood like a native call to that tool (the registry answers with its JIT usage) instead of getting a "use act" reminder 30 times in a row. Found on `qwen2.5-coder:7b`, which failed every coding-ladder task because of it.
