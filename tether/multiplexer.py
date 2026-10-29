@@ -91,8 +91,8 @@ def _edit_flags(s: str) -> str:
     flags = {k: _unquote(v) for k, v in _FLAG_RE.findall(s)}
     path = flags.get("file") or flags.get("path")
     content = flags.get("content") or flags.get("text")
-    action = (flags.get("action") or flags.get("mode") or "").lower()
-    known = {"file", "path", "content", "text", "action", "mode"}
+    action = (flags.get("action") or flags.get("mode") or flags.get("method") or "").lower()
+    known = {"file", "path", "content", "text", "action", "mode", "method"}
     if not path or action not in ("", "write", "create", "view", "read") or set(flags) - known:
         return s  # e.g. --line_start: edit.py's own verb inference handles it
     if content is not None and action in ("", "write", "create"):
@@ -110,6 +110,19 @@ def _unquote(token: str) -> str:
 
 
 NORMALIZERS.append(_edit_flags)
+
+_DONE_STDIN_RE = re.compile(rf"done(\s+--ask)?\s+--stdin\s+({_QUOTED}|\S+)\s*", re.DOTALL)
+
+
+def _done_stdin_flag(s: str) -> str:
+    """`done --stdin 'answer'` -> `done` + heredoc: the answer must not begin with `--stdin`."""
+    m = _DONE_STDIN_RE.fullmatch(s)
+    if not m:
+        return s
+    return f"done{m.group(1) or ''}\n<<'TETHER_EOF'\n{_unquote(m.group(2))}\nTETHER_EOF"
+
+
+NORMALIZERS.append(_done_stdin_flag)
 
 _SHELL_WRAP_RE = re.compile(
     r"(?:(?:/bin/)?(?:ba)?sh\s+)?-[a-z]*c\s+(?:(?P<q>['\"])(?P<body>.*)(?P=q)|(?P<raw>\S.*))",

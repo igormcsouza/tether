@@ -127,6 +127,12 @@ def test_read_only_stall_is_asked_for_its_answer_once(tether: Tether, chaos) -> 
     assert "[WRAP UP]" in "\n".join(tether.tool_outputs(r["id"]))
 
 
+def test_done_with_a_stdin_flag_keeps_the_answer_clean(tether: Tether, chaos) -> None:
+    chaos.script("done --stdin 'final answer'")
+    r = tether.run("answer")
+    assert r["status"] == "COMPLETED" and r["result"] == "final answer"
+
+
 def test_two_command_cycle_is_a_cycle_stall(tether: Tether, chaos) -> None:
     chaos.script(*(["bash echo a", "bash echo b"] * 3), ("done", "ok"))
     r = tether.run("cycle", "--tools", "bash")
