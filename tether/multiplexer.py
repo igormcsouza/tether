@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import shlex
 import shutil
@@ -78,6 +79,37 @@ def normalize_cmd(raw_cmd: str) -> str:
         s = fn(s)
     return s
 
+
+_QUOTED = r"""'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*\""""
+_FLAG_RE = re.compile(rf"--(\w+)\s+({_QUOTED}|\S+)", re.DOTALL)
+
+
+def _edit_flags(s: str) -> str:
+    """`edit --file 'p' --content 'c'` (native call as flags) -> `edit write p` + heredoc."""
+    if not s.startswith("edit --"):
+        return s
+    flags = {k: _unquote(v) for k, v in _FLAG_RE.findall(s)}
+    path = flags.get("file") or flags.get("path")
+    content = flags.get("content") or flags.get("text")
+    action = (flags.get("action") or flags.get("mode") or "").lower()
+    known = {"file", "path", "content", "text", "action", "mode"}
+    if not path or action not in ("", "write", "create", "view", "read") or set(flags) - known:
+        return s  # e.g. --line_start: edit.py's own verb inference handles it
+    if content is not None and action in ("", "write", "create"):
+        return f"edit write {shlex.quote(path)}\n<<'TETHER_EOF'\n{content}\nTETHER_EOF"
+    return f"edit view {shlex.quote(path)}"
+
+
+def _unquote(token: str) -> str:
+    if token[:1] in "'\"":
+        try:
+            return str(ast.literal_eval(token))
+        except (ValueError, SyntaxError):  # e.g. a stray `\x`: keep the text as typed
+            return token[1:-1]
+    return token
+
+
+NORMALIZERS.append(_edit_flags)
 
 _SHELL_WRAP_RE = re.compile(
     r"(?:(?:/bin/)?(?:ba)?sh\s+)?-[a-z]*c\s+(?:(?P<q>['\"])(?P<body>.*)(?P=q)|(?P<raw>\S.*))",

@@ -76,6 +76,13 @@ def test_named_json_tool_call_in_text_is_understood(tether: Tether, chaos) -> No
     assert "edit" in tether.tool_outputs(r["id"])[0].lower()
 
 
+def test_edit_call_written_with_file_and_content_writes_the_file(tether: Tether, chaos) -> None:
+    reply = '{"name": "edit", "arguments": {"file": "a.txt", "content": "one\\ntwo"}}'
+    chaos.script({"text": reply}, ("done", "ok"))
+    r = tether.run("write", "--tools", "edit")
+    assert r["status"] == "COMPLETED" and (tether.ws / "a.txt").read_text().startswith("one\ntwo")
+
+
 def test_identical_repeat_is_a_loop_stall(tether: Tether, chaos) -> None:
     chaos.script("bash true", "bash true", ("done", "ok"))
     r = tether.run("loop", "--tools", "bash")

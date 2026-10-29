@@ -208,3 +208,27 @@ async def test_act_call_text_without_stdin_and_other_commands(tmp_path: Path) ->
     assert "m.txt" in (await mux.execute('act("ls")')).output
     # text that merely contains act( is left alone
     assert "act(" in (await mux.execute("echo 'act(1)'")).output
+
+
+def test_edit_written_as_flags_becomes_the_real_command() -> None:
+    """qwen2.5-coder re-types its native `edit(file=, content=)` call as `edit --file 'p' ...`."""
+    from tether.multiplexer import split_heredoc
+
+    cmd = normalize_cmd("edit --file 'a.py' --action 'write' --content 'x = 1\\ny = \"2\"'")
+    assert split_heredoc(cmd) == ("edit write a.py", 'x = 1\ny = "2"')
+    cmd = normalize_cmd("edit --path 'a.py' --content 'z'")
+    assert split_heredoc(cmd) == ("edit write a.py", "z")
+    assert normalize_cmd("edit --file 'a.py' --mode 'view'") == "edit view a.py"
+    assert normalize_cmd("edit --file 'a.py'") == "edit view a.py"
+    # not rewritten: no file, an action we cannot honour, or an ordinary edit command
+    assert normalize_cmd("edit --content 'z'") == "edit --content 'z'"
+    assert normalize_cmd("edit --file 'a.py' --action 'append' --content 'z'").startswith(
+        "edit --file"
+    )
+    assert normalize_cmd("edit write a.py") == "edit write a.py"
+    assert normalize_cmd("edit --file 'a b.py' --content 'z'").startswith("edit write 'a b.py'")
+    cmd = normalize_cmd(r"edit --file 'a.py' --content '\x'")  # not a valid python escape
+    assert split_heredoc(cmd) == ("edit write a.py", "\\x")
+    assert normalize_cmd("edit --path a.py --line_start 3").startswith(
+        "edit --path"
+    )  # edit.py's own
