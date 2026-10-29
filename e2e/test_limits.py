@@ -51,7 +51,7 @@ def test_range_shifting_reads_stop_the_session_early(tether: Tether, chaos) -> N
     d = tether.run("explore forever", "--tools", "edit", "--max-steps", "30")
     assert d["rc"] == 4 and d["failure"]["kind"] == "stalled"
     assert d["steps"] < 30, "the stall guard must end the session before max_steps"
-    assert tether.events(d["id"]).count("cycle_stall") == 4
+    assert tether.events(d["id"]).count("cycle_stall") == 5  # the 4th is answered with a wrap-up
     assert any("reads of `big.py`" in o for o in tether.tool_outputs(d["id"]))
 
 
