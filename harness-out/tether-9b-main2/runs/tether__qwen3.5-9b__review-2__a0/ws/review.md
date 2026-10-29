@@ -1,0 +1,3 @@
+- `restock`: Docstring says "Add qty units to the stock", but code replaces stock entirely instead of adding.
+- `low_stock`: Docstring says "strictly below threshold", but code uses `<=` which includes the threshold.
+- `total_units`: Missing docstring.

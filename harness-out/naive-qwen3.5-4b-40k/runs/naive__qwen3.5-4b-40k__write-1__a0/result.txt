@@ -1,0 +1,1 @@
+Done. The `apply_discount` function has been added to the end of `shop/pricing.py` exactly as specified.

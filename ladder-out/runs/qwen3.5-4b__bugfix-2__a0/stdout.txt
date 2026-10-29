@@ -1,0 +1,1 @@
+Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `cd /workspace && python -m pytest tests/test_cart.py::CartTe` (1 change commands).

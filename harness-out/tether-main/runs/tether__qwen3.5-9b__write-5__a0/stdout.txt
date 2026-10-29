@@ -1,0 +1,1 @@
+Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `cat > ./shop/report.py << 'EOF'`; `cd / && python -m pytest tests/ -v`; `cd / && python3 -m pytest tests/ -v`; `cd / && python3 -m unittest discover tests -v`; `cd / && python3 -m unittest tests.test_cart tests.test_repor` (6 change commands).

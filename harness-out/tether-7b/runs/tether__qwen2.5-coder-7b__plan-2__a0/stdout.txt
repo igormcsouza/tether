@@ -1,0 +1,1 @@
+plan.md has been updated with a plan for implementing a low-stock alert system.

@@ -1,0 +1,16 @@
+# Plan to add `Cart.remove(sku)` method
+
+## 1. File and Method to Extend
+- **File**: `shop/cart.py`
+- **Method**: Add a new method named `remove(self, sku)` that removes the line for the given SKU from the cart's lines dictionary.
+
+## 2. Test File to Extend
+- **File**: `tests/test_cart.py`
+- Add test cases for:
+  - Removing an item that exists in the cart (should decrease quantity)
+  - Removing an item that doesn't exist in the cart (should raise appropriate exception or handle gracefully)
+
+## 3. Case Where SKU is Not in Cart
+- When `remove(sku)` is called with a SKU that doesn't exist in the cart, it should either:
+  - Raise a `KeyError` exception to indicate the SKU was not found
+  - Or silently do nothing if the implementation prefers defensive handling

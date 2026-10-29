@@ -1,0 +1,1 @@
+Fixed the monthly report function by changing o["date"][5:7] to o["date"][:7] to extract the full YYYY-MM key instead of just the month.

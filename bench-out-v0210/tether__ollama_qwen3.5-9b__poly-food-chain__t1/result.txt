@@ -1,0 +1,1 @@
+All 10 tests pass. The food_chain.py implementation generates the lyrics of "I Know an Old Lady Who Swallowed a Fly" correctly.

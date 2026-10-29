@@ -1,0 +1,4 @@
+- `top_n`: Does not handle empty sales dict
+- `share`: Does not handle empty sales dict (ZeroDivisionError)
+- `share`: Does not handle missing sku (KeyError)
+- `weekly`: Does not handle empty sales dict

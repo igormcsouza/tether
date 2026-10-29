@@ -1,0 +1,1 @@
+Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `echo -e "* tier_discount: Docstring says '10% over 500' but ` (1 change commands).

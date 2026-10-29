@@ -1,0 +1,1 @@
+--stdin Plan for low-stock alert created in plan.md.

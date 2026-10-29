@@ -1,0 +1,1 @@
+{"name": "write_file", "arguments": {"path": "shop/utils.py", "content": "import re\n\ndef slugify(text):\n    text = text.lower()\n    text = re.sub(r'[^a-z0-9]+', '-', text)\n    text = text.strip('-')\n    return text\n"}}

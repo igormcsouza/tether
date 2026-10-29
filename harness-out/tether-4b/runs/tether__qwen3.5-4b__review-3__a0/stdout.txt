@@ -1,0 +1,4 @@
+- `find_user`: SQL injection vulnerability - user-supplied input is concatenated directly into the SQL query without any sanitization or parameterized queries.
+- `add_tags`: Mutable default argument bug - the empty list `[]` is shared across all function calls, causing unexpected behavior when called multiple times with different arguments.
+- `read_config`: Path traversal vulnerability - no validation of the input path allows reading files outside the intended directory.
+- `parse_age`: No input validation - accepts any string and attempts to convert it to an integer without checking for valid numeric input or handling errors.

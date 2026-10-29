@@ -1,0 +1,1 @@
+--stdin plan.md has been updated with the plan for adding Cart.remove(sku) to shop/cart.py and writing test cases.

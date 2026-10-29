@@ -1,0 +1,10 @@
+- `export` (shop/export.py): Command injection vulnerability via shell=True with unsanitized user input (partner)
+- `export` (shop/export.py): No error handling for file operations or scp failures, leading to silent data loss
+- `export` (shop/export.py): No validation of order data, risking KeyError on missing keys
+- `retry` (shop/retry.py): Swallows all exceptions and returns None, making debugging impossible
+- `retry` (shop/retry.py): No timeout mechanism, allowing infinite hangs
+- `cached_price` (shop/cache.py): No error handling for load() calls, cache entry never set on failure
+- `cached_price` (shop/cache.py): No thread safety for module-level cache dictionary
+- `nightly` (shop/sched.py): No error handling, returns success count even when export fails
+- `nightly` (shop/sched.py): No logging of operations or failures
+- `nightly` (shop/sched.py): Hardcoded temporary path instead of configurable parameter

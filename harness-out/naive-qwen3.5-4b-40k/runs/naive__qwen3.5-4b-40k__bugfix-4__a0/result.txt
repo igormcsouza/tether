@@ -1,0 +1,9 @@
+The issue was in the `monthly` function. It was extracting only the month part (`YYYY-MM`) from the date string using `o["date"][5:7]`, which gives "01" for both January 2025 and January 2026, causing them to be merged into one bucket.
+
+The fix changes it to use `o["date"][0:7]` which correctly extracts the full date string "YYYY-MM", so January 2025 becomes "2025-01" and January 2026 becomes "2026-01".
+
+I've fixed the report module. The key change was:
+- **Before**: `key = o["date"][5:7]` → "01" for both Jan 2025 and Jan 2026
+- **After**: `key = o["date"][0:7]` → "2025-01" and "2026-01" respectively
+
+This ensures each month is properly separated by year.

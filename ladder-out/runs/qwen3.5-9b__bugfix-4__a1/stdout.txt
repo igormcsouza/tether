@@ -1,0 +1,1 @@
+Max steps (30) reached without calling `done`. Changed: `cat requirements.txt 2>/dev/null || cat setup.py 2>/dev/null`; `pip3 list 2>/dev/null | grep -i pytest || echo "pytest not f`; `bash pip3 list 2>/dev/null | grep -i pytest || echo "pytest `; `cat > /tmp/test_report.py << 'EOF'`; `bash python3 /tmp/test_report.py` (10 change commands).

@@ -1,0 +1,5 @@
+- share in shop/rank.py: Division by zero if sales is empty.
+- share in shop/rank.py: KeyError if sku is not in sales.
+- top_n in shop/rank.py: May return fewer than n items if sales has fewer than n SKUs.
+- weekly in shop/weekly.py: No validation for empty sales before calling share.
+- weekly in shop/weekly.py: No validation that all SKUs in best exist in sales.

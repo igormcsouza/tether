@@ -1,0 +1,6 @@
+Added pagination to Inventory.list_items() with keyword arguments page and page_size. The method now supports:
+- page=1, page_size=None (default): returns all items (backward compatible)
+- page=1, page_size=2: returns first 2 items
+- page=2, page_size=2: returns next 2 items
+
+Existing callers without these arguments continue to work as before.

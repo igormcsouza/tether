@@ -1,0 +1,40 @@
+diff --git a/shop/orders.py b/shop/orders.py
+--- a/shop/orders.py
++++ b/shop/orders.py
+@@ -1,22 +1,38 @@
++import threading
++import pickle
++
++_lock = threading.Lock()
++_next_id = 0
++
++
++def new_id():
++    global _next_id
++    _next_id += 1
++    return _next_id
++
++
+ def checkout(cart, store):
+-    order = {"id": 1, "total": cart.total()}
++    order = {"id": new_id(), "total": cart.total()}
++    for sku, qty in cart.lines.items():
++        store.remove_stock(sku, qty)
+     store.append(order)
+     return order
+
+
++def load_blob(raw):
++    return pickle.loads(raw)
++
++
++def find_order(orders, order_id):
++    for i in range(len(orders)):
++        for j in range(len(orders)):
++            if orders[j]["id"] == order_id:
++                return orders[j]
++    return None
++
++
++def label(order):
++    return "order-%d" % order["id"]

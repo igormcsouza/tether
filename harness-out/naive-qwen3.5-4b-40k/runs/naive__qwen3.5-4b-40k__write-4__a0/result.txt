@@ -1,0 +1,24 @@
+I've added pagination to `Inventory.list_items()`. Here's what was changed:
+
+**Modified `shop/inventory.py`:**
+- Added `page` parameter (default=1, 1-indexed)
+- Added `page_size` parameter (default=10)
+- The method now sorts items by SKU and returns only the items on the requested page
+
+**Key features:**
+- Existing callers work unchanged due to default values
+- When called without arguments, it returns all items (same behavior as before)
+- Pagination is calculated using standard page indexing: `start = (page - 1) * page_size`
+
+**Verification:**
+```python
+# Default call (returns all items)
+inv.list_items()  # Returns all 5 items
+
+# Paginated calls
+inv.list_items(page=1, page_size=2)  # Returns ITEM0, ITEM1
+inv.list_items(page=2, page_size=2)  # Returns ITEM2, ITEM3  
+inv.list_items(page=3, page_size=2)  # Returns ITEM4 (last page)
+```
+
+The existing test `test_list_sorted` still passes because the default behavior is unchanged.

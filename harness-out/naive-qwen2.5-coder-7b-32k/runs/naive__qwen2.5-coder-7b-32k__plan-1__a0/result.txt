@@ -1,0 +1,7 @@
+{
+  "name": "write_file",
+  "arguments": {
+    "path": "plan.md",
+    "content": "1. Identify the `Cart` class in `shop/cart.py`.\n2. Add the `remove(sku)` method to the `Cart` class to remove the line for the given SKU.\n3. Create or update the `test_cart.py` file to include tests for the `remove(sku)` method.\n4. Write a test case to ensure that the `remove(sku)` method removes the line for the given SKU.\n5. Write a test case to ensure that the `remove(sku)` method does nothing if the SKU is not in the cart."
+  }
+}

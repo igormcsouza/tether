@@ -1,0 +1,5 @@
+{"name": "read_file", "arguments": {"path": "shop/cart.py"}}
+{"name": "read_file", "arguments": {"path": "tests/test_cart.py"}}
+{"name": "write_file", "arguments": {"path": "shop/cart.py", "content": "def add(self, sku, quantity):\n    if sku in self.items:\n        self.items[sku] += quantity\n    else:\n        self.items[sku] = quantity"}}
+{"name": "write_file", "arguments": {"path": "tests/test_cart.py", "content": "def test_same_sku_adds_up(self):\n    cart = Cart()\n    cart.add('sku1', 2)\n    cart.add('sku1', 3)\n    self.assertEqual(cart.items['sku1'], 5)"}}
+{"name": "bash", "arguments": {"command": "pytest tests/test_cart.py"}}

@@ -1,0 +1,5 @@
+Plan written to plan.md with:
+- File: shop/cart.py
+- Method: remove(self, sku)
+- Test file: tests/test_cart.py
+- Case for missing sku: silently do nothing (no error, no change)

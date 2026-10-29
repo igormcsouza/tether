@@ -1,0 +1,1 @@
+Added pagination to Inventory.list_items with keyword arguments page (default=1) and page_size (default=100). Existing callers continue to work without changes.

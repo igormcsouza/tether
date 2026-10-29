@@ -1,0 +1,1 @@
+{"name": "write_file", "arguments": {"path": "review.md", "content": "- shop/export.py: Missing error handling for file operations.\n- shop/retry.py: Lack of retry logic for transient errors.\n- shop/cache.py: No expiration mechanism for cache entries.\n- shop/sched.py: Missing validation for scheduled task parameters."}}

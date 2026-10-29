@@ -1,0 +1,5 @@
+Plan written to plan.md with:
+1. File to modify: shop/cart.py
+2. Method: remove(self, sku)
+3. Test file: tests/test_cart.py
+4. Case where sku is not in cart: method does nothing (no error)

@@ -1,0 +1,8 @@
+Pagination has been added to Inventory.list_items() with page and page_size keyword arguments:
+
+- Default page_size is 10 items per page
+- Existing callers without these parameters continue to work (backward compatible)
+- Items are sorted by SKU before pagination
+- Page numbers are 1-indexed
+
+The implementation was verified with existing tests passing and manual pagination testing.

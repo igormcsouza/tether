@@ -1,0 +1,1 @@
+Changed shop/pricing.py line 12 from `>` to `>=` so bulk discount applies at quantity 10.

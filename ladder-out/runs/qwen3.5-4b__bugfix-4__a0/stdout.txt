@@ -1,0 +1,1 @@
+Fixed the report module by changing the key extraction in the monthly function from o["date"][5:7] to o["date"][0:7], which now correctly groups orders by "YYYY-MM" format instead of just month.

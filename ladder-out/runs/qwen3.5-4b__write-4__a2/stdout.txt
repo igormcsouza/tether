@@ -1,0 +1,1 @@
+Pagination added to Inventory.list_items() with keyword arguments page (default 1) and page_size (default 10). Existing callers will continue working since the defaults match the original behavior.

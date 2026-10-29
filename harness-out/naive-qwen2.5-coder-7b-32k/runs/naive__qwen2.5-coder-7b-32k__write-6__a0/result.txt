@@ -1,0 +1,7 @@
+{
+  "name": "write_file",
+  "arguments": {
+    "path": "shop/cli/commands.py",
+    "content": "from click import command, option, argument\n\n@command()\n@option('--region', '-r', help='Filter by region')\n@argument('input_file', type=str)\n@argument('output_file', type=str)\ndef export(input_file, output_file, region=None):\n    import json\n    import csv\n    with open(input_file, 'r') as f:\n        orders = json.load(f)\n    if region:\n        orders = [order for order in orders if order.get('region') == region]\n    with open(output_file, 'w', newline='') as f:\n        writer = csv.writer(f)\n        writer.writerow(orders[0].keys())\n        writer.writerows(orders)\n    print(f'Wrote {len(orders)} rows to {output_file}')\n"
+  }
+}

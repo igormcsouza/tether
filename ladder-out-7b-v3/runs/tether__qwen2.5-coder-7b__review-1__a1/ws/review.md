@@ -1,0 +1,3 @@
+- The docstring describes the discounts but the function implementation has a mistake. The discount rate for 500 should be 0.10 (10%).
+- The discount rates are not applied in a cumulative manner, which means that if the total is 600, the discount rate will be 0.05 (5%) instead of 0.15 (15%).
+- The function does not handle the case where the total is less than or equal to 0, which could lead to unexpected behavior.

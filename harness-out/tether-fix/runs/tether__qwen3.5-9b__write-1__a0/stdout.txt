@@ -1,0 +1,1 @@
+Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `echo "` (1 change commands).

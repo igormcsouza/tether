@@ -1,0 +1,4 @@
+Plan written to plan.md with numbered steps covering:
+1. File ./shop/cart.py and method remove(self, sku) to extend
+2. Test file ./tests/test_cart.py and test case to add
+3. Behavior when SKU is not in cart (graceful no-op)

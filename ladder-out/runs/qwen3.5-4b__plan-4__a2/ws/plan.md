@@ -1,0 +1,46 @@
+# Multi-Currency Support Plan
+
+## Overview
+This plan outlines the steps needed to add multi-currency support to the shop application. The current implementation stores prices in a single currency (presumably USD). We need to extend it to handle multiple currencies with automatic conversion based on customer selection.
+
+## Steps
+
+1. **Define Currency Types**
+   - Create a `Currency` class or data structure to represent currency codes (e.g., USD, EUR, GBP)
+   - Store exchange rates relative to a base currency (USD) in a configuration file or database
+
+2. **Extend Inventory Data Structure**
+   - Add a `currency` field to inventory items to track the original pricing currency
+   - Update `Inventory.add()` to accept and store the currency code for each item
+
+3. **Implement Currency Conversion Logic**
+   - Create a `convert_price(unit_price, from_currency, to_currency)` function
+   - Load exchange rates at startup or on-demand
+   - Handle edge cases (unknown currencies, zero exchange rates)
+
+4. **Modify Pricing Calculations**
+   - Update `bulk_price()` in `pricing.py` to accept and use the target currency
+   - Ensure bulk discount calculations work correctly after conversion
+
+5. **Add Currency Selection UI/CLI**
+   - Create a mechanism for customers to select their preferred currency
+   - Store the selected currency in the cart or user session
+   - Display available currencies to users
+
+6. **Update Cart Total Calculation**
+   - Modify `Cart.total()` to convert all item prices to the customer's selected currency before summing
+   - Ensure exchange rates are applied consistently across all items
+
+7. **Add Currency Conversion History/Logging**
+   - Log currency conversion operations for audit purposes
+   - Track which currencies have been used and their exchange rates
+
+8. **Test Multi-Currency Scenarios**
+   - Test price calculations with different currency combinations
+   - Verify bulk discounts work correctly after conversion
+   - Test edge cases (currency not in inventory, unknown currency codes)
+
+9. **Documentation Updates**
+   - Document the new currency field in inventory items
+   - Explain how exchange rates are managed and updated
+   - Provide examples of multi-currency usage

@@ -1,0 +1,4 @@
+- `checkout()`: Race condition when calling `store.remove_stock()` without locking, allowing overselling under concurrent access.
+- `checkout()`: Race condition in `new_id()` because the global `_next_id` is incremented without using the defined `_lock`.
+- `find_order()`: O(n²) performance due to nested loops instead of a linear search or hash-based lookup.
+- `load_blob()`: Security vulnerability from using `pickle.loads()` on potentially untrusted data, which can execute arbitrary code.

@@ -1,0 +1,1 @@
+Review complete. The function tier_discount in shop/tiers.py has been reviewed against its docstring, and the findings have been written to review.md.

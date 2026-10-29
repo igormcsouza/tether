@@ -1,0 +1,1 @@
+plan.md created with comprehensive CLI refactoring plan

@@ -1,0 +1,3 @@
+- share in rank.py: Division by zero if sales dictionary is empty (total = 0)
+- share in rank.py: KeyError if sku is not in sales dictionary
+- share in rank.py: No validation that sku exists before accessing sales[sku]

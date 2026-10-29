@@ -1,0 +1,1 @@
+Plan written to plan.md with 14 numbered steps for multi-currency support implementation, including decisions on open questions (USD as base currency, 2 decimal precision, calculate bulk discount in base currency then convert).

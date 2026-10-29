@@ -1,0 +1,4 @@
+- `checkout`: Concurrency issue - the function is not atomic; another thread could obtain the same ID between `new_id()` and `store.remove_stock()` because the lock is released after getting the ID.
+- `checkout`: Correctness issue - no validation that the store has sufficient stock before attempting to remove it, which could lead to negative inventory or errors.
+- `load_blob`: Security issue - uses `pickle.loads()` which is vulnerable to deserialization attacks; malicious input could execute arbitrary code.
+- `find_order`: Performance issue - uses O(n²) nested loops instead of a simple O(n) linear search or O(1) dictionary lookup.

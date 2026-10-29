@@ -1,0 +1,14 @@
+- `export` in shop/export.py: Shell injection vulnerability via string concatenation in subprocess.call with shell=True
+- `export` in shop/export.py: File deleted unconditionally even if scp fails, causing potential data loss
+- `export` in shop/export.py: No error handling for scp command failure
+- `export` in shop/export.py: File opened without specifying encoding
+- `retry` in shop/retry.py: Catches all exceptions (Exception) which is too broad
+- `retry` in shop/retry.py: Returns None on failure instead of raising an exception or providing clear error indication
+- `retry` in shop/retry.py: No mechanism to inspect or re-raise the last exception that caused failure
+- `retry` in shop/retry.py: No exponential backoff, fixed delay for all retries
+- `cached_price` in shop/cache.py: Module-level mutable state without thread safety (no locking)
+- `cached_price` in shop/cache.py: No TTL or expiration mechanism for cached entries
+- `cached_price` in shop/cache.py: No error handling for load function, cache entry never set on failure
+- `nightly` in shop/sched.py: No error handling for export failure
+- `nightly` in shop/sched.py: No handling when retry returns None (failure case)
+- `nightly` in shop/sched.py: No logging or error reporting

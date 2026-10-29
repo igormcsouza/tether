@@ -1,0 +1,4 @@
+- `find_user`: SQL injection vulnerability - user-supplied `name` is directly concatenated into SQL query without parameterization.
+- `add_tags`: Mutable default argument - `tags=[]` is shared across calls, causing unexpected state persistence.
+- `read_config`: Arbitrary file read - `path` parameter is used directly in `open()` without validation, allowing path traversal.
+- `parse_age`: Potential integer parsing vulnerability - arbitrary text passed to `int()` may raise exceptions or behave unexpectedly with malformed input.

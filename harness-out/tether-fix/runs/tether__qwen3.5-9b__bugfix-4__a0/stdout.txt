@@ -1,0 +1,1 @@
+Max steps (30) reached without calling `done`. Changed: `pip3 install pytest`; `bash pip3 install pytest`; `bash pip install pytest`; `done, stdin="Fixed the monthly report function in ./shop/rep`; `done, stdin="Fixed the monthly report function in ./shop/rep` (8 change commands).

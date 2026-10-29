@@ -1,0 +1,1 @@
+Added slugify function to shop/utils.py that lowercases text, replaces runs of non-alphanumeric characters with '-', and strips leading/trailing '-'.

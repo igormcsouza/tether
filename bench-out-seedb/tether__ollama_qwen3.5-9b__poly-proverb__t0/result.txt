@@ -1,0 +1,1 @@
+Implementation complete. The proverb.py file generates the proverb based on the input items and optional qualifier.

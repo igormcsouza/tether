@@ -1,0 +1,45 @@
+# Multi-Currency Support Plan
+
+## Overview
+Add support for multiple currencies in the shop system, allowing customers to select their preferred currency and see prices/revenue in that currency.
+
+## Steps
+
+1. **Define Currency Types**
+   - Create a `Currency` class or data structure with properties: code (e.g., "USD", "EUR"), symbol, and optional exchange rate to base currency
+   - Add currency constants for supported currencies (USD, EUR, GBP, JPY)
+
+2. **Update Pricing Module**
+   - Modify `line_total()` to accept a currency parameter
+   - Modify `bulk_price()` to accept a currency parameter
+   - Store the unit price with its currency in pricing calculations
+   - Add a function to convert prices between currencies using exchange rates
+
+3. **Update Inventory Module**
+   - Change item structure from `{"sku", "name", "price", "stock"}` to `{"sku", "name", "price", "currency", "stock"}`
+   - Update `add()` method to accept a currency parameter when adding items
+   - Add methods to get price in a specific currency (with conversion if needed)
+
+4. **Update Cart Module**
+   - Add a `currency` parameter to the `Cart` class constructor
+   - Modify `total()` to convert all item prices to the cart's selected currency before summing
+   - Optionally add a method to get total in a different currency
+
+5. **Update Report Module**
+   - Modify `summary()` to accept an optional currency parameter for revenue display
+   - Add `monthly_by_currency()` function to show monthly revenue per currency
+   - Update the CLI summary command to optionally specify currency
+
+6. **Add Exchange Rate Management**
+   - Create a simple exchange rate system (could be hardcoded or loaded from config)
+   - Store rates relative to a base currency (e.g., USD)
+   - Add functions to get conversion rates and convert between any two currencies
+
+7. **Update CLI Interface**
+   - Modify the `summary` command to accept an optional `--currency` flag
+   - Update usage documentation
+
+8. **Testing**
+   - Add tests for currency conversion accuracy
+   - Test cart total calculation with different currencies
+   - Verify inventory price retrieval works correctly

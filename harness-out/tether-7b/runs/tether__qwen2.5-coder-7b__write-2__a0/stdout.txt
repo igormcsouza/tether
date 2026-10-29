@@ -1,0 +1,1 @@
+Function slugify added to shop/utils.py.

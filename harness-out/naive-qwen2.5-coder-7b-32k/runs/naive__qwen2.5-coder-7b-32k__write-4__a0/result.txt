@@ -1,0 +1,1 @@
+{"name": "write_file", "arguments": {"path": "Inventory.py", "content": "def list_items(page=1, page_size=10):\n    # Your implementation here\n    pass"}}

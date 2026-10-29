@@ -1,0 +1,4 @@
+- `rank.py:top_n`: KeyError when a SKU key is missing from the `sales` dict (line 6 uses `sales[s]` directly without checking if `s` exists)
+- `rank.py:share`: ZeroDivisionError when `sum(sales.values())` equals zero (line 11 divides by `total` without checking)
+- `rank.py:share`: KeyError when the requested `sku` doesn't exist in `sales` dict (line 12 accesses `sales[sku]` without checking)
+- `weekly.py:weekly`: Passes `s` to `share()` but `s` may not be in `sales` (the `top_n` function returns keys from the dict, but if `top_n` crashes on a missing key, this fails before `share` is called; however, logic is fragile and assumes all returned SKUs exist)

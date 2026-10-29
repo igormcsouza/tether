@@ -1,0 +1,1 @@
+Pagination has been added to Inventory.list_items with page and page_size keyword arguments. The implementation maintains backward compatibility - existing callers without these arguments will continue to work by returning all items.

@@ -1,0 +1,1 @@
+Plan written to plan.md with 13 numbered steps covering multi-currency support implementation and 5 open decisions to make.

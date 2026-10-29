@@ -1,0 +1,4 @@
+- `new_id()`: Race condition - global `_next_id` is incremented without using `_lock`, allowing multiple threads to get duplicate order IDs.
+- `load_blob()`: Security vulnerability - `pickle.loads()` on untrusted data can execute arbitrary code.
+- `find_order()`: Performance issue - O(n²) complexity due to unnecessary nested loop; should be O(n) linear search.
+- `checkout()`: Concurrency issue - modifies shared `store` (removes stock, appends order) without locking, risking race conditions.

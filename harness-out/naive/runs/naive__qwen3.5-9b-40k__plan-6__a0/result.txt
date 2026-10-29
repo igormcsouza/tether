@@ -1,0 +1,34 @@
+The plan has been written to `plan.md`. Here's a summary of what was covered:
+
+**Design:**
+- Registry pattern with `CommandRegistry` class for dynamic command registration
+- Command interface defining `name`, `description`, and `func(orders, args)`
+- Separation of CLI logic from command implementations
+- Backward compatibility as a core principle
+
+**Sequencing (4 phases, 10 steps):**
+1. Foundation: registry module, command interface, summary command
+2. CLI Refactor: use registry, implement export, create loader
+3. Polish: help system, argument parsing, error handling
+4. Extensibility: future command hooks, plugin system
+
+**Risks covered:**
+- Backward compatibility breaking
+- Registry performance issues
+- Command discovery complexity
+- Argument parsing inconsistency
+- Error handling gaps
+- Plugin security concerns
+- Testing complexity
+
+**Verification plan includes:**
+- Backward compatibility tests (existing `summary` command must work identically)
+- New command tests (export, help, unknown commands)
+- Registry tests (register, get, list operations)
+- Integration tests for each command
+- Performance tests
+- Code quality checks
+- Documentation verification
+- Future-proofing tests (add commands without modifying CLI)
+
+The plan ensures existing `python -m shop.cli summary orders.json` invocations continue to work while enabling extensibility through the registry pattern.

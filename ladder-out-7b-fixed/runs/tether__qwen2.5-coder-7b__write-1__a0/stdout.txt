@@ -1,0 +1,1 @@
+--stdin The function `apply_discount` has been added to the end of `shop/pricing.py`.

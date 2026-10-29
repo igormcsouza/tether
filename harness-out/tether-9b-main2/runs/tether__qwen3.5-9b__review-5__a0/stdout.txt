@@ -1,0 +1,6 @@
+- `new_id()`: Concurrency bug - increments global `_next_id` without using the module-level `_lock`, allowing race conditions that can produce duplicate IDs.
+- `checkout()`: Concurrency bug - calls `store.remove_stock()` without any locking, allowing overselling when multiple threads execute simultaneously.
+- `checkout()`: Concurrency bug - the entire function is not protected by a lock, making the order creation and stock removal non-atomic.
+- `load_blob()`: Security bug - uses `pickle.loads()` on untrusted data, which can execute arbitrary code during deserialization (remote code execution).
+- `find_order()`: Performance bug - uses O(n²) nested loops to search for an order; should use O(1) dictionary lookup or O(n) single loop.
+- `checkout()`: Bug - references undefined `store` variable; `store` is not imported or defined in this module.

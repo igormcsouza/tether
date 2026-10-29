@@ -1,0 +1,1 @@
+review.md contains 3 findings: restock (replaces instead of adds), low_stock (uses <= instead of <), total_units (missing docstring)

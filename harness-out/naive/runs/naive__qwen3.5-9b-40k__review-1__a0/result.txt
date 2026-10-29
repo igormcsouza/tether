@@ -1,0 +1,1 @@
+The docstring states "10% over 500" but the code uses `rate = 0.01` (1%). This is a bug where the discount rate for the 500+ tier is incorrect.

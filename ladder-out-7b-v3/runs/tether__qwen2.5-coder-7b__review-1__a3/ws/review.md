@@ -1,0 +1,1 @@
+- The docstring describes the discounts but the function implementation has a mistake. The discount rates are incorrect. The 10% discount should apply for totals over 500, not 1000. The 5% discount should apply for totals over 100, not 500.

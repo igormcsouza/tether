@@ -1,0 +1,3 @@
+* `load_blob`: Security - uses pickle.loads() which can execute arbitrary code during deserialization, vulnerable to remote code execution if unpickled data comes from untrusted sources.
+* `new_id`: Concurrency - the global _next_id counter is not properly synchronized; the defined lock is never acquired, allowing race conditions that could cause ID collisions or skipped IDs.
+* `find_order`: Performance - uses an O(n²) nested loop algorithm when a simple O(n) linear scan would suffice to find an order by ID.

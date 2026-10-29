@@ -1,0 +1,14 @@
+The cart now supports coupon codes:
+
+- **`apply_coupon(code)`**: 
+  - "SAVE10" → 10% off (sets `coupon_discount = 0.10`)
+  - "FIVEOFF" → $5 off (sets `coupon_discount = 5.0`)
+  - Unknown code → raises `ValueError`
+
+- **`total()`**: 
+  - Calculates subtotal from items
+  - Applies the coupon discount
+  - Ensures total never goes below 0
+  - Returns rounded total including the coupon
+
+The implementation is complete and ready for testing.
