@@ -1,1 +1,0 @@
-Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `echo "* Division by zero in share() if total sales is 0" > r`; `echo "* Division by zero in share() if total sales is 0" > r`; `echo "* Division by zero in share() if total sales is 0" > r` (3 change commands).

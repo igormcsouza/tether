@@ -1,1 +1,0 @@
-- The docstring describes the discounts but the function implementation has incorrect rates. It should be 15% for over 1000, 10% for over 500, and 5% for over 100.

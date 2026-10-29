@@ -1,5 +1,0 @@
-All 20 tests pass. The School class implementation is complete with:
-- add_student(name, grade): Adds a student to a grade, returns True if successful, False if student already exists
-- added(): Returns list of True/False results from add_student calls
-- roster(): Returns all students sorted by grade, then alphabetically by name
-- grade(grade_number): Returns sorted list of students in a specific grade

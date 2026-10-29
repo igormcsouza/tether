@@ -1,1 +1,0 @@
-{"name": "write_file", "arguments": {"path": "review.md", "content": "- [ ] shop/stock.py: Function `get_stock_levels` lacks a docstring.\n- [ ] shop/stock.py: Function `update_stock` lacks a docstring.\n- [ ] shop/stock.py: Function `add_new_item` lacks a docstring.\n- [ ] shop/stock.py: Function `remove_item` lacks a docstring."}}

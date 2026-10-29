@@ -1,9 +1,0 @@
-Added slugify(text) function to shop/utils.py that:
-1. Lowercases the text
-2. Replaces every run of non-alphanumeric characters with a single '-'
-3. Strips leading and trailing '-'
-
-Example outputs:
-- "Hello World!" → "hello-world"
-- "Test...123!!" → "test-123"
-- "---Hello---" → "hello"

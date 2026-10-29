@@ -1,1 +1,0 @@
-Task completed. The plan for multi-currency support has been written to plan.md.

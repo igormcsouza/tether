@@ -1,7 +1,0 @@
-I've reviewed `shop/stock.py` against its docstrings and written the findings to `review.md`. Here are the issues found:
-
-1. **`restock`**: The docstring says "add qty units to the stock" (implying an increment operation), but the code actually sets the stock to `qty` (replacing the current value).
-
-2. **`low_stock`**: The docstring says "strictly below threshold" (implying `<`), but the code uses `<=` (less than or equal).
-
-3. **`total_units`**: This function has no docstring at all.

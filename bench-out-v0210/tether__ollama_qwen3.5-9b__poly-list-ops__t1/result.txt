@@ -1,1 +1,0 @@
-All 24 tests pass. The list_ops.py implementation is complete with append, concat, filter, length, map, foldl, foldr, and reverse functions.

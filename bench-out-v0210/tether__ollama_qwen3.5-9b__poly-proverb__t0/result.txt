@@ -1,1 +1,0 @@
-All tests pass. The proverb.py implementation is complete.

@@ -1,1 +1,0 @@
-Fixed the monthly report module by changing key extraction from o["date"][5:7] to o["date"][:7] in the monthly() function. This ensures January 2025 and January 2026 are now properly separated as "2025-01" and "2026-01" instead of being grouped together as "01".

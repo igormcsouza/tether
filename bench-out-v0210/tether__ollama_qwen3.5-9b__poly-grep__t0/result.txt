@@ -1,1 +1,0 @@
-grep.py has been implemented to support all required flags: -n (line numbers), -l (file names only), -i (case insensitive), -v (invert match), and -x (match entire line). All 25 tests pass.

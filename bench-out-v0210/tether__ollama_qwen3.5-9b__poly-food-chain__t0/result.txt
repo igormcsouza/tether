@@ -1,1 +1,0 @@
-food_chain.py implemented successfully. All 10 tests pass.

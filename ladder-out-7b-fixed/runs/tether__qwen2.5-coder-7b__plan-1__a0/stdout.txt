@@ -1,1 +1,0 @@
---stdin plan.md has been updated with the steps to add Cart.remove(sku) to shop/cart.py and extend the test file.

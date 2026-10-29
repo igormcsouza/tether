@@ -1,7 +1,0 @@
-I've reviewed both files and written the findings to review.md. Here's what I found:
-
-**Problems identified:**
-
-1. **`top_n` in shop/rank.py**: The function sorts in ascending order by default (`sorted(sales, key=lambda s: sales[s])`), but the docstring claims it returns "the n best SKUs, best first". This is backwards - it returns the worst sellers first. It should use `reverse=True`.
-
-2. **`share` in shop/rank.py**: The function performs division without checking if `total` (sum of all sales) is zero, which would cause a `ZeroDivisionError` when total sales are 0.

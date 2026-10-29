@@ -1,1 +1,0 @@
---stdin Task completed. The function apply_discount has been added to shop/pricing.py.

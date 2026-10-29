@@ -1,1 +1,0 @@
-- `tier_discount`: The discount rate for amounts over 500 is 1% (0.01) instead of the documented 10% (0.10).

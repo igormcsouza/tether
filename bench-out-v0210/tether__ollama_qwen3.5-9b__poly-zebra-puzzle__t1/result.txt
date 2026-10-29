@@ -1,3 +1,0 @@
-The Zebra Puzzle implementation is complete. Both tests pass:
-- drinks_water() returns "Norwegian"
-- owns_zebra() returns "Japanese"

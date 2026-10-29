@@ -1,1 +1,0 @@
-All 25 tests pass. The wordy.py implementation is complete.

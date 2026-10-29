@@ -1,1 +1,0 @@
-Added pagination support to Inventory.list_items() with page (default 0) and page_size (default 10) keyword arguments. The method now returns a paginated list of items sorted by SKU, while maintaining backward compatibility for existing callers.

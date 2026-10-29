@@ -1,4 +1,0 @@
-- `export` in shop/export.py: Command injection vulnerability - uses `shell=True` with user-controlled inputs (path and partner) to build scp command
-- `retry` in shop/retry.py: Silent failure - returns `None` instead of raising an exception after all attempts fail, hiding errors
-- `_cache` in shop/cache.py: Memory leak risk - module-level cache grows unbounded with no cleanup mechanism (except unused `clear()`)
-- `nightly` in shop/sched.py: Exception masking - doesn't propagate exceptions from `retry`, hiding failures

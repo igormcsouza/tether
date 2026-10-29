@@ -1,1 +1,0 @@
-Fixed the monthly report bug by changing key = o["date"][5:7] to key = o["date"][0:7] in shop/report.py. This ensures dates are keyed as "YYYY-MM" instead of "YY-MM", preventing January 2025 and January 2026 from being merged into one bucket.

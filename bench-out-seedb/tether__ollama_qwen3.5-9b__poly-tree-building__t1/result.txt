@@ -1,1 +1,0 @@
-Finished by the harness: the model stopped calling tools after its change and every verification gate passes.

@@ -1,3 +1,0 @@
-- find_user: SQL injection vulnerability - user-supplied input is directly concatenated into SQL query without parameterization
-- add_tags: Mutable default argument - the default `tags=[]` is shared across function calls, causing unexpected state persistence
-- read_config: Path traversal vulnerability - file path is not validated, allowing access to arbitrary files on the system

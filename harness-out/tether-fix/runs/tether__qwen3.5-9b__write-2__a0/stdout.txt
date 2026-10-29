@@ -1,6 +1,0 @@
-Added slugify(text) function to shop/utils.py that:
-1. Converts text to lowercase
-2. Replaces every run of non-alphanumeric characters with a single '-'
-3. Strips leading and trailing '-'
-
-The function also imports the re module needed for regex substitution.

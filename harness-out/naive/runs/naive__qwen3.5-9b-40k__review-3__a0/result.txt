@@ -1,7 +1,0 @@
-I've reviewed `shop/accounts.py` and found three security and design issues:
-
-1. **find_user**: SQL injection vulnerability - user-supplied input is directly concatenated into the SQL query without using parameterized queries.
-
-2. **add_tags**: Mutable default argument - the default `tags=[]` is shared across all function calls, which can cause unexpected state persistence between calls.
-
-3. **read_config**: Path traversal vulnerability - the file path is not validated, allowing attackers to read arbitrary files on the system by providing paths outside the intended directory.

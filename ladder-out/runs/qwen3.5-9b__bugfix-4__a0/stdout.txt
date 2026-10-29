@@ -1,1 +1,0 @@
-Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `cd ./tests && python3 -m unittest test_report.py -v`; `cd /testbed && python3 -m unittest tests.test_report -v`; `pwd && python3 -m unittest tests.test_report -v`; `echo "Done - Fixed the report module"`; `echo "Done"` (7 change commands).

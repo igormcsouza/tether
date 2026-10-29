@@ -1,1 +1,0 @@
-Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `cat > review.md << 'EOF'` (1 change commands).

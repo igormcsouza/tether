@@ -1,1 +1,0 @@
-tether: warning: context is ~25 tokens over --context-tokens 8192 (goal, system prompt and the latest step alone do not fit); raise the budget.

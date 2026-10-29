@@ -1,1 +1,0 @@
-Done. I've added the `apply_discount` function at the end of `shop/pricing.py`.

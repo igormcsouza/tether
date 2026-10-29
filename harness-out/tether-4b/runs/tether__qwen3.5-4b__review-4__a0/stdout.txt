@@ -1,1 +1,0 @@
-- `share` function in `shop/rank.py`: Does not validate that the SKU exists in the sales dictionary before accessing it, which can cause a KeyError if an invalid SKU is passed.

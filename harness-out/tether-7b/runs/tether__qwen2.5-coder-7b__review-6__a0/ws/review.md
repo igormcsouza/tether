@@ -1,4 +1,0 @@
-- **shop/export.py**: Function `export_data` does not handle exceptions, which could lead to data loss.
-- **shop/retry.py**: Function `retry_request` lacks a maximum retry limit, potentially leading to infinite loops.
-- **shop/cache.py**: Function `get_cached_data` does not check for cache expiration, which could return stale data.
-- **shop/sched.py**: Function `schedule_task` does not handle task scheduling errors, which could cause tasks to fail silently.

@@ -1,1 +1,0 @@
-- tier_discount: Docstring claims 10% over 500, but code uses 0.01 (1%) for amounts > 500.

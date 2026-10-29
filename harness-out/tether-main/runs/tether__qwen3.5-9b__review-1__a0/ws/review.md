@@ -1,3 +1,0 @@
-- tier_discount: Docstring claims 10% discount over 500, but code implements 1% (0.01)
-- tier_discount: Docstring claims 5% discount over 100, but code implements 5% (0.05) - this is correct, but the docstring wording "over 100" is ambiguous (could mean >= 100)
-- tier_discount: Docstring claims 15% discount over 1000, but code implements 15% (0.15) - this is correct

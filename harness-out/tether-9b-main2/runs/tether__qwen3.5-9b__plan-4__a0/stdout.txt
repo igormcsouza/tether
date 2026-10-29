@@ -1,1 +1,0 @@
-Plan written to plan.md with 15 numbered steps covering multi-currency support. The plan identifies 8 key open decisions (currency representation, price storage strategy, exchange rate source, default currency, rounding rules, user selection method, error handling, rate update process) that need to be decided before implementation.

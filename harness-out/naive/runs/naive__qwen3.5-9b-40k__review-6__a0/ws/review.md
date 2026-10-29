@@ -1,9 +1,0 @@
-- export: command injection vulnerability in subprocess.call with shell=True (path and partner concatenated directly into shell command)
-- nightly: silent failure - retry return value is not checked, so failed exports still return len(orders) as if successful
-- nightly: hardcoded path "/tmp/out.csv" instead of using the path parameter from export function
-- retry: catches all exceptions including non-recoverable ones (KeyboardInterrupt, SystemExit) without filtering
-- retry: returns None on failure instead of raising an exception after all attempts exhausted
-- cache: unbounded cache growth with no size limit or eviction policy
-- cache: no thread safety for concurrent access to _cache dictionary
-- cache: no TTL or cache invalidation strategy beyond manual clear()
-- sched: no error handling or logging in nightly function

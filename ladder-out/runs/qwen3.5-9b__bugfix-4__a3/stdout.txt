@@ -1,1 +1,0 @@
-Fixed the report module in ./shop/report.py. Changed the key extraction in the `monthly` function from `o["date"][5:7]` to `o["date"][:7]` to properly format keys as "YYYY-MM" instead of just "MM". This ensures January 2025 and January 2026 are now properly separated into their own buckets. All tests pass.

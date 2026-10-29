@@ -1,5 +1,0 @@
-The monthly report bug has been fixed. The issue was in the `monthly()` function in `./shop/report.py` where it was extracting only the month portion of the date (using `o["date"][5:7]`) instead of the full YYYY-MM format. This caused January 2025 and January 2026 to be merged into a single "January" bucket.
-
-The fix changed the slice from `o["date"][5:7]` to `o["date"][0:7]` to properly extract the complete date in YYYY-MM format, ensuring orders are grouped by their actual month and year.
-
-All tests pass successfully.

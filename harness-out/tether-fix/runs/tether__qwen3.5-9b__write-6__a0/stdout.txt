@@ -1,5 +1,0 @@
-The export command has been added to shop/cli.py. It supports:
-- `python -m shop.cli export ORDERS.json [OUT.csv] [--region R]`
-- Writes a CSV with columns: id, date, region, total
-- Prints the number of rows written
-- Optional --region R filter to filter orders by region

@@ -1,5 +1,0 @@
-- `checkout`: Concurrency issue - stock is removed before order is appended, creating a race condition where stock could be removed but order creation fails.
-- `checkout`: Concurrency issue - `new_id()` is not thread-safe; the global `_next_id` is incremented without using the defined `_lock`.
-- `new_id`: Concurrency issue - uses global variable `_next_id` without proper synchronization; the lock `_lock` is defined but never used.
-- `load_blob`: Security issue - uses `pickle.loads()` which is vulnerable to deserialization attacks that can execute arbitrary code.
-- `find_order`: Performance issue - uses O(n²) nested loop to find an order by ID; should use a dictionary or O(n) lookup instead.

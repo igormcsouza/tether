@@ -1,4 +1,0 @@
-- **SQL Injection in `find_user` function**: The function uses string concatenation to construct SQL queries, which makes it vulnerable to SQL injection attacks.
-- **Default mutable argument in `add_tags` function**: The `tags` parameter is a mutable default argument, which can lead to unexpected behavior and security issues.
-- **File handling without exception handling in `read_config` function**: The function does not handle exceptions that may occur when opening or reading the file, which can lead to crashes or data corruption.
-- **Lack of input validation in `parse_age` function**: The function does not validate the input, which can lead to unexpected behavior or errors when parsing non-numeric input.

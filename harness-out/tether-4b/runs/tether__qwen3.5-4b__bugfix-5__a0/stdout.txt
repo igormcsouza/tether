@@ -1,1 +1,0 @@
-Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `python -m shop.cli summary orders.json`; `find . -name "orders.json" 2>/dev/null`; `find . -name "*.json" 2>/dev/null` (3 change commands).

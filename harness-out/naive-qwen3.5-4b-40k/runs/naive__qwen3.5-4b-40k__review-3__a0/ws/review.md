@@ -1,3 +1,0 @@
-*   `find_user`: SQL injection vulnerability - user-supplied `name` is directly concatenated into the SQL query string without sanitization or parameterized queries.
-*   `read_config`: Path traversal vulnerability - file path is used directly without validation, which could allow reading arbitrary files if the path comes from user input.
-*   `parse_age`: Input validation vulnerability - no check that the input text is a valid integer, which could cause unexpected behavior or crashes with invalid input.

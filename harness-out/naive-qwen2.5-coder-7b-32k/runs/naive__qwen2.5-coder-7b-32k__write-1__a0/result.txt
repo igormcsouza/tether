@@ -1,1 +1,0 @@
-{"name": "write_file", "arguments": {"path": "shop/pricing.py", "content": "def apply_discount(price, pct):\n    return round(price * (1 - pct / 100), 2)\n"}}

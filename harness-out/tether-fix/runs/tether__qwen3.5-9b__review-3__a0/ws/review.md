@@ -1,4 +1,0 @@
-- `find_user`: SQL injection vulnerability due to string concatenation in SQL query.
-- `add_tags`: Mutable default argument (`tags=[]`) causes unexpected state sharing.
-- `read_config`: Path traversal vulnerability from unvalidated file path input.
-- `parse_age`: Unvalidated integer conversion of user input.

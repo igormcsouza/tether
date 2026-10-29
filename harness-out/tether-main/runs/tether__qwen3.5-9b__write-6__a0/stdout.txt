@@ -1,1 +1,0 @@
-Max steps (30) reached without calling `done`. Changed: `echo '[{"id": "1", "date": "2024-01-15", "region": "North", `; `python3 -m shop.cli export test_orders.json out.csv --region`; `python3 -m shop.cli summary test_orders.json`; `python3 -m shop.cli export nonexistent.json out.csv`; `python3 -m shop.cli export` (19 change commands).

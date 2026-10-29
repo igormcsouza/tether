@@ -1,1 +1,0 @@
-- [ ] The docstring does not match the function implementation. The docstring mentions 5%, 10%, and 15% discounts, but the function uses 5%, 10%, and 15% rates respectively. The docstring should be updated to reflect the correct discount rates.

@@ -1,2 +1,0 @@
-{"name": "read_file", "arguments": {"path": "change.diff"}}
-{"name": "write_file", "arguments": {"path": "review.md", "content": "- [ ] Review the change in change.diff (a pull request to shop/orders.py).\n- [ ] Look for correctness, concurrency, security and performance problems; do not nitpick style.\n- [ ] Write your findings to review.md as a list (one bullet per real problem, naming the function). Do not change any code."}}

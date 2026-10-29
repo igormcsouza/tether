@@ -1,1 +1,0 @@
-Max steps (30) reached without calling `done`. Changed: `find . -type f \( -name "*.py" -o -name "*.md" \) | xargs ls` (1 change commands).

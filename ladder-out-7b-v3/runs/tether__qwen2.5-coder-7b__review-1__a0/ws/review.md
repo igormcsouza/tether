@@ -1,1 +1,0 @@
-- The docstring does not accurately reflect the discount rates. It mentions 5%, 10%, and 15%, but the code uses 0.05, 0.10, and 0.15 respectively.

@@ -1,4 +1,0 @@
-- `share` in `shop/rank.py`: Division by zero if `sales` is empty (total = 0).
-- `share` in `shop/rank.py`: KeyError if `sku` is not in `sales`.
-- `top_n` in `shop/rank.py`: Returns fewer than `n` items if `sales` has fewer than `n` SKUs.
-- `weekly` in `shop/weekly.py`: Inherits division by zero and KeyError from `share`.

@@ -1,1 +1,0 @@
-Fixed the report module in ./shop/report.py. The monthly function was incorrectly extracting only the month portion (characters 5-7) of the date, causing all January orders from different years to be grouped together. Changed the slice from [5:7] to [0:7] to properly extract "YYYY-MM" format (e.g., "2025-01" instead of "01"). All 8 tests pass after the fix.

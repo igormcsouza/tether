@@ -1,1 +1,0 @@
-Done. Changed `quantity > BULK_THRESHOLD` to `quantity >= BULK_THRESHOLD` so the bulk discount applies starting at exactly 10 units.

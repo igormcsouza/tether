@@ -1,1 +1,0 @@
-Stalled: 4 loop warnings without a change; stopped early instead of using all steps. No change was made.

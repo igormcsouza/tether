@@ -1,7 +1,0 @@
-- shop/export.py.export: Uses shell=True with string concatenation, creating a security vulnerability (shell injection risk)
-- shop/export.py.export: No error handling for file write or subprocess failures
-- shop/retry.py.retry: Returns immediately on success without applying the delay (delay only happens on failure)
-- shop/retry.py.retry: Returns None on all failures instead of raising an exception
-- shop/cache.py.cached_price: Uses global mutable state (_cache) which is unsafe in multi-threaded environments
-- shop/cache.py.clear: Has no return value
-- shop/sched.nightly: Does not handle the case where retry returns None (would cause failure when result is used)

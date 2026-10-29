@@ -1,1 +1,0 @@
-{"v": 1, "id": "ses_c357a1f4", "status": "COMPLETED", "model": "ollama/qwen3.5:9b", "steps": 7, "max_steps": 30, "tokens": {"prompt": 21856, "completion": 1900}, "duration_ms": 60626, "failure": null, "exit_code": 0, "result": "<final answer>"}

@@ -1,1 +1,0 @@
-Changed line 12 in shop/pricing.py from 'if quantity > BULK_THRESHOLD:' to 'if quantity >= BULK_THRESHOLD:' so the bulk discount now applies starting at 10 units.

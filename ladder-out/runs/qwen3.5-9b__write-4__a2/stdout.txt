@@ -1,1 +1,0 @@
-Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `cd ./shop && python3 -m unittest ../tests/test_inventory.py `; `cd ./tests && python3 -m unittest test_inventory -v`; `cd ./shop && python3 -c "`; `cd /workspace && python3 -c "`; `pwd && ls -la` (8 change commands).

@@ -1,7 +1,0 @@
-{
-  "name": "write_file",
-  "arguments": {
-    "path": "plan.md",
-    "content": "1. Define customer account model with discount fields.\n2. Implement per-customer discount logic in cart processing.\n3. Save discounts with each order in the database.\n4. Update order processing to apply saved discounts.\n5. Integrate discount data into order reports.\n6. Test each step individually to ensure functionality.\n7. Perform integration testing to validate the entire process.\n8. Deploy changes to the production environment."
-  }
-}

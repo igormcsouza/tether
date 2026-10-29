@@ -1,3 +1,0 @@
-- [ ] Function `restock` does not handle cases where `sku` does not exist in `items`.
-- [ ] Function `low_stock` does not handle cases where `items` is empty.
-- [ ] Function `total_units` does not handle cases where `items` is empty.

@@ -1,6 +1,0 @@
-robot_name.py has been implemented with:
-- A Robot class that generates random names (2 uppercase letters + 3 digits)
-- A class-level _name_pool set to ensure all existing robots have unique names
-- A reset() method that generates a new unique name for the robot
-
-All 4 tests pass.

@@ -1,1 +1,0 @@
-- tier_discount: The docstring states "10% over 500" but the code uses rate = 0.01 (1%), not 0.10 (10%).

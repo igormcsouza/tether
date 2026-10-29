@@ -1,1 +1,0 @@
-Stalled: 4 loop warnings without a change; stopped early instead of using all steps. Changed: `find . -name "*test*" -type f 2>/dev/null | head -20`; `cat > shop/inventory.py << 'EOF'` (2 change commands).

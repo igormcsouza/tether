@@ -1,1 +1,0 @@
-{"v": 1, "id": "ses_deb48d7d", "status": "COMPLETED", "model": "ollama/qwen3.5:9b", "steps": 5, "max_steps": 30, "tokens": {"prompt": 8805, "completion": 878}, "duration_ms": 28040, "failure": null, "exit_code": 0, "result": "All tests pass."}
