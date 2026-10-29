@@ -663,8 +663,8 @@ async def test_range_shifting_reads_warn_then_abort(
     run = await _run_commands(tmp_path, cmds)
     assert run.session.status == "FAILED"
     assert (run.session.result or "").startswith("Stalled")
-    assert run.events.count("cycle_stall") == 4
-    assert run.session.step_count == 9
+    assert run.events.count("cycle_stall") == 5  # the 4th one is answered with a wrap-up turn
+    assert run.session.step_count == 10
     warn = "\n".join(m["content"] for m in run.provider.recorded_calls[3])
     assert "3 reads of `a.py`" in warn
 
@@ -962,3 +962,24 @@ async def test_green_rerun_that_crashes_leaves_the_session_failed(
     )
     session = await h.run("goal")
     assert session.status == "FAILED" and (session.result or "").startswith("Max steps")
+
+
+async def test_read_only_stall_gets_one_wrap_up_turn_and_can_finish(tmp_path: Path) -> None:
+    """A review that keeps re-reading is asked for its answer once, and that answer counts."""
+    run = await _run_commands(tmp_path, ["ls"] * 5)  # 4 loop warnings, then `done` with "ok"
+    assert run.session.status == "COMPLETED" and run.session.result == "ok"
+    sent = "\n".join(m["content"] for m in run.provider.recorded_calls[5])
+    assert "[WRAP UP]" in sent
+
+
+async def test_ignoring_the_wrap_up_still_ends_stalled(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, ["ls"] * 12)
+    assert run.session.status == "FAILED" and (run.session.result or "").startswith("Stalled")
+    sent = "\n".join(m["content"] for c in run.provider.recorded_calls for m in c)
+    assert sent.count("[WRAP UP]") == 1  # once per session
+
+
+async def test_no_wrap_up_after_a_change(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, ["ping a.com", *["ls"] * 8])
+    sent = "\n".join(m["content"] for c in run.provider.recorded_calls for m in c)
+    assert "[WRAP UP]" not in sent and (run.session.result or "").startswith("Stalled")

@@ -120,6 +120,13 @@ def test_never_calling_done_after_a_green_test_run_is_completed(tether: Tether, 
     assert "[NUDGE] Tests pass after your last change" in "\n".join(tether.tool_outputs(r["id"]))
 
 
+def test_read_only_stall_is_asked_for_its_answer_once(tether: Tether, chaos) -> None:
+    chaos.script(*(["bash ls"] * 5), ("done", "my review"))  # #wrap-up: answer from what you read
+    r = tether.run("review", "--tools", "bash")
+    assert r["status"] == "COMPLETED" and r["result"] == "my review"
+    assert "[WRAP UP]" in "\n".join(tether.tool_outputs(r["id"]))
+
+
 def test_two_command_cycle_is_a_cycle_stall(tether: Tether, chaos) -> None:
     chaos.script(*(["bash echo a", "bash echo b"] * 3), ("done", "ok"))
     r = tether.run("cycle", "--tools", "bash")
