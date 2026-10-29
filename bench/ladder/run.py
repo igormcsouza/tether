@@ -22,6 +22,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tasks as T  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+# where a model lives: tether model prefix, OpenAI-compatible base URL, env var with the key
+PROVIDERS = {
+    "ollama": {"prefix": "ollama/", "base": "http://localhost:11435/v1", "key": ""},
+    "nvidia": {"prefix": "nvidia/", "base": "https://integrate.api.nvidia.com/v1", "key": "NVIDIA_API_KEY"},
+}
 
 ATTEMPTS = [  # (think, extra params, max_steps, fold_after)
     (False, [], 30, None),
@@ -62,9 +67,10 @@ def capabilities(model):
         return []
 
 
-def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think, params, steps, fold):
+def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think, params, steps, fold, provider="ollama"):
+    prov = PROVIDERS[provider]
     if harness == "tether":
-        cmd = [tether_bin, "run", "--model", f"ollama/{model}", "--tools", "edit,bash", "--max-steps", str(steps),
+        cmd = [tether_bin, "run", "--model", f"{prov['prefix']}{model}", "--tools", "edit,bash", "--max-steps", str(steps),
                "--context-tokens", str(ctx), "--db", str(rd / "t.db")]
         if can_think:  # a model without a thinking mode rejects the parameter
             cmd += ["--param", f"think={str(think).lower()}"]
@@ -74,15 +80,18 @@ def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think,
             cmd += ["--fold-after", str(fold)]
         return cmd + [task.goal]
     if harness == "naive":  # plain tool loop, same model: what the model does without tether
-        return [sys.executable, f"{HERE}/../naive_agent.py", "--base-url", "http://localhost:11435/v1",
+        return [sys.executable, f"{HERE}/../naive_agent.py", "--base-url", prov["base"], "--key-env", prov["key"],
                 "--model", model, "--ws", str(ws), "--goal", task.goal, "--max-turns", str(steps),
                 "--result-file", str(rd / "result.txt"), "--stats-file", str(rd / "stats.json")]
     if harness == "opencode":
+        opts = {"baseURL": prov["base"]}
+        if prov["key"]:
+            opts["apiKey"] = "{env:%s}" % prov["key"]
         (Path(ws) / "opencode.json").write_text(json.dumps({"$schema": "https://opencode.ai/config.json", "provider": {
-            "ollama": {"npm": "@ai-sdk/openai-compatible", "name": "Ollama", "options": {"baseURL": "http://localhost:11435/v1"},
+            provider: {"npm": "@ai-sdk/openai-compatible", "name": provider, "options": opts,
                        "models": {model: {"name": model, "limit": {"context": ctx, "output": 8192}}}}}}))
         return [os.path.expanduser("~/.claude/skills/gru/sandbox.sh"), str(ws), "--", "opencode", "run", "--auto",
-                "--format", "json", "-m", f"ollama/{model}", task.goal]
+                "--format", "json", "-m", f"{provider}/{model}", task.goal]
     if harness == "claude":  # Claude Code, print mode, the model alias is the part after cc/
         return ["env", "-u", "ANTHROPIC_API_KEY", "claude", "-p", task.goal, "--model", model.removeprefix("cc/"),
                 "--permission-mode", "bypassPermissions", "--output-format", "json", "--setting-sources", "",
@@ -90,7 +99,7 @@ def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think,
     raise SystemExit(f"unknown harness {harness}")
 
 
-def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True, harness="tether"):
+def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True, harness="tether", provider="ollama"):
     think, params, steps, fold = ATTEMPTS[attempt]
     rd = Path(out) / "runs" / f"{harness}__{model.replace(':', '-').replace('/', '_')}__{task.id}__a{attempt}"
     shutil.rmtree(rd, ignore_errors=True)
@@ -99,7 +108,7 @@ def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True
         p = ws / path
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
-    cmd = harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think, params, steps, fold)
+    cmd = harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think, params, steps, fold, provider)
     env = dict(os.environ, OLLAMA_HOST="http://localhost:11435", PYTHONDONTWRITEBYTECODE="1")
     t0 = time.time()
     status = "ok"
@@ -155,6 +164,7 @@ def main():
     ap.add_argument("--max-tier", type=int, default=6)
     ap.add_argument("--wall", type=int, default=1200, help="seconds per attempt")
     ap.add_argument("--tether-bin", default="tether")
+    ap.add_argument("--provider", default="ollama", choices=list(PROVIDERS), help="where the model is served")
     ap.add_argument("--harness", default="tether", choices=["tether", "naive", "opencode", "claude"])
     ap.add_argument("--single", action="store_true", help="every task once (attempt 0), no stopping: the harness comparison")
     a = ap.parse_args()
@@ -164,7 +174,7 @@ def main():
     done = [json.loads(l) for l in log.open()] if log.exists() else []
     for model in a.models.split(","):
         ctx = int(ctxs.get(model, 8192))
-        can_think = a.harness == "tether" and "thinking" in capabilities(model)
+        can_think = a.harness == "tether" and a.provider == "ollama" and "thinking" in capabilities(model)
         print(f"{model}: context {ctx}, thinking {'yes' if can_think else 'no (attempts 0/1 and 2/3 differ only in steps/temperature)'}", flush=True)
         for kind in a.kinds.split(","):
             for tier in range(1, a.max_tier + 1):
@@ -174,7 +184,7 @@ def main():
                     prev = [r for r in done if (r.get("harness", "tether"), r["model"], r["task"], r["attempt"]) == (a.harness, model, task.id, attempt)]
                     rec = prev[0] if prev else None
                     if rec is None:
-                        rec = run_attempt(model, task, attempt, ctx, a.out, a.tether_bin, a.wall, can_think, a.harness)
+                        rec = run_attempt(model, task, attempt, ctx, a.out, a.tether_bin, a.wall, can_think, a.harness, a.provider)
                         done.append(rec)
                         with log.open("a") as fh:
                             fh.write(json.dumps(rec) + "\n")
