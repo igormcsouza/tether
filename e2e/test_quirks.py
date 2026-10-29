@@ -73,7 +73,7 @@ def test_named_json_tool_call_in_text_is_understood(tether: Tether, chaos) -> No
     chaos.script({"text": reply}, ("done", "ok"))
     r = tether.run("view", "--tools", "edit")
     assert tether.events(r["id"])[0] != "nudge" and r["status"] == "COMPLETED"
-    assert "edit" in tether.tool_outputs(r["id"])[0].lower()
+    assert "a.txt" in tether.tool_outputs(r["id"])[0]  # it ran `edit view a.txt`
 
 
 def test_edit_call_written_with_file_and_content_writes_the_file(tether: Tether, chaos) -> None:
