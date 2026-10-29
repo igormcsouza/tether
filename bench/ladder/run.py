@@ -25,6 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # where a model lives: tether model prefix, OpenAI-compatible base URL, env var with the key
 PROVIDERS = {
     "ollama": {"prefix": "ollama/", "base": "http://localhost:11435/v1", "key": ""},
+    "opencode": {"prefix": "opencode/", "base": "", "key": ""},  # OpenCode's own free models: only its own client may call them
     "nvidia": {"prefix": "nvidia/", "base": "https://integrate.api.nvidia.com/v1", "key": "NVIDIA_API_KEY"},
 }
 
@@ -83,6 +84,9 @@ def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think,
         return [sys.executable, f"{HERE}/../naive_agent.py", "--base-url", prov["base"], "--key-env", prov["key"],
                 "--model", model, "--ws", str(ws), "--goal", task.goal, "--max-turns", str(steps),
                 "--result-file", str(rd / "result.txt"), "--stats-file", str(rd / "stats.json")]
+    if harness == "opencode" and provider == "opencode":  # built-in provider, no config needed
+        return [os.path.expanduser("~/.claude/skills/gru/sandbox.sh"), str(ws), "--", "opencode", "run", "--auto",
+                "--format", "json", "-m", f"opencode/{model}", task.goal]
     if harness == "opencode":
         opts = {"baseURL": prov["base"]}
         if prov["key"]:
