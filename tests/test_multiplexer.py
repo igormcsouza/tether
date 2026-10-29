@@ -232,3 +232,23 @@ def test_edit_written_as_flags_becomes_the_real_command() -> None:
     assert normalize_cmd("edit --path a.py --line_start 3").startswith(
         "edit --path"
     )  # edit.py's own
+
+
+def test_done_with_a_stdin_flag_passes_the_text_as_stdin() -> None:
+    """qwen2.5-coder writes `done --stdin 'answer'`; the answer must not start with `--stdin`."""
+    from tether.multiplexer import split_heredoc
+
+    assert split_heredoc(normalize_cmd("done --stdin 'all done\\nbye'")) == (
+        "done",
+        "all done\nbye",
+    )
+    assert split_heredoc(normalize_cmd('done --stdin "ok"')) == ("done", "ok")
+    assert split_heredoc(normalize_cmd("done --ask --stdin 'which file?'")) == (
+        "done --ask",
+        "which file?",
+    )
+    assert split_heredoc(normalize_cmd("done --stdin plain")) == ("done", "plain")
+    assert normalize_cmd("done 'x'") == "done 'x'"
+    assert normalize_cmd("done") == "done"
+    cmd = normalize_cmd("edit --file 'a.py' --method 'create' --content 'z'")
+    assert split_heredoc(cmd) == ("edit write a.py", "z")
