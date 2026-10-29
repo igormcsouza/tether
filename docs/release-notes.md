@@ -2,9 +2,9 @@
 
 ## Unreleased
 
-## v0.2.10 (2026-10-28)
+### Docs
 
-The run-killers found in the v0.2.9 Polyglot breakdown on `qwen3.5:9b`: provider outages, a window filled by thinking, noisy test output and big test files re-read slice by slice. The full 34x2 benchmark for this release is published separately once it finishes.
+- A **Coding Ladder** section: tether's own benchmark (24 coding tasks, 6 tiers of difficulty × write, bugfix, plan and review), how to run it, and the baseline for `qwen3.5:9b`, `qwen3.5:4b` and `qwen2.5-coder:7b` with charts and what to expect. `bench/ladder/` holds the tasks, graders (`validate.py` proves them), the runner (`--harness` compares tether with a bare tool loop and opencode), the snapshot and the chart script.
 
 ### Fixes
 
@@ -13,6 +13,13 @@ The run-killers found in the v0.2.9 Polyglot breakdown on `qwen3.5:9b`: provider
 - `edit --file 'p' --content 'c'` (and `--path`, `--action view|write`) is understood as `edit write p` / `edit view p`: models that remember `edit` as a function with named parameters no longer loop on the usage error (`qwen2.5-coder:7b`). Appending is not rewritten.
 - A model that writes its tool call as plain-text JSON, `{"name": "edit", "arguments": {...}}`, is understood like a native call to that tool (the registry answers with its JIT usage) instead of getting a "use act" reminder 30 times in a row. Found on `qwen2.5-coder:7b`, which failed every coding-ladder task because of it.
 - A model that finishes the work but never calls `done` now gets there: after a change, a passing test run (`pytest`, `unittest`, `go test`, `cargo test`, `npm test`, ...) appends a one-line `[NUDGE]` telling it the tests pass and it may call `done`; and if the session ends at the step cap or on a stall with that run still the last thing that changed the picture, the harness re-runs it and, when it still passes, ends the session `COMPLETED` ("Finished by the harness"). Your own `--verify` gates keep priority and now also apply at the step cap (#177).
+
+## v0.2.10 (2026-10-28)
+
+The run-killers found in the v0.2.9 Polyglot breakdown on `qwen3.5:9b`: provider outages, a window filled by thinking, noisy test output and big test files re-read slice by slice. The full 34x2 benchmark for this release is published separately once it finishes.
+
+### Fixes
+
 - When a long observation is cut (head + tail), the tests defined in the cut middle are listed as `name:line` (up to 30): a test file too big for the window is no longer re-read slice after slice, which cost 54% of the steps in max-step runs (#170).
 - A session that ends without `done` (max steps or stall) now says what it did: the last change commands and, with `--verify`, whether the gates pass or which one fails. Status and exit code are unchanged (#171).
 - Ollama: when the prompt leaves less than 3072 tokens of `num_ctx` free, the request sends `think=false`. A thinking reply no longer fills the window and comes back empty (45 of 53 empty baseline turns sat at the window limit). An explicit `--param think=...` still wins (#183).
