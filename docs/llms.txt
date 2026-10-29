@@ -24,6 +24,8 @@
 ## Concepts
 - [Architecture and literature](https://igormcsouza.github.io/tether/architecture/): why it works this way.
 - [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/): Polyglot-Python results and how to reproduce them.
+- [Coding Ladder](https://igormcsouza.github.io/tether/ladder/): tether's own coding benchmark, 24 tasks in 6 tiers, and how to run it.
+- [Coding Ladder results](https://igormcsouza.github.io/tether/ladder/results/): where qwen3.5:9b, qwen3.5:4b and qwen2.5-coder:7b stop, tether against a bare tool loop, and what to expect.
 - [Glossary](https://igormcsouza.github.io/tether/glossary/): the terms used across the docs.
 
 ## Reference
