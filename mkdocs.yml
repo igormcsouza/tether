@@ -110,6 +110,8 @@ nav:
   - Concepts:
       - Architecture and Literature: architecture.md
       - Benchmark Evaluation: benchmarks.md
+      - Coding Ladder: ladder/index.md
+      - Coding Ladder results: ladder/results.md
       - Glossary: glossary.md
   - Reference:
       - reference/index.md

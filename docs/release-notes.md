@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Docs
+
+- A **Coding Ladder** section: tether's own benchmark (24 coding tasks, 6 tiers of difficulty × write, bugfix, plan and review), how to run it, and the baseline for `qwen3.5:9b`, `qwen3.5:4b` and `qwen2.5-coder:7b` with charts and what to expect. `bench/ladder/` holds the tasks, graders (`validate.py` proves them), the runner (`--harness` compares tether with a bare tool loop and opencode), the snapshot and the chart script.
+
 ## v0.2.10 (2026-10-28)
 
 The run-killers found in the v0.2.9 Polyglot breakdown on `qwen3.5:9b`: provider outages, a window filled by thinking, noisy test output and big test files re-read slice by slice. The full 34x2 benchmark for this release is published separately once it finishes.
