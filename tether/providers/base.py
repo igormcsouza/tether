@@ -366,11 +366,26 @@ def _dialect_act_text(text: str) -> ActionCall | None:
     return None
 
 
+def _dialect_named_json(text: str) -> ActionCall | None:
+    """`{"name": "edit", "arguments": {...}}` as plain text (qwen2.5-coder)."""
+    start, end = text.find("{"), text.rfind("}")
+    if not 0 <= start < end:
+        return None
+    try:
+        payload = json.loads(text[start : end + 1])
+    except ValueError:
+        return None
+    if not isinstance(payload, dict) or not isinstance(payload.get("arguments"), dict):
+        return None
+    return action_from_tool_call(payload.get("name"), payload["arguments"])
+
+
 DIALECTS: list[Dialect] = [
     _dialect_tool_call_json,
     _dialect_raw_json,
     _dialect_parameter_tags,
     _dialect_act_text,
+    _dialect_named_json,
 ]
 
 
