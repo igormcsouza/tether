@@ -1,4 +1,4 @@
-"""#199 point a repeated read of an unchanged live file at the earlier output; #136 escalate loops."""
+"""#199 point a repeated live read at the earlier output; #136 escalate loops."""
 
 from __future__ import annotations
 
