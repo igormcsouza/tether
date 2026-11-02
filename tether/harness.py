@@ -750,6 +750,7 @@ class Harness:
         stalls = 0
         read_file: str | None = None
         read_run = 0
+        loop_run = 0
 
         # Quiet nudge state
         changed = False
@@ -941,11 +942,18 @@ class Harness:
                     )
                     continue
                 if is_loop_stall:
-                    stall_msg = (
-                        f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input in the "
-                        "previous step. Do not repeat the same command—inspect the prior output, "
-                        'adjust your arguments, or call `act("done", stdin="...")` to finish.'
-                    )
+                    loop_run += 1
+                    if loop_run == 1:
+                        stall_msg = (
+                            f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input in the "
+                            "previous step. Do not repeat the same command—inspect the prior output, "
+                            'adjust your arguments, or call `act("done", stdin="...")` to finish.'
+                        )
+                    else:
+                        stall_msg = (
+                            f"[LOOP DETECTED] You already have this output above. Use it now: answer, "
+                            f"or make the next edit. Repeating `{cmd.strip()}` changes nothing."
+                        )
                     self.store.add_turn(
                         session_id=session_id,
                         step=step,
@@ -970,6 +978,7 @@ class Harness:
                     )
                     continue
                 last_action_sig = action_sig
+                loop_run = 0
                 action_history.append(action_sig)
 
                 t_tool_start = time.perf_counter()
