@@ -1,6 +1,8 @@
 # Release Notes
 
-## Unreleased
+## v0.2.11 (2026-11-02)
+
+Fewer wasted steps on repeats (#199, #136), plus the Coding Ladder docs and bench tooling (OpenRouter and NVIDIA providers, opencode `--standalone`). The effect on step counts is not benchmarked yet.
 
 ### Docs
 
