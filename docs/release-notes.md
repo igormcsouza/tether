@@ -8,6 +8,8 @@
 
 ### Fixes
 
+- A model that repeats a read of a file that has not changed, while the earlier output is still in the prompt, is no longer given the same text again: the step answers with a one-line pointer (`[obs_3 unchanged] ... its output is above`), once per observation (#199). If the model asks again, the read runs. An edit, or a bash command naming the file, makes it readable again.
+- The `[LOOP DETECTED]` text is now direct from the second consecutive repeat (`You already have this output above. Use it now: answer, or make the next edit.`); the first keeps the old wording (#136). Stall counting and the `Stalled` end are unchanged.
 - `done --stdin 'answer'` (and `done --ask --stdin 'question'`) now passes the text as the answer instead of returning it with a literal `--stdin` in front; `edit --file p --method create --content c` is read like `--action`. Both are habits of `qwen2.5-coder:7b`.
 - A session that only reads (a review, a plan, a question) and keeps re-reading no longer ends empty at its first stall: with no change made, the harness adds one `[WRAP UP]` turn asking for the final answer from what it has read, and that answer completes the session. A second stall still ends it `Stalled`. Found in the Coding Ladder: review and plan tasks were stopped by the stall guard before the file was written.
 - `edit --file 'p' --content 'c'` (and `--path`, `--action view|write`) is understood as `edit write p` / `edit view p`: models that remember `edit` as a function with named parameters no longer loop on the usage error (`qwen2.5-coder:7b`). Appending is not rewritten.

@@ -122,13 +122,13 @@ def _read_range(cmd: str, path: str) -> str:
     return " ".join(a for a in _argv(cmd) if a not in skip)
 
 
-def live_reads(
+def _live_map(
     turns: list[TurnRecord], observations: dict[str, ObservationRecord], root: str = ""
-) -> set[str]:
-    """Obs ids of the latest unedited read per path+range (max MAX_LIVE_READS); never folded.
+) -> dict[tuple[str, str], str]:
+    """Build a map of (normalized path, range) -> obs_id for live reads, oldest first.
 
-    Folding a still-valid read makes small models re-read it forever. A path stops being live
-    on `edit write|replace` or on any non-read bash command that mentions it (sed -i, tee, ...).
+    A path stops being live on `edit write|replace` or on any non-read bash command
+    that mentions it (sed -i, tee, ...).
     """
     live: dict[tuple[str, str], str] = {}  # (normalized path, cmd) -> obs_id, oldest first
 
@@ -155,7 +155,37 @@ def live_reads(
                     if k[0] not in tokens
                     and os.path.relpath(k[0], root or ".") not in turn.tool_cmd
                 }
-    return set(list(live.values())[-MAX_LIVE_READS:])
+    return live
+
+
+def live_reads(
+    turns: list[TurnRecord], observations: dict[str, ObservationRecord], root: str = ""
+) -> set[str]:
+    """Obs ids of the latest unedited read per path+range (max MAX_LIVE_READS); never folded.
+
+    Folding a still-valid read makes small models re-read it forever. A path stops being live
+    on `edit write|replace` or on any non-read bash command that mentions it (sed -i, tee, ...).
+    """
+    return set(list(_live_map(turns, observations, root).values())[-MAX_LIVE_READS:])
+
+
+def live_read_obs(
+    cmd: str, turns: list[TurnRecord], observations: dict[str, ObservationRecord], root: str = ""
+) -> str | None:
+    """Obs id of the live read that `cmd` repeats, else None (edited, folded or never read).
+
+    A read is "live" if the file hasn't been edited since and its output is still in the prompt.
+    Only the most recent MAX_LIVE_READS live reads are considered.
+    """
+    path = _read_path(cmd)
+    if path is None:
+        return None
+    key = (os.path.normpath(os.path.join(root, path)), _read_range(cmd, path))
+    live = _live_map(turns, observations, root)
+    recent = list(live.values())[-MAX_LIVE_READS:]
+    if key not in live or live[key] not in recent:
+        return None
+    return live[key]
 
 
 def tombstone(obs: ObservationRecord, mem_enabled: bool = True) -> str:
