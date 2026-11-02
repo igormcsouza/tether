@@ -56,3 +56,9 @@ Polyglot-Python (34 ex, 2 trials, `--poly-verify`, default 8192 ctx) pass rate o
 - [ ] Re-run tether on qwen3.5:4b to check the -3 gap vs the bare loop (n=1 so far), paired seeds.
 - [ ] Add round 2 to bench/ladder/baseline (snapshot.py), charts (charts.py MODELS is hard-coded to the 3 local models: make it data-driven), and a "hosted models" section in docs/ladder/results.md; PR + merge.
 - [ ] Issues #199 (repeat reads), #200 (tier 4), #183 (empty thinking turns) remain open; v0.2.11 candidates.
+
+## Progress log: #199/#136 (2026-11-02)
+- Branch fix/136-199-repeat-reads (3 code commits + tests). opencode `--standalone` is the fix for the NVIDIA 401 (the `opencode serve` process lacked the env key); bench/ladder/run.py has `--provider openrouter` and passes `--standalone`.
+- Card A (#136, 10 lines) on tether+nemotron: FAILED, stalled after 13 steps / 82k prompt tokens, reads only, 4 cycle_stall (this is #199 itself). Retried on opencode+nemotron: correct diff first try. Card B (#199) on tether+nemotron: COMPLETED, 29 steps, 205k prompt tokens, diff to spec, I fixed lint and golden. Tests 419 pass, cov 100%.
+- Tether friction: card A stall with no edit at 13 steps (model reads ranges of one file instead of editing). Not yet filed.
+- NOT measured yet: repeat-read share / steps with the change. Proposed: paired seeds, tether before vs after, qwen3.5:9b, ladder tiers 3-6 (12 tasks) x3 seeds, bench/compare.py.

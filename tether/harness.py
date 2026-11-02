@@ -13,7 +13,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from tether.context import ACT_TOOL_SCHEMA, ContextAssembler, estimate_messages_tokens
+from tether.context import (
+    ACT_TOOL_SCHEMA,
+    ContextAssembler,
+    estimate_messages_tokens,
+    live_read_obs,
+)
 from tether.decorator import ToolSpec, build_tool_spec
 from tether.multiplexer import Multiplexer, normalize_cmd
 from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
@@ -748,8 +753,10 @@ class Harness:
 
         # Stall guard state: warnings since the last change, reads of one file in a row
         stalls = 0
+        pointed: set[str] = set()
         read_file: str | None = None
         read_run = 0
+        loop_run = 0
 
         # Quiet nudge state
         changed = False
@@ -941,11 +948,20 @@ class Harness:
                     )
                     continue
                 if is_loop_stall:
-                    stall_msg = (
-                        f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input in the "
-                        "previous step. Do not repeat the same command—inspect the prior output, "
-                        'adjust your arguments, or call `act("done", stdin="...")` to finish.'
-                    )
+                    loop_run += 1
+                    if loop_run == 1:
+                        stall_msg = (
+                            f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input "
+                            "in the previous step. Do not repeat the same command—inspect the "
+                            "prior output, adjust your arguments, or call "
+                            '`act("done", stdin="...")` to finish.'
+                        )
+                    else:
+                        stall_msg = (
+                            "[LOOP DETECTED] You already have this output above. Use it now: "
+                            f"answer, or make the next edit. Repeating `{cmd.strip()}` changes "
+                            "nothing."
+                        )
                     self.store.add_turn(
                         session_id=session_id,
                         step=step,
@@ -970,7 +986,23 @@ class Harness:
                     )
                     continue
                 last_action_sig = action_sig
+                loop_run = 0
                 action_history.append(action_sig)
+
+                # #199: a repeated read of an unchanged live file is answered with a pointer, once
+                live_obs = live_read_obs(cmd, turns, observations, str(sandbox.workspace_root))
+                if live_obs and live_obs not in pointed:
+                    pointed.add(live_obs)
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=(
+                            f"[{live_obs} unchanged] `{cmd.strip()}` was already read and the "
+                            "file has not changed since; its output is above. Use it."
+                        ),
+                    )
+                    continue
 
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)

@@ -186,9 +186,10 @@ def test_two_ranges_of_one_file_stay_visible_together(tether: Tether, chaos) -> 
     )
     tether.run("read", "--tools", "edit", "--max-steps", "8")
     prompt = _last_prompt(chaos)
-    # #99: the latest read of EACH range stays unfolded; the older repeats fold
-    assert "[obs_4 folded" not in prompt and "[obs_5 folded" not in prompt
-    assert "[obs_1 folded" in prompt and "[obs_3 folded" in prompt
+    # #99: the latest read of EACH range stays unfolded; #199: the first repeat of a live read
+    # runs nothing (a pointer), the second one runs and replaces it
+    assert "[obs_2 folded" not in prompt and "[obs_3 folded" not in prompt
+    assert "[obs_1 folded" in prompt
 
 
 def test_mem_pins_survive_and_search_finds_them(tether: Tether, chaos) -> None:
