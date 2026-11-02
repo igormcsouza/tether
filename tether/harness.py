@@ -110,12 +110,25 @@ def tests_green(cmd: str, out: str) -> bool:
     return bool(_TEST_CMD.search(cmd) and _TESTS_GREEN.search(out) and not _TESTS_RED.search(out))
 
 
+_NOISE = re.compile(r"&>\s*/dev/null|\d?>>?\s*/dev/null|\d>&\d")
+_STATEMENT = re.compile(r"""(?:"[^"]*"|'[^']*'|[^;&|\n"'])+""")
+_BLOCK_OPEN = re.compile(r"^(?:(?:do|then|else|elif|if|while|until)\b\s*)+")
+_BLOCK_END = ("done", "fi", "esac")
+_QUIET_ONLY = _QUIET | {"echo", "pwd", "which", "cd", "true", "stat", "diff", "sort", "tree"}
+
+
 def is_quiet(cmd: str) -> bool:
-    """Return True if `cmd` is a read-only or verification command."""
+    """True if every statement of `cmd` is read-only or a verification (`for f in x; do cat`)."""
+    stmts = []
+    for stmt in _STATEMENT.findall(_NOISE.sub("", cmd)):
+        stmt = _BLOCK_OPEN.sub("", stmt.strip().removeprefix("bash "))
+        if stmt and stmt not in _BLOCK_END and not stmt.startswith("for "):
+            stmts.append(stmt)
+    return bool(stmts) and all(_quiet_statement(s) for s in stmts)
+
+
+def _quiet_statement(cmd: str) -> bool:
     argv = cmd.split()
-    argv = argv[1:] if argv[:1] == ["bash"] else argv
-    if not argv:
-        return False
     if argv[0] in _AWK:
         return not _AWK_WRITES.search(cmd)
     if _WRITES.search(cmd):
@@ -126,7 +139,7 @@ def is_quiet(cmd: str) -> bool:
         and argv[2:3] in (["unittest"], ["pytest"], ["doctest"])
     ):
         return True
-    if argv[0] in _QUIET:
+    if argv[0] in _QUIET_ONLY:
         return True
     if argv[:2] == ["edit", "view"]:
         return True

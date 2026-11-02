@@ -167,7 +167,7 @@ def test_quiet_stretch_after_a_change_gets_one_done_nudge(tether: Tether, chaos)
 def test_old_observations_fold_to_a_recallable_tombstone(tether: Tether, chaos) -> None:
     big = "python3 -c \"print('x'*3000)\""
     chaos.script(f"bash {big}", "bash echo 1", "bash echo 2", "bash echo 3", ("done", "ok"))
-    tether.run("fold", "--tools", "bash,mem", "--max-steps", "8")
+    tether.run("fold", "--tools", "bash,mem", "--max-steps", "8", "--context-tokens", "1500")
     prompt = _last_prompt(chaos)
     assert "[obs_1 folded" in prompt and "mem recall obs_1" in prompt
 
@@ -184,7 +184,7 @@ def test_two_ranges_of_one_file_stay_visible_together(tether: Tether, chaos) -> 
         "edit view big.py --lines 1:40",
         ("done", "ok"),
     )
-    tether.run("read", "--tools", "edit", "--max-steps", "8")
+    tether.run("read", "--tools", "edit", "--max-steps", "8", "--context-tokens", "1500")
     prompt = _last_prompt(chaos)
     # #99: the latest read of EACH range stays unfolded; #199: the first repeat of a live read
     # runs nothing (a pointer), the second one runs and replaces it

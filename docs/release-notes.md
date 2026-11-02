@@ -1,5 +1,14 @@
 # Release Notes
 
+## Unreleased
+
+Two causes of the read-forever loop found in the Coding Ladder on `mistral-large-4` (plan-5, bugfix-5 and bugfix-6 used all 30 steps without writing a file).
+
+### Fixes
+
+- A read-only command is now judged statement by statement: `for f in a b; do cat "$f"; done`, `cat a 2>/dev/null; ls` and `find / -name x 2>/dev/null | head` count as reading, not as a change. Before, they reset the stall counters, never reached the "make the edit or call `done`" nudge and could end a read-only session as `COMPLETED` through the green-test gate. A command that also writes (`cat a; rm a`, `cat a > b`) is still a change.
+- Observations are folded after `fold_observations_after` turns only once the history fills more than half of `max_context_tokens`. While there is room the model keeps what it read, instead of dumping the same files again. The budget fold under pressure is unchanged.
+
 ## v0.2.11 (2026-11-02)
 
 Fewer wasted steps on repeats (#199, #136), plus the Coding Ladder docs and bench tooling (OpenRouter and NVIDIA providers, opencode `--standalone`). The effect on step counts is not benchmarked yet.

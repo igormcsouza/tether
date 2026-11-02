@@ -163,6 +163,8 @@ def _text(tmp_path: Path, cmds: list[str], step: int = 20, **kw: Any) -> str:
         observations[obs.id] = obs
         store.add_turn(rec.id, step=i, role="assistant", content="", tool_cmd=cmd)
         store.add_turn(rec.id, step=i, role="tool", content=obs.raw_output, obs_id=obs.id)
+    # a window these fill to ~60%: past half (age folding on), under 75% (no budget fold)
+    kw.setdefault("max_context_tokens", int((len(cmds) * 145 + 93) / 0.62))
     msgs = ContextAssembler(fold_after_turns=2, **kw).assemble(
         system_prompt="S",
         goal=rec.goal,

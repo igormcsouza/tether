@@ -45,6 +45,7 @@ async def test_explicit_done_and_ephemeral_folding_with_rag(tmp_path: Path) -> N
         db_path=tmp_path / "tether.db",
         tools=["mem", fetch_docs],
         fold_observations_after=2,
+        max_context_tokens=450,  # small window: age folding applies
         provider=provider,
     )
     session = await harness.run("What is the enterprise rate limit?")
