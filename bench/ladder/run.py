@@ -27,6 +27,7 @@ PROVIDERS = {
     "ollama": {"prefix": "ollama/", "base": "http://localhost:11435/v1", "key": ""},
     "opencode": {"prefix": "opencode/", "base": "", "key": ""},  # OpenCode's own free models: only its own client may call them
     "nvidia": {"prefix": "nvidia/", "base": "https://integrate.api.nvidia.com/v1", "key": "NVIDIA_API_KEY"},
+    "openrouter": {"prefix": "openrouter/", "base": "https://openrouter.ai/api/v1", "key": "OPENROUTER_API_KEY"},
 }
 
 ATTEMPTS = [  # (think, extra params, max_steps, fold_after)
@@ -94,7 +95,7 @@ def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think,
         (Path(ws) / "opencode.json").write_text(json.dumps({"$schema": "https://opencode.ai/config.json", "provider": {
             provider: {"npm": "@ai-sdk/openai-compatible", "name": provider, "options": opts,
                        "models": {model: {"name": model, "limit": {"context": ctx, "output": 8192}}}}}}))
-        return [os.path.expanduser("~/.claude/skills/gru/sandbox.sh"), str(ws), "--", "opencode", "run", "--auto",
+        return [os.path.expanduser("~/.claude/skills/gru/sandbox.sh"), str(ws), "--", "opencode", "run", "--standalone", "--auto",
                 "--format", "json", "-m", f"{provider}/{model}", task.goal]
     if harness == "claude":  # Claude Code, print mode, the model alias is the part after cc/
         return ["env", "-u", "ANTHROPIC_API_KEY", "claude", "-p", task.goal, "--model", model.removeprefix("cc/"),
