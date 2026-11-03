@@ -52,3 +52,5 @@ Polyglot-Python (34 ex, 2 trials, `--poly-verify`, default 8192 ctx) pass rate o
 - Hypothesis "model cannot see its own written file" FALSIFIED: all 241 file writes are bash heredocs (`cat > f <<EOF`), whose full text is in the replayed tool call. No `edit write` use at all.
 - bowling t0 (16k): every test fails with `ValueError: cannot roll` at bowling.py:14 (its own code, shown in the output); model never opens bowling.py, greps the test file 20 times (4 identical repeats, 5 empty greps). Misdiagnosis, not missing information.
 - Untested leftover levers: treat `cat f | grep ...` pipelines as reads in live_read_obs (answers an exact repeat with a pointer, saves tokens, no steering); fair plain baseline.
+
+2026-11-03 pipe-read dedupe (cat f | grep ... counts as a read; repeat gets the #199 pointer): bowling x2 on qwen3.5 8192: 0.129 / 0.065, FAILED at 30 steps, test-file reads 14 / 17 (baseline ~16), pointer fired 1 / 4 times and the model went on regardless. No change in behaviour: stopped per rule. Parked as local commit on branch feat/pipe-read-dedupe (worktree .claude/worktrees/pipe-reads), not for merge. Run dir hosted-out/pipe-dedupe-bowling.
