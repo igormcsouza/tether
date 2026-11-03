@@ -142,6 +142,26 @@ def test_resolve_provider_declared(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert provider.base_url.startswith("http://groq.local/v1")
 
 
+@pytest.mark.parametrize("prefix", ["openrouter", "vllm", "groq", "deepseek"])
+def test_declared_entry_wins_over_an_openai_alias(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prefix: str
+) -> None:
+    """`openrouter/...` used to ignore the user's providers.yaml entry and call api.openai.com."""
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    _write(monkeypatch, tmp_path, f"{prefix}:\n  kind: openai\n  base_url: http://own.local/v1\n")
+    provider = resolve_provider(f"{prefix}/m")
+    assert isinstance(provider, OpenAIProvider) and provider.base_url.startswith("http://own.local")
+
+
+def test_alias_without_a_declared_entry_still_uses_openai_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://env.local/v1")
+    _write(monkeypatch, tmp_path, "other:\n  kind: openai\n")
+    provider = resolve_provider("openrouter/m")
+    assert isinstance(provider, OpenAIProvider) and provider.base_url.startswith("http://env.local")
+
+
 def test_resolve_provider_unknown_still_raises(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
