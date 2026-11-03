@@ -780,7 +780,7 @@ class Harness:
         changes: list[str] = []
         green_cmd: str | None = None  # last passing test run, cleared by any later change
         green_nudged = False
-        wrapped_up = False  # one last "answer now" turn before a read-only stall ends the session
+        wrapped_up = False  # one last "finish now" turn before a stall ends the session
         quiet_run = 0
         steps_hinted = False
 
@@ -914,26 +914,31 @@ class Harness:
 
                 if is_loop_stall or cycle or range_stall:
                     stalls += 1
-                    if stalls >= STALL_ABORT and not changed and not wrapped_up:
-                        # Read-only work (a review, a plan, an answer) that keeps re-reading: give
-                        # the model one more turn to answer from what it has instead of ending empty
-                        wrapped_up, stalls = True, STALL_ABORT - 1
-                        self.store.add_turn(
-                            session_id=session_id,
-                            step=step,
-                            role="tool",
-                            content=(
-                                "[WRAP UP] You keep re-reading. Stop and answer now from what you "
-                                'have read: call `act("done", stdin="<your final answer>")`.'
-                            ),
-                        )
-                        continue
                     if stalls >= STALL_ABORT:
                         # A model that fixed the task and then only repeats its check has
                         # finished: if every verify gate passes after a change, say so (#163)
                         finished = await self._finished_by_harness(
                             sandbox, verify_commands, green_cmd, changed
                         )
+                        if not finished and not wrapped_up:
+                            # Work that keeps re-reading (a review, a plan, a file it already
+                            # wrote) gets one more turn to deliver instead of ending empty
+                            wrapped_up, stalls = True, STALL_ABORT - 1
+                            self.store.add_turn(
+                                session_id=session_id,
+                                step=step,
+                                role="tool",
+                                content=(
+                                    "[WRAP UP] You keep repeating a command. If the task is "
+                                    'complete, call `act("done", stdin="<what is done and what '
+                                    'is left>")`.'
+                                    if changed
+                                    else "[WRAP UP] You keep re-reading. Stop and answer now from "
+                                    "what you have read: write the file the task asked for, if "
+                                    'any, then call `act("done", stdin="<your final answer>")`.'
+                                ),
+                            )
+                            continue
                         self.store.update_session(
                             session_id,
                             status="COMPLETED" if finished else "FAILED",
@@ -969,14 +974,15 @@ class Harness:
                     if loop_run == 1:
                         stall_msg = (
                             f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input "
-                            "in the previous step. Do not repeat the same command—inspect the "
-                            "prior output, adjust your arguments, or call "
+                            "in the previous step. Do not repeat it: use the output above, then "
+                            "do what the task asked (write or edit the file) or call "
                             '`act("done", stdin="...")` to finish.'
                         )
                     else:
                         stall_msg = (
                             "[LOOP DETECTED] You already have this output above. Use it now: "
-                            f"answer, or make the next edit. Repeating `{cmd.strip()}` changes "
+                            "write the file the task asked for or make the next edit, then call "
+                            f'`act("done", stdin="...")`. Repeating `{cmd.strip()}` changes '
                             "nothing."
                         )
                     self.store.add_turn(

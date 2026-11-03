@@ -1008,7 +1008,7 @@ async def test_read_only_stall_gets_one_wrap_up_turn_and_can_finish(tmp_path: Pa
     run = await _run_commands(tmp_path, ["ls"] * 5)  # 4 loop warnings, then `done` with "ok"
     assert run.session.status == "COMPLETED" and run.session.result == "ok"
     sent = "\n".join(m["content"] for m in run.provider.recorded_calls[5])
-    assert "[WRAP UP]" in sent
+    assert "[WRAP UP]" in sent and "the file the task asked for" in sent
 
 
 async def test_ignoring_the_wrap_up_still_ends_stalled(tmp_path: Path) -> None:
@@ -1018,7 +1018,16 @@ async def test_ignoring_the_wrap_up_still_ends_stalled(tmp_path: Path) -> None:
     assert sent.count("[WRAP UP]") == 1  # once per session
 
 
-async def test_no_wrap_up_after_a_change(tmp_path: Path) -> None:
-    run = await _run_commands(tmp_path, ["ping a.com", *["ls"] * 8])
+async def test_changed_session_stall_gets_a_wrap_up_that_can_finish(tmp_path: Path) -> None:
+    """A session that wrote its file and keeps `cat`-ing it is asked to call done."""
+    run = await _run_commands(tmp_path, ["ping a.com", *["ls"] * 5])
+    assert run.session.status == "COMPLETED" and run.session.result == "ok"
+    sent = "\n".join(m["content"] for m in run.provider.recorded_calls[6])
+    assert "[WRAP UP]" in sent and "what is done and what is left" in sent
+
+
+async def test_ignoring_the_wrap_up_after_a_change_still_ends_stalled(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, ["ping a.com", *["ls"] * 12])
+    assert run.session.status == "FAILED" and (run.session.result or "").startswith("Stalled")
     sent = "\n".join(m["content"] for c in run.provider.recorded_calls for m in c)
-    assert "[WRAP UP]" not in sent and (run.session.result or "").startswith("Stalled")
+    assert sent.count("[WRAP UP]") == 1
