@@ -62,3 +62,9 @@ Polyglot-Python (34 ex, 2 trials, `--poly-verify`, default 8192 ctx) pass rate o
 - Card A (#136, 10 lines) on tether+nemotron: FAILED, stalled after 13 steps / 82k prompt tokens, reads only, 4 cycle_stall (this is #199 itself). Retried on opencode+nemotron: correct diff first try. Card B (#199) on tether+nemotron: COMPLETED, 29 steps, 205k prompt tokens, diff to spec, I fixed lint and golden. Tests 419 pass, cov 100%.
 - Tether friction: card A stall with no edit at 13 steps (model reads ranges of one file instead of editing). Not yet filed.
 - NOT measured yet: repeat-read share / steps with the change. Proposed: paired seeds, tether before vs after, qwen3.5:9b, ladder tiers 3-6 (12 tasks) x3 seeds, bench/compare.py.
+
+## Progress log: v0.2.12 (2026-11-02)
+- Mistral-large-4 ladder (NVIDIA, 24 tasks once): tether scored like qwen. Root causes found in traces: `is_quiet` judged only the first word (loops, /dev/null, cd&&unittest counted as changes, so stall counters and nudges never fired), and age folding at K=2 made the model re-read what it had just read. Fixes #206. Auto K is #205 (v0.3).
+- A/B qwen3.5:9b, ladder subset (10 failing tasks) x3 reps: mean 0.661 (v0.2.11) vs 0.690 (new), passes 11 vs 10, prompt tokens +15%, no clamp. Mistral 5 zero cells: 0/5 -> 3/5 (n=1; plan-4/6 hit the 1200 s wall cap, API slow). Run dirs hosted-out/qwen-{A,B}-r{1,2,3}, qf-tether-mistralai_*.
+- #207: #132 repeating quiet nudge, #133 steps-left hint (unit+e2e only, no bench). Released v0.2.12 (#206, #207, #208; PyPI workflow success).
+- Lessons: bench table mixed builds and counted wall-cap timeouts as 0.00 (invalid); `--single` never stops a failing kind. TODO: ladder stop-after-2-fails mode, timeout shown as timeout not 0, rerun all 14 mistral failures with a 30 min cap, file the card A stall as an issue (PO OK needed).
