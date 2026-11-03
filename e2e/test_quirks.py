@@ -160,8 +160,26 @@ def test_quiet_stretch_after_a_change_gets_one_done_nudge(tether: Tether, chaos)
         ("done", "ok"),
     )
     r = tether.run("nudge me", "--tools", "edit", "--max-steps", "12")
-    nudged = [o for o in tether.tool_outputs(r["id"]) if "[NUDGE]" in o]
+    nudged = [o for o in tether.tool_outputs(r["id"]) if "[NUDGE] No file changes" in o]
     assert len(nudged) == 1 and r["status"] == "COMPLETED"
+
+
+def test_quiet_stretch_nudge_repeats_while_the_model_keeps_reading(tether: Tether, chaos) -> None:
+    chaos.script(
+        ("edit write a.txt", "x\n"),
+        *[f"bash echo {i}" for i in range(16)],
+        ("done", "ok"),
+    )
+    r = tether.run("repeat nudge", "--tools", "edit,bash", "--max-steps", "30")  # #132: steps 7, 15
+    nudged = [o for o in tether.tool_outputs(r["id"]) if "[NUDGE] No file changes for" in o]
+    assert len(nudged) == 2 and r["status"] == "COMPLETED"
+
+
+def test_model_is_told_once_how_many_steps_are_left(tether: Tether, chaos) -> None:
+    chaos.script(*[f"bash echo {i}" for i in range(9)], ("done", "ok"))
+    r = tether.run("budget", "--tools", "bash", "--max-steps", "12")  # #133: hint at step 9
+    left = [o for o in tether.tool_outputs(r["id"]) if "steps left" in o]
+    assert len(left) == 1 and "3 steps left" in left[0]
 
 
 def test_old_observations_fold_to_a_recallable_tombstone(tether: Tether, chaos) -> None:

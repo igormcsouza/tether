@@ -76,8 +76,12 @@ def read_target(cmd: str) -> str | None:
     return None
 
 
-# Quiet nudge: one-shot completion hint after N consecutive read-only/verification steps
+# Quiet nudge: completion hint after N consecutive read-only/verification steps following a
+# change, repeated every QUIET_NUDGE_EVERY quiet steps (#132)
 QUIET_NUDGE_STEPS = 6
+QUIET_NUDGE_EVERY = 8
+# Steps-left hint (#133): once, at 75% of the step limit, for limits of at least 8 steps
+STEPS_LEFT_MIN = 8
 # Exploration nudge (#127): same hint when nothing was changed yet, first at 12 quiet steps,
 # then every 8 more while the model keeps only reading.
 EXPLORE_NUDGE_STEPS = 12
@@ -778,7 +782,7 @@ class Harness:
         green_nudged = False
         wrapped_up = False  # one last "answer now" turn before a read-only stall ends the session
         quiet_run = 0
-        nudged = False
+        steps_hinted = False
 
         try:
             for step in range(step_start + 1, step_limit + 1):
@@ -1180,7 +1184,6 @@ class Harness:
                     changed = True
                     changes.append(cmd)
                     quiet_run = 0
-                    nudged = False
                     stalls = 0
                     green_cmd = None
                     green_nudged = False
@@ -1194,13 +1197,17 @@ class Harness:
                             'call `act("done", stdin="...")` now.'
                         )
                         green_nudged = True
-                # One-shot nudge after QUIET_NUDGE_STEPS quiet steps following a change
-                if changed and not nudged and quiet_run >= QUIET_NUDGE_STEPS:
+                # Nudge after QUIET_NUDGE_STEPS quiet steps following a change, then every
+                # QUIET_NUDGE_EVERY more while the model keeps only reading or verifying
+                if (
+                    changed
+                    and quiet_run >= QUIET_NUDGE_STEPS
+                    and (quiet_run - QUIET_NUDGE_STEPS) % QUIET_NUDGE_EVERY == 0
+                ):
                     out += (
-                        f"\n[NUDGE] No file changes for {QUIET_NUDGE_STEPS} steps. If the task is "
+                        f"\n[NUDGE] No file changes for {quiet_run} steps. If the task is "
                         "complete call `done`; otherwise make your next edit."
                     )
-                    nudged = True
                 elif (
                     not changed
                     and quiet_run >= EXPLORE_NUDGE_STEPS
@@ -1210,6 +1217,13 @@ class Harness:
                         f"\n[NUDGE] No file changes in {quiet_run} steps. Make your edit now, or "
                         "call `done` with what you found."
                     )
+
+                if not steps_hinted and step_limit >= STEPS_LEFT_MIN and step >= step_limit * 0.75:
+                    out += (
+                        f"\n[NUDGE] {step_limit - step} steps left. Finish the current edit, then "
+                        "call `done` with what is done and what is left."
+                    )
+                    steps_hinted = True
 
                 # Record tool observation in SQLite (auto-chunks into FTS5)
                 obs = self.store.add_observation(

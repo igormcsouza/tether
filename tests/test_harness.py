@@ -466,7 +466,9 @@ class _InboxOnCall(FakeScriptedProvider):
         return await super().generate(messages, tools)
 
 
-async def _run_commands(tmp_path: Path, cmds: list[str], inbox_at: int = 0) -> _Run:
+async def _run_commands(
+    tmp_path: Path, cmds: list[str], inbox_at: int = 0, max_steps: int = 15
+) -> _Run:
     calls: list[str] = []
 
     @tool(name="ping", description="Ping a host")
@@ -483,7 +485,7 @@ async def _run_commands(tmp_path: Path, cmds: list[str], inbox_at: int = 0) -> _
     )
     db = tmp_path / "tether.db"
     provider = _InboxOnCall(script, SQLiteStore(db_path=db), inbox_at)
-    harness = Harness(db_path=db, tools=[ping], provider=provider)
+    harness = Harness(db_path=db, tools=[ping], provider=provider, max_steps=max_steps)
     rec = harness.create_session("goal")
     provider.session_id = rec.id
     session = await harness.execute_session(rec.id)
@@ -720,6 +722,43 @@ async def test_explore_nudge_is_off_after_a_change(
     run = await _run_commands(tmp_path, ["ping a.com", "bash cat f0", "bash cat f1", "bash cat f2"])
     obs = run.provider.store.list_observations(run.session.id)
     assert not [o for o in obs.values() if "[NUDGE] No file changes in" in o.raw_output]
+
+
+async def test_quiet_nudge_repeats_while_the_model_keeps_verifying(tmp_path: Path) -> None:
+    # #132: change, then 22 distinct reads: hints at quiet steps 6, 14 and 22 (steps 7, 15, 23)
+    run = await _run_commands(
+        tmp_path, ["ping a.com"] + [f"bash cat f{i}" for i in range(22)], max_steps=30
+    )
+    obs = run.provider.store.list_observations(run.session.id)
+    assert [o.step for o in obs.values() if "[NUDGE] No file changes for" in o.raw_output] == [
+        7,
+        15,
+        23,
+    ]
+
+
+async def test_quiet_nudge_restarts_after_the_next_change(tmp_path: Path) -> None:
+    cmds = ["ping a.com", *[f"bash cat f{i}" for i in range(6)], "ping b.com"]
+    cmds += [f"bash cat g{i}" for i in range(6)]
+    run = await _run_commands(tmp_path, cmds, max_steps=20)
+    obs = run.provider.store.list_observations(run.session.id)
+    nudges = [o.step for o in obs.values() if "[NUDGE] No file changes for" in o.raw_output]
+    assert nudges == [7, 14]
+
+
+async def test_steps_left_hint_once_at_three_quarters(tmp_path: Path) -> None:
+    # #133: max_steps=12, hint exactly once at step 9 (3 steps left)
+    run = await _run_commands(tmp_path, [f"ping h{i}.com" for i in range(11)], max_steps=12)
+    obs = run.provider.store.list_observations(run.session.id)
+    hints = [o for o in obs.values() if "steps left" in o.raw_output]
+    assert [o.step for o in hints] == [9]
+    assert "3 steps left" in hints[0].raw_output and "call `done`" in hints[0].raw_output
+
+
+async def test_no_steps_left_hint_for_tiny_budgets(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, [f"ping h{i}.com" for i in range(6)], max_steps=7)
+    obs = run.provider.store.list_observations(run.session.id)
+    assert not [o for o in obs.values() if "steps left" in o.raw_output]
 
 
 @pytest.mark.parametrize(

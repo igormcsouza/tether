@@ -7,6 +7,8 @@ Two causes of the read-forever loop found in the Coding Ladder on `mistral-large
 ### Fixes
 
 - A read-only command is now judged statement by statement: `for f in a b; do cat "$f"; done`, `cat a 2>/dev/null; ls` and `find / -name x 2>/dev/null | head` count as reading, not as a change. Before, they reset the stall counters, never reached the "make the edit or call `done`" nudge and could end a read-only session as `COMPLETED` through the green-test gate. A command that also writes (`cat a; rm a`, `cat a > b`) is still a change.
+- The "call `done` or make your next edit" nudge after a change now repeats every 8 quiet steps (6, 14, 22, ...) until the next change, instead of firing once and going silent (#132).
+- Once per session, at 75% of `max_steps` (for limits of 8 or more), one line tells the model how many steps are left and to finish the current edit and call `done` (#133). 0 static prompt tokens.
 - Observations are folded after `fold_observations_after` turns only once the history fills more than half of `max_context_tokens`. While there is room the model keeps what it read, instead of dumping the same files again. The budget fold under pressure is unchanged.
 
 ## v0.2.11 (2026-11-02)
