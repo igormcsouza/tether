@@ -5,7 +5,7 @@
 
 Per (model, kind) the tiers are tried in order. A tier gets up to 4 attempts, stopping at the first
 pass: (0) thinking off, (1) thinking on, (2) thinking on + more steps/later folding, (3) thinking
-off, temperature 0, more steps/later folding. A tier that fails all 4 ends that kind's ladder: the
+off, temperature 0, more steps/later folding. A tier that fails all its attempts (`--attempts`, default 4) ends that kind's ladder: the
 model never sees the next tier. Resumable: finished attempts are read back from results.jsonl.
 """
 import argparse
@@ -172,6 +172,8 @@ def main():
     ap.add_argument("--tether-bin", default="tether")
     ap.add_argument("--provider", default="ollama", choices=list(PROVIDERS), help="where the model is served")
     ap.add_argument("--harness", default="tether", choices=["tether", "naive", "opencode", "claude"])
+    ap.add_argument("--attempts", type=int, default=len(ATTEMPTS), choices=range(1, len(ATTEMPTS) + 1),
+                    help="attempts per tier before that kind's ladder stops (default all; 2 = stop after two fails)")
     ap.add_argument("--single", action="store_true", help="every task once (attempt 0), no stopping: the harness comparison")
     a = ap.parse_args()
     ctxs = dict(x.split("=") for x in a.ctx.split(",") if x)
@@ -188,7 +190,7 @@ def main():
                 if a.tasks and task.id not in a.tasks.split(","):
                     continue
                 passed = False
-                for attempt in range(1 if a.single else len(ATTEMPTS)):
+                for attempt in range(1 if a.single else a.attempts):
                     prev = [r for r in done if (r.get("harness", "tether"), r["model"], r["task"], r["attempt"]) == (a.harness, model, task.id, attempt)]
                     rec = prev[0] if prev else None
                     if rec is None:
@@ -197,7 +199,7 @@ def main():
                         with log.open("a") as fh:
                             fh.write(json.dumps(rec) + "\n")
                     print(f"{a.harness:8} {model:18} {task.id:9} a{attempt} think={int(rec['think'])} score={rec['score']:.2f} "
-                          f"{'PASS' if rec['pass'] else 'fail'} {rec['wall_s']}s steps={rec.get('steps')} {rec['detail']}", flush=True)
+                          f"{'PASS' if rec['pass'] else 'TIMEOUT' if rec['run_status'] == 'timeout' else 'fail'} {rec['wall_s']}s steps={rec.get('steps')} {rec['detail']}", flush=True)
                     if rec["pass"]:
                         passed = True
                         break
