@@ -19,21 +19,20 @@ Most agent frameworks treat the context window as a dumping ground. Before your 
 Tether is built the other way round:
 
 - **One tool, not thirty.** The model sees a single `act(cmd, stdin)` schema. Everything else (`bash`, `edit`, `web`, `mem`, your own functions) is a command behind it, off by default. Fixed framing is under 150 tokens.
-- **Old output folds away.** Tool results stay in full for two turns, then become a one-line tombstone. Everything lives in SQLite and comes back by search.
+- **Old output folds away.** Tool results stay in full while there is room; once the history passes half the context, results older than two turns become a one-line tombstone. Everything lives in SQLite and comes back by search.
 - **The envelope is deterministic.** Sandboxing, state, step limits, verification gates and termination are plain code. The model only reasons; it is never trusted with safety.
 
 ## How well does it work
 
-Tether answers to one number: how many real coding exercises a small local model finishes. On the Polyglot-Python set (Aider's 34 Python exercises, graded by each exercise's own tests), `qwen3.5:9b` through Ollama, 12-exercise fast set, 2 trials each:
+Tether answers to one number: how many real coding exercises a small local model finishes. On the Polyglot-Python set (Aider's 34 Python exercises, graded by each exercise's own tests), `qwen3.5:9b` through Ollama at the default 8192-token context, 2 trials each (68 runs):
 
-| | v0.2.7 | v0.2.8 |
+| | before v0.2.10 | v0.2.10 |
 |---|---|---|
-| Passes | 10 of 24 | 11 of 24 |
-| Mean score | 0.741 | 0.756 |
-| "Tool call cut off" hints | 29 | 2 |
-| Steps that did nothing | 19% | 2.2% |
+| Passes | 35 of 68 (51.5%) | 35 of 68 (51.5%) |
+| Mean score | 0.718 | 0.763 |
+| Runs killed by the wall cap | 11 | 14 |
 
-One run is noisy (about 0.1), so read the pass count and the failure breakdown, not one decimal. Method, how to reproduce it and fair-comparison rules: [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/). Every change that touches model-visible behaviour has to move this number or leave it alone.
+The target is 80% by v0.3.0, so this is the number every change is ranked by, and it is flat since v0.2.10. One run is noisy (about 0.1), so read the pass count and the failure breakdown, not one decimal. The second yardstick is the [Coding Ladder](https://igormcsouza.github.io/tether/ladder/): 24 tasks, 6 tiers of difficulty times write, bugfix, plan and review, which shows how far up a model climbs and what stops it. Method, how to reproduce both and fair-comparison rules: [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/).
 
 ## How it works
 

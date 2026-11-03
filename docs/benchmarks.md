@@ -10,21 +10,19 @@ The **Polyglot-Python** set: the 34 Python exercises of Aider's [polyglot benchm
 
 - **Graded by the exercise's own tests.** The test file is restored before grading, so editing it cannot pass.
 - **Score** is the fraction of tests that pass (so a partial solution counts); a *pass* is every test green.
-- The **fast set** is 12 exercises that mix passes, partial results and failures, run twice each (24 runs): about an hour and a half on one local GPU, enough to see a change without waiting for the full 34.
+- The **full set** is all 34 exercises run twice (68 runs), about five hours on one local GPU. The **fast set** is 12 exercises that mix passes, partial results and failures, run twice each (24 runs): about an hour and a half, enough to see a large change.
 
 ## Latest result
 
-`qwen3.5:9b` through Ollama (`num_ctx` 8192), fast set, 2 trials per exercise:
+`qwen3.5:9b` through Ollama (`num_ctx` 8192), all 34 exercises, 2 trials per exercise (68 runs):
 
-| | v0.2.7 | v0.2.8 |
+| | before v0.2.10 | v0.2.10 |
 |---|---|---|
-| Passes | 10 of 24 | 11 of 24 |
-| Mean score | 0.741 | 0.756 |
-| Mean score, runs without a provider outage | 0.772 | 0.775 |
-| "Tool call cut off" hints (runs that had one) | 29 (9) | 2 (1) |
-| Steps that did nothing (no tool call) | 19% | 2.2% |
+| Passes | 35 of 68 (51.5%) | 35 of 68 (51.5%) |
+| Mean score | 0.718 | 0.763 |
+| Runs killed by the wall cap | 11 | 14 |
 
-What changed between them: tether now keeps a quarter of the context window free for the model's reply. Before, a prompt that filled the window cut off the longest tool calls (file writes), and every cut cost a step. Pass counts and scores moved little; the waste almost disappeared.
+The pass count did not move: the extra score comes from partial solutions, and the runs that still fail mostly lose their time to long empty turns of a few thousand tokens. The [Coding Ladder](ladder/index.md) is the second yardstick: it shows where a model stops climbing instead of one pass rate.
 
 **Read these numbers with care.** One run of one exercise is noisy (about 0.1 of score), 24 runs are a small sample, and a local server can time out for reasons that have nothing to do with tether. A difference smaller than that noise is not a result. The *failure breakdown* in the report keeps provider outages and timeouts apart from harness outcomes (`max_steps`, `stalled`, `wrong_answer`, `worker_error`) so you can see which one moved.
 
