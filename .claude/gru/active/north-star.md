@@ -46,3 +46,9 @@ Polyglot-Python (34 ex, 2 trials, `--poly-verify`, default 8192 ctx) pass rate o
 - Across 68 v0.2.13 runs: fail runs rewrite file 4.8x, pass runs 2.5x, zero `edit replace` in any run. The 9B model does not patch.
 - Code parked as local commit 0c8c51f on branch feat/dedupe-test-failures (not pushed, not for merge).
 - Rule learned: stop after 2 fails in a row and rethink (memory stop-on-two-fails).
+
+2026-11-03 (loop root cause, analysis only; release v0.2.14 prepared on release/v0.2.14 worktree, NOT pushed, PO said hold)
+- 68 v0.2.13 runs: failed runs 24.5 steps, 7.4 test-file reads, 5.4 exact command repeats; passed 12.3 / 1.6 / 3.1. Loops track failure but follow being stuck.
+- Hypothesis "model cannot see its own written file" FALSIFIED: all 241 file writes are bash heredocs (`cat > f <<EOF`), whose full text is in the replayed tool call. No `edit write` use at all.
+- bowling t0 (16k): every test fails with `ValueError: cannot roll` at bowling.py:14 (its own code, shown in the output); model never opens bowling.py, greps the test file 20 times (4 identical repeats, 5 empty greps). Misdiagnosis, not missing information.
+- Untested leftover levers: treat `cat f | grep ...` pipelines as reads in live_read_obs (answers an exact repeat with a pointer, saves tokens, no steering); fair plain baseline.
