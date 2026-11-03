@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixes
+
+- A session that already changed something and then repeats one command (typically `cat review.md` after writing the review) now gets the same one-shot `[WRAP UP]` turn as a read-only session, asking it to call `done` with what is done and what is left. Before, it ended `FAILED` as `Stalled` with its work on disk and no answer. The read-only wrap-up now also says to write the file the task asked for, if any, before `done`. A session whose `verify` gates or green test already pass is still finished by the harness without the extra turn. Found in the Coding Ladder: 9 of 16 stalled `qwen3.5:9b` runs ended this way.
+
 ## v0.2.12 (2026-11-02)
 
 Two causes of the read-forever loop found in the Coding Ladder on `mistral-large-4` (plan-5, bugfix-5 and bugfix-6 used all 30 steps without writing a file), plus a repeating completion nudge and a steps-left hint (#132, #133). On `qwen3.5:9b` (ladder subset, 3 repeats) scores are unchanged and prompt tokens rise about 15%; on `mistral-large-4` three of five formerly zero cells now score (n=1). Not benchmarked on Polyglot-Python.

@@ -127,6 +127,16 @@ def test_read_only_stall_is_asked_for_its_answer_once(tether: Tether, chaos) -> 
     assert "[WRAP UP]" in "\n".join(tether.tool_outputs(r["id"]))
 
 
+def test_stall_after_a_change_is_asked_to_call_done_once(tether: Tether, chaos) -> None:
+    # Ladder review-3: the review was written, then `cat review.md` forever, never `done`
+    chaos.script(
+        "bash echo review > review.md", *(["bash cat review.md"] * 5), ("done", "reviewed")
+    )
+    r = tether.run("review", "--tools", "bash")
+    assert r["status"] == "COMPLETED" and r["result"] == "reviewed"
+    assert "[WRAP UP] You keep repeating" in "\n".join(tether.tool_outputs(r["id"]))
+
+
 def test_done_with_a_stdin_flag_keeps_the_answer_clean(tether: Tether, chaos) -> None:
     chaos.script("done --stdin 'final answer'")
     r = tether.run("answer")
