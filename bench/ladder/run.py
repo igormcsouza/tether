@@ -166,6 +166,7 @@ def main():
     ap.add_argument("--models", default="qwen3.5:9b")
     ap.add_argument("--ctx", default="", help="model=tokens,... context window per model")
     ap.add_argument("--kinds", default=",".join(T.KINDS))
+    ap.add_argument("--tasks", default="", help="only these task ids, e.g. plan-5,bugfix-5")
     ap.add_argument("--max-tier", type=int, default=6)
     ap.add_argument("--wall", type=int, default=1200, help="seconds per attempt")
     ap.add_argument("--tether-bin", default="tether")
@@ -184,6 +185,8 @@ def main():
         for kind in a.kinds.split(","):
             for tier in range(1, a.max_tier + 1):
                 task = T.TASKS[f"{kind}-{tier}"]
+                if a.tasks and task.id not in a.tasks.split(","):
+                    continue
                 passed = False
                 for attempt in range(1 if a.single else len(ATTEMPTS)):
                     prev = [r for r in done if (r.get("harness", "tether"), r["model"], r["task"], r["attempt"]) == (a.harness, model, task.id, attempt)]
