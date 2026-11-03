@@ -288,6 +288,11 @@ class ContextAssembler:
         self._static_system_prompt = "\n".join(parts)
         return self._static_system_prompt
 
+    def _turn_chars(self, turn: TurnRecord, observations: dict[str, ObservationRecord]) -> int:
+        obs = observations.get(turn.obs_id or "")
+        body = min(obs.char_len, self.active_char_cap) if obs else len(turn.content or "")
+        return body + len(turn.tool_cmd or "") + len(turn.tool_stdin or "")
+
     def assemble(
         self,
         *,
@@ -315,6 +320,13 @@ class ContextAssembler:
                 pending = None
 
         keep = live_reads(turns, observations, self.workspace_root)
+        # While the whole history fits in half the window nothing is folded by age: the model keeps
+        # what it read instead of reading it again. The budget below still folds under pressure.
+        used = (
+            estimate_messages_tokens(messages, [ACT_TOOL_SCHEMA])
+            + sum(self._turn_chars(t, observations) for t in turns) // 4
+        )
+        fold_by_age = used > self.max_context_tokens // 2
         # Live (unfolded) observation messages, oldest first: shrunk in place under budget pressure.
         live: list[tuple[dict[str, Any], ObservationRecord, str]] = []
         for turn in turns:
@@ -324,7 +336,8 @@ class ContextAssembler:
                 obs = observations[turn.obs_id]
                 age = current_step - turn.step
                 if (
-                    age >= self.fold_after_turns
+                    fold_by_age
+                    and age >= self.fold_after_turns
                     and obs.char_len >= self.fold_char_threshold
                     and obs.id not in keep
                     and not obs.cmd.startswith("mem recall")  # asked for; re-folding loops (#86)

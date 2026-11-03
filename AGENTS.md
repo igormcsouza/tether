@@ -66,7 +66,7 @@ Reviewers and the Team Leader cite the failing line when they reject a change.
 - Auto-generated `--help` output must remain ultra-compact (**≤ 60 tokens** per command).
 
 ### Rule 5: Ephemeral Observation Folding
-- Raw tool outputs (`bash` stdout/stderr, `web` page contents, `--help` outputs) are stored in full inside SQLite (`observations` table) and kept in the active LLM prompt for $K$ turns (default $K = 2$).
+- Raw tool outputs (`bash` stdout/stderr, `web` page contents, `--help` outputs) are stored in full inside SQLite (`observations` table) and kept in the active LLM prompt for $K$ turns (default $K = 2$) once the history fills more than half of `max_context_tokens`; below that nothing is folded by age.
 - After $K$ turns, the `ContextAssembler` deterministically folds old observations into a 1-line tombstone:
   ```text
   [obs_3 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_3` to expand]

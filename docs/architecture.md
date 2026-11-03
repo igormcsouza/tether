@@ -56,7 +56,7 @@ In *"MemGPT: Towards LLMs as Operating Systems"*, Packer et al. (2023) introduce
 Tether implements a deterministic three-tier memory hierarchy backed by `.tether/tether.db` (SQLite WAL + FTS5):
 
 1. **Head + Tail L1 Active Elision**: Even within the active $K=2$ turn window, if a command emits an oversized output (more than a third of `max_context_tokens` in chars, at least 2,400), `ContextAssembler` keeps the first 60% of the cap (headers/command summary) + the last 40% (stack trace/exit status) and elides the middle with a pointer to `mem recall <obs_id>`.
-2. **Ephemeral $K$-Turn Folding**: Once an observation ages past $K=2$ steps, it is folded into a single-line tombstone:
+2. **Ephemeral $K$-Turn Folding**: Once the history fills more than half of `max_context_tokens` (below that nothing is folded by age), an observation older than $K=2$ steps is folded into a single-line tombstone:
    ```text
    [obs_1 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_1` or `mem search <query>`]
    ```
