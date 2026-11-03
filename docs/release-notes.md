@@ -8,7 +8,7 @@
 
 ## v0.2.13 (2026-11-03)
 
-The stall guard now gives a session that already wrote its file one more turn to call `done`, and the loop warnings tell the model to write the file instead of answering in chat. Found by running the Coding Ladder on `qwen3.5:9b` at 16k context (17 tasks reached, 14 passed; the two tier-4 stops, write-4 and bugfix-4, are the model's limit, #200). Not benchmarked on Polyglot-Python before the release; that run follows.
+The stall guard now gives a session that already wrote its file one more turn to call `done`, and the loop warnings tell the model to write the file instead of answering in chat. Found by running the Coding Ladder on `qwen3.5:9b` at 16k context (17 tasks reached, 14 passed; the two tier-4 stops, write-4 and bugfix-4, are the model's limit, #200). Polyglot-Python (34 exercises, 2 trials, default 8192 context): 37 of 68 passed (54.4%) against 35 of 68 on v0.2.10, mean score 0.783 against 0.763; the difference is inside the noise (paired score delta +0.020, 95% interval -0.060 to +0.101).
 
 ### Fixes
 
