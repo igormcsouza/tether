@@ -1,8 +1,8 @@
 # Release Notes
 
-## Unreleased
+## v0.2.12 (2026-11-02)
 
-Two causes of the read-forever loop found in the Coding Ladder on `mistral-large-4` (plan-5, bugfix-5 and bugfix-6 used all 30 steps without writing a file).
+Two causes of the read-forever loop found in the Coding Ladder on `mistral-large-4` (plan-5, bugfix-5 and bugfix-6 used all 30 steps without writing a file), plus a repeating completion nudge and a steps-left hint (#132, #133). On `qwen3.5:9b` (ladder subset, 3 repeats) scores are unchanged and prompt tokens rise about 15%; on `mistral-large-4` three of five formerly zero cells now score (n=1). Not benchmarked on Polyglot-Python.
 
 ### Fixes
 
