@@ -10,6 +10,8 @@ Entries are grouped by what you see. For problems that are known and not fixed y
 
 **Cause.** The model repeated a command, cycled through the same few, or kept reading one file over shifting line ranges without editing. The guard ended the session early instead of spending every step.
 
+Before the guard ends the session it adds one `[WRAP UP]` turn: a session that only read is asked for its final answer, one that already changed something is asked to call `done` with what is done and what is left. If the model answers, the session completes normally; if it repeats the command again, the session ends `Stalled`.
+
 With `--verify` gates configured, a stall after a change whose gates all pass ends `COMPLETED` instead ("Finished by the harness"), because the work is verified.
 
 **Fix.** Make the goal name the file and the edit. Run `tether read <id> --steps` to see the loop. Try a stronger model. Raising `--max-steps` only repeats the loop.
