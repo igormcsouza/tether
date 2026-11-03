@@ -9,7 +9,7 @@ PAGE = (Path(__file__).resolve().parents[1] / "docs" / "benchmarks.md").read_tex
 
 def test_reports_the_polyglot_score_and_the_method() -> None:
     assert "Polyglot-Python" in PAGE and "polyglot-fast" in PAGE
-    assert "v0.2.10" in PAGE and "restored before grading" in PAGE
+    assert "v0.2.13" in PAGE and "restored before grading" in PAGE
 
 
 def test_shows_how_to_reproduce() -> None:
