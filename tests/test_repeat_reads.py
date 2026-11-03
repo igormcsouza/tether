@@ -74,6 +74,6 @@ async def test_escalated_loop_message_from_the_second_repeat(tmp_path: Path) -> 
     provider = FakeScriptedProvider(_script(["ping x"] * 4))
     harness = Harness(db_path=tmp_path / "tether.db", tools=[ping], provider=provider)
     await harness.run("goal")
-    assert "Do not repeat the same command" in _prompt(provider, 2)
+    assert "Do not repeat it" in _prompt(provider, 2)
     assert "already have this output above" not in _prompt(provider, 2)
     assert "already have this output above" in _prompt(provider, 3)

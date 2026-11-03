@@ -974,14 +974,15 @@ class Harness:
                     if loop_run == 1:
                         stall_msg = (
                             f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input "
-                            "in the previous step. Do not repeat the same command—inspect the "
-                            "prior output, adjust your arguments, or call "
+                            "in the previous step. Do not repeat it: use the output above, then "
+                            "do what the task asked (write or edit the file) or call "
                             '`act("done", stdin="...")` to finish.'
                         )
                     else:
                         stall_msg = (
                             "[LOOP DETECTED] You already have this output above. Use it now: "
-                            f"answer, or make the next edit. Repeating `{cmd.strip()}` changes "
+                            "write the file the task asked for or make the next edit, then call "
+                            f'`act("done", stdin="...")`. Repeating `{cmd.strip()}` changes '
                             "nothing."
                         )
                     self.store.add_turn(
