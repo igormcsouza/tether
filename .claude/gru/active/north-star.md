@@ -37,3 +37,12 @@ Polyglot-Python (34 ex, 2 trials, `--poly-verify`, default 8192 ctx) pass rate o
 - [ ] Patch A and B, update docs (providers.md, release notes), unit+e2e, PR with `north star:` line
 - [ ] bench/replay.py offline proof for B
 - [ ] One batched full 34x2 after A+B+C, report at once
+
+2026-11-03 (never-pass experiments, all negative, nothing shipped)
+- 11 exercises that never pass in v0.2.13 (bowling connect forth hangman poker pov react scale-generator sgf-parsing transpose wordy). Two failure classes: re-reading the 6-11k char test file in chunks (bowling 19 of 30 steps, forth, poker, react) and 3-6k token first-write thinking turns hitting the 600s wall cap (connect, pov, hangman, scale-generator, transpose).
+- Lever A, fold unittest failures with the same error into one block (-13% obs chars): 1 pass in 10 runs (hangman t1, baseline 0 of 2), bowling 0.45/0.39 unchanged. Run dir hosted-out/INCOMPLETE-fold-failures-10of22 (db nested in ws/ because --out was relative; use absolute --out).
+- Lever B, 16k context on bowling: 0.16/0.29, still 19 test greps. Context size is not the blocker. hosted-out/ctx16k-readheavy.
+- Lever C, nudge on 2nd full rewrite pointing to `edit replace`: forth 0.167/0.167 (baseline 0.8-0.93), nudge fired, model never used edit replace. hosted-out/rewrite-nudge-forth.
+- Across 68 v0.2.13 runs: fail runs rewrite file 4.8x, pass runs 2.5x, zero `edit replace` in any run. The 9B model does not patch.
+- Code parked as local commit 0c8c51f on branch feat/dedupe-test-failures (not pushed, not for merge).
+- Rule learned: stop after 2 fails in a row and rethink (memory stop-on-two-fails).
