@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixes
+
+- A `providers.yaml` entry named `openrouter`, `vllm`, `groq` or `deepseek` is now used. Before, those four prefixes always went to the OpenAI adapter and its `OPENAI_BASE_URL` (default `api.openai.com`), so a declared OpenRouter endpoint was silently ignored and every call failed with HTTP 400. Without a declared entry the prefixes behave as before.
+
 ## v0.2.13 (2026-11-03)
 
 The stall guard now gives a session that already wrote its file one more turn to call `done`, and the loop warnings tell the model to write the file instead of answering in chat. Found by running the Coding Ladder on `qwen3.5:9b` at 16k context (17 tasks reached, 14 passed; the two tier-4 stops, write-4 and bugfix-4, are the model's limit, #200). Not benchmarked on Polyglot-Python before the release; that run follows.

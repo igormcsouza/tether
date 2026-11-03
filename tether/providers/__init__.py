@@ -46,13 +46,15 @@ def resolve_provider(
         return _CUSTOM_PROVIDERS[provider](name)
     if provider == "ollama":
         return OllamaProvider(model_name=name, num_ctx=num_ctx, params=params)
-    if provider in ("openai", "openrouter", "vllm", "groq", "deepseek"):
+    if provider == "openai":
         return OpenAIProvider(model_name=name, params=params)
     if provider in ("anthropic", "claude"):
         return AnthropicProvider(model_name=name, params=params)
     declared = load_declared()
-    if provider in declared:
+    if provider in declared:  # a providers.yaml entry beats the OpenAI-compatible aliases below
         return build_declared(declared[provider], name, num_ctx=num_ctx, params=params)
+    if provider in ("openrouter", "vllm", "groq", "deepseek"):
+        return OpenAIProvider(model_name=name, params=params)
     supported = ["ollama/", "openai/", "anthropic/", *[f"{k}/" for k in _CUSTOM_PROVIDERS]]
     raise ValueError(
         f"Unknown model provider `{prefix}` in `{model}`. "

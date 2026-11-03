@@ -48,7 +48,7 @@ my-cli:                # kind: command - wrap a program that takes a prompt and 
 | `anthropic` | `base_url`, `api_key_env`, optional `timeout` |
 | `command` | `argv` (list), `reply` (JSON path), optional `stdin` template, optional `usage`, optional `timeout` (seconds, default 300) |
 
-- The built-in prefixes `ollama`, `openai`, `anthropic` and `claude` cannot be shadowed.
+- The built-in prefixes `ollama`, `openai`, `anthropic` and `claude` cannot be shadowed. The prefixes `openrouter`, `vllm`, `groq` and `deepseek` are aliases of `openai` (they use `OPENAI_API_KEY` and `OPENAI_BASE_URL`) until you declare an entry with that name; then your entry is used.
 - An invalid file raises `ValueError: providers.yaml: ...` naming the offending entry.
 
 ## Verify it works
