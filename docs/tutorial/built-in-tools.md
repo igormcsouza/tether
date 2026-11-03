@@ -61,7 +61,7 @@ act(cmd="web fetch https://www.sqlite.org/wal.html")
 
 ## `mem` — Pinned Scratchpad & BM25 Observation Recall
 
-When raw tool outputs age past $K=2$ turns, Tether folds them into 1-line tombstones (`[obs_3 folded: ...]`). The `mem` tool lets the agent pin key facts into active context or search/recall folded observations from SQLite FTS5:
+When raw tool outputs age past $K=2$ turns and the history fills more than half of the context budget, Tether folds them into 1-line tombstones (`[obs_3 folded: ...]`). The `mem` tool lets the agent pin key facts into active context or search/recall folded observations from SQLite FTS5:
 
 ```text
 # Pin a key-value fact into active working memory

@@ -9,7 +9,7 @@ Most agent frameworks drown small models in 3,000–8,000 tokens of nested JSON 
 - **One Action Primitive (`act`)**: Every tool call—built-in or custom—routes through a single POSIX-style command multiplexer `act(cmd: str, stdin: str | None = None)`.
 - **Zero Default Tool Bloat**: By default, zero optional tools are loaded. Only the mandatory `done` termination command is active until you opt in via `--tools`, `Harness(tools=[...])`, or a Skill.
 - **Progressive `--help` Disclosure**: The system prompt lists only a 1-line index per enabled tool (`<= 12 tokens`). Full usage signatures (`<= 60 tokens`) are revealed Just-In-Time (JIT) when the agent runs `<cmd> --help` or makes a syntax mistake.
-- **Bounded L1 Context + SQLite FTS5 RAG**: Active observations are capped with Head+Tail elision and folded into 1-line tombstones after $K=2$ turns, while every raw output is indexed into `.tether/tether.db` (SQLite WAL + FTS5 BM25) for sub-millisecond recall.
+- **Bounded L1 Context + SQLite FTS5 RAG**: Active observations are capped with Head+Tail elision and folded into 1-line tombstones once they are older than $K=2$ turns and the history fills more than half the context, while every raw output is indexed into `.tether/tether.db` (SQLite WAL + FTS5 BM25) for sub-millisecond recall.
 
 ---
 
