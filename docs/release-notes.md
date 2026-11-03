@@ -1,10 +1,16 @@
 # Release Notes
 
-## Unreleased
+## v0.2.13 (2026-11-03)
+
+The stall guard now gives a session that already wrote its file one more turn to call `done`, and the loop warnings tell the model to write the file instead of answering in chat. Found by running the Coding Ladder on `qwen3.5:9b` at 16k context (17 tasks reached, 14 passed; the two tier-4 stops, write-4 and bugfix-4, are the model's limit, #200). Not benchmarked on Polyglot-Python before the release; that run follows.
 
 ### Fixes
 
 - A session that already changed something and then repeats one command (typically `cat review.md` after writing the review) now gets the same one-shot `[WRAP UP]` turn as a read-only session, asking it to call `done` with what is done and what is left. Before, it ended `FAILED` as `Stalled` with its work on disk and no answer. The read-only wrap-up now also says to write the file the task asked for, if any, before `done`, and the `[LOOP DETECTED]` warnings say "write the file the task asked for or make the next edit" instead of "answer", which the model took as an invitation to reply in chat text instead of writing the file. On `qwen3.5:9b` (ladder review-3, 16k context, 20 runs each) the review file was written in 20 of 20 runs against 9 of 12 before; the model still often repeats `cat review.md` through the warnings and ends `Stalled` with its file on disk. A session whose `verify` gates or green test already pass is still finished by the harness without the extra turn. Found in the Coding Ladder: 9 of 16 stalled `qwen3.5:9b` runs ended this way.
+
+### Documentation
+
+- README and the benchmarks page report the full 34-exercise Polyglot-Python result for v0.2.10 (35 of 68, mean 0.763) instead of the v0.2.8 fast set, and link the Coding Ladder. The fold description now says results fold only once the history passes half the context (v0.2.12 behaviour).
 
 ## v0.2.12 (2026-11-02)
 
