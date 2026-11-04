@@ -67,3 +67,33 @@ def test_a_littlecoder_timeout_is_not_called_infra(run) -> None:
 def test_unknown_runner_still_fails_loudly(run) -> None:
     with pytest.raises(SystemExit):
         run.build_cmd("nope", "ollama/qwen3.5:9b", "poly-x", "g", "/ws", "/rd", "tether")
+
+
+async def test_one_runs_the_launcher_in_the_workspace_and_records_the_result(
+    run, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import argparse
+    import asyncio
+
+    lc = tmp_path / "lc"
+    (lc / "bin").mkdir(parents=True)
+    (lc / "bin" / "little-coder.mjs").write_text(
+        "import {writeFileSync} from 'node:fs';"
+        "writeFileSync('ran.txt', process.env.LITTLE_CODER_PERMISSION_MODE);"
+        "console.log('final answer');\n"
+    )
+    monkeypatch.setenv("LITTLE_CODER_DIR", str(lc))
+    out = tmp_path / "out"
+    out.mkdir()
+    args = argparse.Namespace(
+        out=str(out), force=False, redo_infra=False, tether_bin="tether", param=[],
+        seeded=False, context_tokens=None,
+    )  # fmt: skip
+    sem = {"ollama": asyncio.Semaphore(1)}
+    results: list = []
+    await run.one(sem, ("littlecoder", "ollama/qwen3.5:9b", "code-simple", 0), args, results)
+    info = results[0]
+    assert info["runner"] == "littlecoder" and info["exit"] == 0 and "db_error" not in info
+    assert (Path(info["dir"]) / "ws" / "ran.txt").read_text() == "accept-all"
+    assert "final answer" in (Path(info["dir"]) / "result.txt").read_text()
+    assert json.loads((Path(info["dir"]) / "models.json").read_text())["providers"]["ollama"]
