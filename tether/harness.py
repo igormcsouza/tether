@@ -182,7 +182,7 @@ class Harness:
 
     `output_schema` (JSON Schema subset) is a deterministic pre-`done` gate: the deliverable
     must be JSON matching it. `tether.api.failure_info` classifies FAILED results by the
-    prefixes "Verification gate", "Max steps", "Stalled", "Stopped" and "Worker error".
+    prefixes "Verification gate", "Max steps", "Stopped" and "Worker error".
     """
 
     def __init__(

@@ -31,6 +31,8 @@ Raw tool outputs stay in the prompt while there is room. Once the history fills 
 
 For a model that is stuck, the history itself is the problem: the failed commands and their output pull it toward the same step again. Stuck means either of two things: the same check command has failed 3 times with an edit between each run, or the stall guard ended its warnings (repeated command, a cycle of commands, or one file re-read over shifting ranges) and the one `[WRAP UP]` turn did not help. Either way the harness adds one `restart` turn and continues from that turn alone. The message holds the files as they are now (up to 3, capped), the last failing output (trimmed) and short counts of what was tried. Failed commands are not replayed, so the model sees a state to fix rather than a transcript to copy. A session restarts at most twice. If it is stuck again after the second restart, the harness stops spending steps and hands the task back: the session ends `WAITING_INPUT` (exit code `2`) with the same summary, headed `[STUCK ...]`, as its result. The caller, a person or a parent agent, can refine the request and `send` it back. Everything before the restart turn stays in SQLite, and the restart costs no static prompt tokens and no extra model call.
 
+Sources: Gumaan, *Feedback That Backfires* ([arXiv:2608.23651](https://arxiv.org/abs/2608.23651)), Kim et al., *Scaling Test-Time Compute for Agentic Coding* ([arXiv:2604.16529](https://arxiv.org/abs/2604.16529)) and Yang, *Why Retrying Fails* ([arXiv:2605.08563](https://arxiv.org/abs/2605.08563)).
+
 Example of the message (trimmed):
 
 ```text
