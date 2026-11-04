@@ -60,6 +60,27 @@ def steps_other(harness, rd):
         return None
 
 
+def claude_usage(text):
+    """Tool calls and tokens of a Claude Code stream-json run; each message id is counted once (its last event)."""
+    msgs = {}
+    for n, line in enumerate(text.splitlines()):
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(ev, dict) or ev.get("type") != "assistant":
+            continue
+        msg = ev.get("message") or {}
+        msgs[msg.get("id") or n] = msg
+    steps = prompt = completion = 0
+    for msg in msgs.values():
+        u = msg.get("usage") or {}
+        steps += sum(1 for b in msg.get("content") or [] if isinstance(b, dict) and b.get("type") == "tool_use")
+        prompt += sum(u.get(k) or 0 for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"))
+        completion += u.get("output_tokens") or 0
+    return {"steps": steps, "prompt_tokens": prompt, "completion_tokens": completion}
+
+
 def capabilities(model):
     """Ollama capabilities of a model (`thinking`, `tools`, ...); empty when unknown."""
     import httpx
@@ -107,10 +128,14 @@ def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think,
                        "models": {model: {"name": model, "limit": {"context": ctx, "output": 8192}}}}}}))
         return [os.path.expanduser("~/.claude/skills/gru/sandbox.sh"), str(ws), "--", "opencode", "run", "--standalone", "--auto",
                 "--format", "json", "-m", f"{provider}/{model}", goal or task.goal]
-    if harness == "claude":  # Claude Code, print mode, the model alias is the part after cc/
-        return ["env", "-u", "ANTHROPIC_API_KEY", "claude", "-p", goal or task.goal, "--model", model.removeprefix("cc/"),
-                "--permission-mode", "bypassPermissions", "--output-format", "json", "--setting-sources", "",
-                "--disable-slash-commands", "--no-session-persistence", "--max-budget-usd", "1"]
+    if harness == "claude":  # Claude Code, print mode, bypassed permissions: sandboxed to the workspace + its login dir
+        d = os.environ.get("LADDER_CLAUDE_DIR")
+        if not d:
+            raise SystemExit("claude harness: set LADDER_CLAUDE_DIR to a logged-in Claude config dir")
+        return ["env", f"GRU_SANDBOX_RW={d}", os.path.expanduser("~/.claude/skills/gru/sandbox.sh"), str(ws), "--",
+                "env", "-u", "ANTHROPIC_API_KEY", f"CLAUDE_CONFIG_DIR={d}", "claude", "-p", goal or task.goal,
+                "--model", model.removeprefix("cc/"), "--permission-mode", "bypassPermissions", "--output-format", "stream-json",
+                "--verbose", "--setting-sources", "", "--disable-slash-commands", "--no-session-persistence", "--max-budget-usd", "1"]
     raise SystemExit(f"unknown harness {harness}")
 
 
@@ -157,7 +182,10 @@ def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True
            "pass": score >= T.pass_threshold(task), "detail": detail}
     rec["harness"] = harness
     if harness != "tether":
-        rec.update(steps=steps_other(harness, rd), session_status="n/a")
+        if harness == "claude":  # read from stdout, which holds every event up to a kill
+            rec.update(session_status="n/a", **claude_usage((rd / "stdout.txt").read_text()))
+        else:
+            rec.update(steps=steps_other(harness, rd), session_status="n/a")
         return rec
     try:
         c = sqlite3.connect(str(rd / "t.db"))
