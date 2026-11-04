@@ -1,6 +1,6 @@
 """Benchmark runner. Matrix = runners x models x tasks x trials. Results appended to <out>/results.jsonl.
 
-runners: tether (CLI under test; --tether-bin selects a version), naive (control loop), claude (Claude Code baseline).
+runners: tether (CLI under test; --tether-bin selects a version), naive (control loop), claude (Claude Code baseline), littlecoder (little-coder agent headless; LITTLE_CODER_DIR selects its install).
 """
 import argparse
 import asyncio
@@ -50,8 +50,34 @@ def flags(tether_bin):
     return _HELP[tether_bin]
 
 
+def little_coder_env(rd, context_tokens=16384, model_id="qwen3.5:9b"):
+    """Env for little-coder: Ollama via the 11435 proxy, its state and models file kept inside the run dir."""
+    models, pi = f"{rd}/models.json", f"{rd}/pi-agent"
+    os.makedirs(pi, exist_ok=True)
+    prov = {"api": "openai-completions", "baseUrl": "http://localhost:11435/v1", "apiKey": "OLLAMA_API_KEY", "models": [{"id": model_id, "contextWindow": context_tokens or 16384}]}
+    with open(models, "w") as f:
+        json.dump({"providers": {"ollama": prov}}, f)
+    return {"LITTLE_CODER_MODELS_FILE": models, "PI_CODING_AGENT_DIR": pi, "OLLAMA_API_KEY": "noop",
+            "LITTLE_CODER_PERMISSION_MODE": "accept-all", "LITTLE_CODER_MAX_TURNS": "40", "PI_SKIP_VERSION_CHECK": "1"}
+
+
+def lc_dir():
+    return os.environ.get("LITTLE_CODER_DIR") or f"{HERE}/.little-coder"
+
+
+def sandboxed(cmd, ws, rd, sandbox):
+    """Wrap the littlecoder agent in the sandbox: it runs autonomously with accept-all permissions, so it may write only inside its run dir."""
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("littlecoder sandbox: `node` not found on PATH")
+    node_bin = os.path.dirname(node)
+    return ["env", f"GRU_SANDBOX_RW={rd}", f"GRU_SANDBOX_RO={lc_dir()}:{os.path.dirname(node_bin)}", sandbox, ws, "--", "env", f"PATH={node_bin}:/usr/bin:/bin", *cmd]
+
+
 def build_cmd(runner, model, task, goal, ws, rd, tether_bin, params=(), context_tokens=None):
     tools, steps, _ = cfg(task)
+    if runner == "littlecoder":
+        return ["node", f"{lc_dir()}/bin/little-coder.mjs", "--no-update-check", "-p", "--no-session", "--model", model, goal]
     if runner == "tether":
         h = flags(tether_bin)
         cmd = [tether_bin, "run", "--model", model, "--max-steps", str(steps), "--db", f"{rd}/t.db"]
@@ -84,7 +110,7 @@ def is_infra(r):
         except OSError:
             t = ""
         return bool(re.search(r"unavailable after|ProviderError|429|503|Not Found", t))
-    return r["runner"] != "claude" and r["run_status"] == "timeout" and (r.get("steps") or 0) <= 3
+    return r["runner"] in ("tether", "naive") and r["run_status"] == "timeout" and (r.get("steps") or 0) <= 3
 
 
 def tether_stats(db):
@@ -128,6 +154,10 @@ async def one(sem, rec, args, results):
         env = dict(os.environ, OLLAMA_HOST="http://localhost:11435", PYTHONDONTWRITEBYTECODE="1")
         if model.startswith("openai/"):  # old tether has no providers.yaml: route openai/ to NVIDIA's OpenAI-compatible API
             env.update(OPENAI_BASE_URL="https://integrate.api.nvidia.com/v1", OPENAI_API_KEY=os.environ.get("NVIDIA_API_KEY", ""))
+        if runner == "littlecoder":
+            env.update(little_coder_env(rd, args.context_tokens or 16384, model.split("/", 1)[1]))
+            if os.environ.get("LITTLE_CODER_SANDBOX"):  # opt-in: wrap the autonomous agent in the sandbox just before it starts
+                cmd = sandboxed(cmd, ws, rd, os.environ["LITTLE_CODER_SANDBOX"])
         t0 = time.time()
         p = await asyncio.create_subprocess_exec(*cmd, cwd=ws, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True)
         status = "ok"
@@ -160,7 +190,8 @@ async def one(sem, rec, args, results):
                 info["parse_error"] = True
         else:
             result = open(f"{rd}/result.txt").read() if os.path.exists(f"{rd}/result.txt") else out.decode(errors="replace")
-            info.update(tether_stats(f"{rd}/t.db"))
+            if runner == "tether":
+                info.update(tether_stats(f"{rd}/t.db"))
         if not os.path.exists(f"{rd}/result.txt"):
             open(f"{rd}/result.txt", "w").write(result)
         info.update(grade.grade(task, ws, result))
@@ -207,4 +238,5 @@ async def main():
     await asyncio.gather(*(one(sem, r, args, results) for r in recs))
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
