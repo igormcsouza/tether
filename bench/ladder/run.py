@@ -28,7 +28,6 @@ PROVIDERS = {
     "opencode": {"prefix": "opencode/", "base": "", "key": ""},  # OpenCode's own free models: only its own client may call them
     "nvidia": {"prefix": "nvidia/", "base": "https://integrate.api.nvidia.com/v1", "key": "NVIDIA_API_KEY"},
     "openrouter": {"prefix": "openrouter/", "base": "https://openrouter.ai/api/v1", "key": "OPENROUTER_API_KEY"},
-    "claude-softmedium": {"prefix": "claude-softmedium/", "base": "", "key": ""},  # tether command provider: the Claude CLI
 }
 
 ATTEMPTS = [  # (think, extra params, max_steps, fold_after)
@@ -101,7 +100,7 @@ def retry_goal(task, prev):
 
 
 def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think, params, steps, fold, provider="ollama", goal=None):
-    prov = PROVIDERS[provider]
+    prov = PROVIDERS.get(provider) or {"prefix": f"{provider}/", "base": "", "key": ""}  # any providers.yaml name: a tether prefix
     if harness == "tether":
         cmd = [tether_bin, "run", "--model", f"{prov['prefix']}{model}", "--tools", "edit,bash", "--max-steps", str(steps),
                "--context-tokens", str(ctx), "--db", str(rd / "t.db")]
@@ -209,7 +208,7 @@ def main():
     ap.add_argument("--max-tier", type=int, default=6)
     ap.add_argument("--wall", type=int, default=1200, help="seconds per attempt")
     ap.add_argument("--tether-bin", default="tether")
-    ap.add_argument("--provider", default="ollama", choices=list(PROVIDERS), help="where the model is served")
+    ap.add_argument("--provider", default="ollama", help="where the model is served: ollama, nvidia, openrouter, opencode, or any provider name declared in providers.yaml (used as the model prefix)")
     ap.add_argument("--harness", default="tether", choices=["tether", "naive", "opencode", "claude"])
     ap.add_argument("--attempts", type=int, default=len(ATTEMPTS), choices=range(1, len(ATTEMPTS) + 1),
                     help="attempts per tier before that kind's ladder stops (default all; 2 = stop after two fails)")
