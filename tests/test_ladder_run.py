@@ -81,3 +81,61 @@ def test_the_second_attempt_gets_the_first_attempts_record(
     assert [(t, a) for t, a, _ in seen] == [("write-1", 0), ("write-1", 1)]
     assert seen[0][2] is None
     assert seen[1][2] and seen[1][2]["detail"] == "2/8 hidden tests"
+
+
+def test_the_claude_harness_runs_sandboxed_with_the_configured_login(
+    lad, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LADDER_CLAUDE_DIR", "/cfg")
+    task = lad.T.TASKS["write-1"]
+    cmd = lad.harness_cmd(
+        "claude", "haiku", task, 8192, Path("/rd"), Path("/ws"), "tether",
+        False, False, [], 30, None, "ollama", goal="G",
+    )  # fmt: skip
+    assert cmd[0] == "env" and "GRU_SANDBOX_RW=/cfg" in cmd, "only its login dir is writable"
+    i = next(n for n, c in enumerate(cmd) if c.endswith("sandbox.sh"))
+    assert cmd[i + 1 : i + 3] == ["/ws", "--"], "the workspace is the sandbox root"
+    assert "CLAUDE_CONFIG_DIR=/cfg" in cmd
+    assert cmd[cmd.index("-u") + 1] == "ANTHROPIC_API_KEY"
+    assert cmd[cmd.index("-p") + 1] == "G" and cmd[cmd.index("--model") + 1] == "haiku"
+    assert "stream-json" in cmd and "--verbose" in cmd, "events survive a killed run"
+
+
+def test_the_claude_harness_needs_a_login_dir(lad, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LADDER_CLAUDE_DIR", raising=False)
+    task = lad.T.TASKS["write-1"]
+    with pytest.raises(SystemExit):
+        lad.harness_cmd(
+            "claude", "haiku", task, 8192, Path("/rd"), Path("/ws"), "tether",
+            False, False, [], 30, None, "ollama",
+        )  # fmt: skip
+
+
+def _event(kind: str, mid: str | None, blocks: list, usage: dict | None) -> str:
+    import json
+
+    msg = {"id": mid, "content": blocks, "usage": usage} if mid else {}
+    return json.dumps({"type": kind, "message": msg})
+
+
+def test_claude_usage_counts_tool_calls_and_tokens_from_stream_json(lad) -> None:
+    u1 = {"input_tokens": 2, "cache_creation_input_tokens": 5292,
+          "cache_read_input_tokens": 24743, "output_tokens": 16}  # fmt: skip
+    u2 = {"input_tokens": 2, "cache_creation_input_tokens": 2829,
+          "cache_read_input_tokens": 30035, "output_tokens": 1}  # fmt: skip
+    text = "\n".join(
+        [
+            "not json at all",
+            _event("assistant", "m1", [{"type": "tool_use"}], u1),
+            _event(
+                "assistant", "m1", [{"type": "tool_use"}], u1
+            ),  # same message, split in two events
+            _event("user", None, [{"type": "tool_result"}], None),
+            _event("assistant", "m2", [{"type": "text"}], u2),
+        ]
+    )  # fmt: skip  (no `result` event: a run killed once its work passed)
+    got = lad.claude_usage(text)
+    assert got["steps"] == 1
+    assert got["prompt_tokens"] == (2 + 5292 + 24743) + (2 + 2829 + 30035)
+    assert got["completion_tokens"] == 17
+    assert lad.claude_usage("") == {"steps": 0, "prompt_tokens": 0, "completion_tokens": 0}
