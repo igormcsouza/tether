@@ -849,7 +849,7 @@ class _FlakyProvider:
 async def test_outage_is_retried_at_turn_level_then_fails_loudly(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """North star floor (#171): 4/68 baseline runs died on one provider outage; retry 3 times."""
+    """#171 floor: retry a provider outage once; #147: two failed calls in a row end the session."""
     sleeps: list[float] = []
 
     async def fake_sleep(delay: float) -> None:
@@ -857,14 +857,14 @@ async def test_outage_is_retried_at_turn_level_then_fails_loudly(
 
     monkeypatch.setattr("tether.harness.asyncio.sleep", fake_sleep)
 
-    ok = _FlakyProvider(fails=2)
+    ok = _FlakyProvider(fails=1)
     done = await Harness(db_path=tmp_path / "a.db", provider=ok, max_steps=3).run("go")
-    assert done.status == "COMPLETED" and ok.calls == 3 and len(sleeps) == 2
+    assert done.status == "COMPLETED" and ok.calls == 2 and len(sleeps) == 1
 
     dead = _FlakyProvider(fails=99)
     failed = await Harness(db_path=tmp_path / "b.db", provider=dead, max_steps=3).run("go")
     assert failed.status == "FAILED" and "unavailable after 3 attempts" in (failed.result or "")
-    assert dead.calls == 4  # first try + 3 turn-level retries
+    assert dead.calls == 2  # first try + 1 turn-level retry
 
 
 async def _unfinished(tmp_path: Path, cmds: list[str], verify: list[str]) -> str:
