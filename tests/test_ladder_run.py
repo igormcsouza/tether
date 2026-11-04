@@ -22,14 +22,14 @@ def lad(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     return mod
 
 
-def test_haiku_is_a_provider_routed_through_tether_and_the_claude_cli(lad) -> None:
-    assert lad.PROVIDERS["claude-softmedium"]["prefix"] == "claude-softmedium/"
+def test_any_tether_provider_name_works_so_no_account_is_hardcoded(lad) -> None:
+    assert not any("softmedium" in name for name in lad.PROVIDERS), "no personal names in the repo"
     task = lad.T.TASKS["write-1"]
     cmd = lad.harness_cmd(
         "tether", "haiku", task, 32000, Path("/rd"), Path("/ws"), "tether",
-        False, False, [], 30, None, "claude-softmedium",
+        False, False, [], 30, None, "my-claude",
     )  # fmt: skip
-    assert cmd[cmd.index("--model") + 1] == "claude-softmedium/haiku"
+    assert cmd[cmd.index("--model") + 1] == "my-claude/haiku"
     assert cmd[cmd.index("--context-tokens") + 1] == "32000"
     assert not any(a.startswith("think=") for a in cmd), "Haiku has no think parameter"
 
@@ -74,7 +74,7 @@ def test_the_second_attempt_gets_the_first_attempts_record(
     monkeypatch.setattr(lad, "capabilities", lambda m: [])
     monkeypatch.setattr(
         sys, "argv",
-        ["run.py", "--out", str(tmp_path), "--models", "haiku", "--provider", "claude-softmedium",
+        ["run.py", "--out", str(tmp_path), "--models", "haiku", "--provider", "my-claude",
          "--kinds", "write", "--max-tier", "1", "--attempts", "2"],
     )  # fmt: skip
     lad.main()
