@@ -4,7 +4,7 @@
 
 ### Features
 
-- After the same test command has failed 3 times with an edit in between, the session restarts once from a fresh history: one bounded message with the files as they are, the last failing output and short counts of what was tried. Failed commands are not replayed, and everything before the restart stays in the store. No prompt, schema or model-call cost.
+- A session that is stuck, however it shows (the same test failing 3 times after edits, or repeated commands, cycles and re-reads the wrap-up did not end), now restarts from one short message that describes the state (files as they are, last failing output, counts of what was tried) instead of replaying the failed steps. After two restarts that did not help it is handed back to the caller: status `WAITING_INPUT`, exit code `2`, a `[STUCK ...]` summary as the result, ready for `tether send`. This replaces the `Stalled` failure. No prompt, schema or model-call cost.
 
 ### Fixes
 

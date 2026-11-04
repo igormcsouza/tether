@@ -145,3 +145,28 @@ async def test_a_check_that_keeps_failing_without_edits_does_not_restart(tmp_pat
     )
     session = await harness.run("go")
     assert not [t for t in harness.store.get_turns(session.id) if t.event_type == "restart"]
+
+
+async def test_a_check_that_still_fails_after_every_restart_is_handed_back(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "test_t.py").write_text(
+        "import unittest\nimport a\n\n\nclass T(unittest.TestCase):\n"
+        "    def test_x(self):\n        self.assertEqual(a.X, 2)\n",
+        encoding="utf-8",
+    )
+    run = ("bash -c 'python3 -m unittest test_t 2>&1'", None)
+    cmds = [c for i in range(9) for c in (("edit write a.py", f"X = {i + 10}\n"), run)]
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        tools=["edit", "bash"],
+        sandbox=SandboxPolicy(workspace_root=ws, use_kernel_sandbox=False),
+        provider=FakeScriptedProvider(_script(cmds)),
+        max_steps=40,
+    )
+    session = await harness.run("make the test pass")
+    assert session.status == "WAITING_INPUT"
+    assert (session.result or "").startswith("[STUCK at step 18 after 2 restarts")
+    assert "X = 18" in (session.result or "") and "AssertionError" in (session.result or "")
+    turns = harness.store.get_turns(session.id)
+    assert [t.event_type for t in turns].count("restart") == 2

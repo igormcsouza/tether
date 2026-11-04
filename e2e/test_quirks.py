@@ -96,17 +96,21 @@ def test_stall_after_a_change_with_a_passing_gate_is_completed(tether: Tether, c
     assert r["status"] == "COMPLETED" and "Finished by the harness" in r["result"]
 
 
-def test_stall_with_a_failing_gate_stays_failed(tether: Tether, chaos) -> None:
-    chaos.script(*(["bash touch fixed.txt"] * 6), ("done", "ok"))
-    r = tether.run("loop", "--tools", "bash", "--verify", "test -f missing.txt")
-    assert r["status"] == "FAILED" and r["failure"]["message"].startswith("Stalled")
+def test_stall_with_a_failing_gate_restarts_then_hands_back(tether: Tether, chaos) -> None:
+    chaos.script(*(["bash touch fixed.txt"] * 45))  # never stops repeating
+    r = tether.run(
+        "loop", "--tools", "bash", "--verify", "test -f missing.txt", "--max-steps", "60"
+    )
+    assert r["status"] == "WAITING_INPUT" and r["rc"] == 2
+    assert r["result"].startswith("[STUCK at step") and "after 2 restarts" in r["result"]
+    assert tether.restarts(r["id"]) == 2
 
 
 def test_unfinished_session_reports_changes_and_gate(tether: Tether, chaos) -> None:
-    chaos.script(*(["bash touch fixed.txt"] * 6), ("done", "ok"))  # #171: never a bare error
-    r = tether.run("loop", "--tools", "bash", "--verify", "test -f missing.txt")
+    chaos.script(*(f"bash touch f{i}.txt" for i in range(6)))  # #171: never a bare error
+    r = tether.run("loop", "--tools", "bash", "--verify", "test -f missing.txt", "--max-steps", "4")
     msg = r["failure"]["message"]
-    assert "Changed: `bash touch fixed.txt`" in msg and "Gate `test -f missing.txt` fails" in msg
+    assert "Changed: `bash touch f0.txt`" in msg and "Gate `test -f missing.txt` fails" in msg
 
 
 def test_never_calling_done_after_a_green_test_run_is_completed(tether: Tether, chaos) -> None:

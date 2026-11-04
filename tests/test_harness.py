@@ -657,16 +657,15 @@ def test_read_target(cmd: str, target: str | None) -> None:
     assert read_target(cmd) == target
 
 
-async def test_range_shifting_reads_warn_then_abort(
+async def test_range_shifting_reads_warn_then_hand_back(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr("tether.harness.RANGE_STALL_READS", 3)
-    cmds = [f"edit view a.py --lines {i}:{i + 9}" for i in range(1, 14)]  # warns at 3, 5, 7, 9
-    run = await _run_commands(tmp_path, cmds)
-    assert run.session.status == "FAILED"
-    assert (run.session.result or "").startswith("Stalled")
-    assert run.events.count("cycle_stall") == 5  # the 4th one is answered with a wrap-up turn
-    assert run.session.step_count == 10
+    cmds = [f"edit view a.py --lines {i}:{i + 9}" for i in range(1, 60)]
+    run = await _run_commands(tmp_path, cmds, max_steps=60)
+    assert run.session.status == "WAITING_INPUT"
+    assert (run.session.result or "").startswith("[STUCK")  # after both restarts, handed back
+    assert run.session.step_count < 60
     warn = "\n".join(m["content"] for m in run.provider.recorded_calls[3])
     assert "3 reads of `a.py`" in warn
 
@@ -827,7 +826,7 @@ async def test_stall_after_a_change_with_passing_gate_is_completed(tmp_path: Pat
 
 async def test_stall_with_failing_gate_stays_failed(tmp_path: Path) -> None:
     session = await _stalled_after_a_change(tmp_path, "false")
-    assert session.status == "FAILED" and (session.result or "").startswith("Stalled")
+    assert session.status == "FAILED" and (session.result or "").startswith("Verification gate")
 
 
 class _FlakyProvider:
@@ -1011,11 +1010,13 @@ async def test_read_only_stall_gets_one_wrap_up_turn_and_can_finish(tmp_path: Pa
     assert "[WRAP UP]" in sent and "the file the task asked for" in sent
 
 
-async def test_ignoring_the_wrap_up_still_ends_stalled(tmp_path: Path) -> None:
-    run = await _run_commands(tmp_path, ["ls"] * 12)
-    assert run.session.status == "FAILED" and (run.session.result or "").startswith("Stalled")
+async def test_ignoring_the_wrap_up_restarts_twice_then_hands_back(tmp_path: Path) -> None:
+    run = await _run_commands(tmp_path, ["ls"] * 45, max_steps=60)
+    assert run.session.status == "WAITING_INPUT"
+    assert (run.session.result or "").startswith("[STUCK at step")
+    assert "after 2 restarts" in (run.session.result or "")
     sent = "\n".join(m["content"] for c in run.provider.recorded_calls for m in c)
-    assert sent.count("[WRAP UP]") == 1  # once per session
+    assert "[WRAP UP]" in sent and "[RESTART at step" in sent
 
 
 async def test_changed_session_stall_gets_a_wrap_up_that_can_finish(tmp_path: Path) -> None:
@@ -1026,8 +1027,10 @@ async def test_changed_session_stall_gets_a_wrap_up_that_can_finish(tmp_path: Pa
     assert "[WRAP UP]" in sent and "what is done and what is left" in sent
 
 
-async def test_ignoring_the_wrap_up_after_a_change_still_ends_stalled(tmp_path: Path) -> None:
-    run = await _run_commands(tmp_path, ["ping a.com", *["ls"] * 12])
-    assert run.session.status == "FAILED" and (run.session.result or "").startswith("Stalled")
-    sent = "\n".join(m["content"] for c in run.provider.recorded_calls for m in c)
-    assert sent.count("[WRAP UP]") == 1
+async def test_ignoring_the_wrap_up_after_a_change_hands_back_what_was_tried(
+    tmp_path: Path,
+) -> None:
+    run = await _run_commands(tmp_path, ["ping a.com", *["ls"] * 45], max_steps=60)
+    assert run.session.status == "WAITING_INPUT"
+    assert (run.session.result or "").startswith("[STUCK at step")
+    assert "What was tried so far:" in (run.session.result or "")

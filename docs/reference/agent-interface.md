@@ -25,9 +25,9 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 |------|---------|
 | 0 | completed |
 | 1 | usage error (bad flag, unknown session, invalid pipeline) |
-| 2 | waiting for input (`done --ask`) |
+| 2 | waiting for input (`done --ask`), or handed back as `[STUCK ...]` after two restarts that did not help |
 | 3 | verification gate failed or misconfigured (including `--output-schema`) |
-| 4 | max steps reached, or stopped early as `stalled` (repeated loop warnings with no change) |
+| 4 | max steps reached |
 | 5 | worker or provider error, or `tether stop` |
 
 In plain mode the failure reason goes to **stderr**; stdout only ever holds a deliverable. `wait` returns the highest code among its sessions.

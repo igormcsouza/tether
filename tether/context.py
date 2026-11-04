@@ -108,7 +108,7 @@ MAX_LIVE_READS = 8
 # a failed action's verbatim text in the context makes small models repeat it, and a clean
 # restart that restores the same context is the worst case, so the new context must differ.
 RESTART_AFTER_FAILS = 3
-MAX_RESTARTS = 1
+MAX_RESTARTS = 2
 RESTART_MAX_CHARS = 6000
 _RESTART_FILES_CHARS = 4000
 _RESTART_OUTPUT_CHARS = 1500
@@ -140,7 +140,7 @@ def modified_files(root: str | Path, since: float) -> dict[str, str]:
 
 
 def describe_attempts(
-    files: list[str], changes: list[str], reads: Counter[str], check_cmd: str, runs: int
+    files: list[str], changes: list[str], reads: Counter[str], check_cmd: str | None, runs: int
 ) -> list[str]:
     """What was tried, as counts: no command text from the failed steps is repeated."""
     tried = []
@@ -148,26 +148,45 @@ def describe_attempts(
         n = sum(name in c for c in changes)
         tried += [f"{name} changed {n} times"] if n else []
     tried += [f"{p} read {n} times" for p, n in reads.most_common(3) if n >= 2]
-    return [*tried, f"`{check_cmd}` run {runs} times with a failing result each time"]
+    if check_cmd:
+        tried.append(f"`{check_cmd}` run {runs} times with a failing result each time")
+    return tried
 
 
 def restart_message(
-    *, step: int, check_cmd: str, failing_output: str, files: dict[str, str], tried: list[str]
+    *,
+    step: int,
+    check_cmd: str | None,
+    failing_output: str | None,
+    files: dict[str, str],
+    tried: list[str],
+    handback: int = 0,
 ) -> str:
-    """The one message a restarted history starts from; at most RESTART_MAX_CHARS."""
-    out = failing_output.strip()
-    if len(out) > _RESTART_OUTPUT_CHARS:
-        out = f"{out[:900]}\n...\n{out[-500:]}"
+    """The one message a restarted history starts from, or (`handback` = restarts used) the
+    summary handed back to the caller; at most RESTART_MAX_CHARS."""
     share = _RESTART_FILES_CHARS // max(1, len(files))
     blocks = []
     for name, text in files.items():
         cut = f"\n[{len(text) - share} more chars not shown]" if len(text) > share else ""
         blocks.append(f"{name}:\n{text[:share]}{cut}")
-    head = f"[RESTART at step {step}. Earlier steps are not shown; the files are as you left them.]"
+    if handback:
+        head = f"[STUCK at step {step} after {handback} restarts. Handing back to you.]"
+    else:
+        head = f"[RESTART at step {step}. Earlier steps are not shown; files are as you left them.]"
     lines = [head, *(["", "Your files now:", *blocks] if blocks else [])]
-    lines += ["", f"Last result of `{check_cmd}`:", out, "", "What was tried so far:"]
-    lines += [f"- {t}" for t in tried]
-    lines += ["Re-read the failing output above before you change anything."]
+    if failing_output is not None:
+        out = failing_output.strip()
+        if len(out) > _RESTART_OUTPUT_CHARS:
+            out = f"{out[:900]}\n...\n{out[-500:]}"
+        lines += ["", f"Last result of `{check_cmd}`:", out]
+    lines += ["", "What was tried so far:", *(f"- {t}" for t in tried)]
+    lines += [
+        "The work is not progressing. Refine the request or give guidance, then send it again."
+        if handback
+        else "Re-read the failing output above before you change anything."
+        if failing_output is not None
+        else "Change your approach before you repeat anything."
+    ]
     return "\n".join(lines)[:RESTART_MAX_CHARS]
 
 

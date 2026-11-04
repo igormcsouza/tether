@@ -6,21 +6,21 @@ Entries are grouped by what you see. For problems that are known and not fixed y
 
 ## The session ends badly
 
-### `FAILED` with `Stalled: ... loop warnings` (exit code 4)
+### `WAITING_INPUT` with `[STUCK ...]` (exit code 2)
 
-**Cause.** The model repeated a command, cycled through the same few, or kept reading one file over shifting line ranges without editing. The guard ended the session early instead of spending every step.
+**Cause.** The model repeated a command, cycled through the same few, or kept reading one file over shifting line ranges without editing. Or the same test kept failing after edits. The harness restarted it from a short description of the state twice and it was still stuck, so it stopped and handed the task back instead of spending every step.
 
-Before the guard ends the session it adds one `[WRAP UP]` turn: a session that only read is asked for its final answer, one that already changed something is asked to call `done` with what is done and what is left. If the model answers, the session completes normally; if it repeats the command again, the session ends `Stalled`.
+Before the guard ends the session it adds one `[WRAP UP]` turn: a session that only read is asked for its final answer, one that already changed something is asked to call `done` with what is done and what is left. If the model answers, the session completes normally; if it repeats the command again, the session restarts from a fresh, short description of the state (files as they are, last failing output, counts of what was tried), twice at most, then ends `WAITING_INPUT` with that description as its result.
 
 With `--verify` gates configured, a stall after a change whose gates all pass ends `COMPLETED` instead ("Finished by the harness"), because the work is verified.
 
-**Fix.** Make the goal name the file and the edit. Run `tether read <id> --steps` to see the loop. Try a stronger model. Raising `--max-steps` only repeats the loop.
+**Fix.** Read the `[STUCK]` result: it says what was tried. Refine the goal (name the file and the edit) and `tether send <id> "<guidance>"`, or try a stronger model. Raising `--max-steps` only repeats the loop.
 
 ### `FAILED` with `Max steps (N) reached without calling done`
 
 **Cause.** The task needs more steps than allowed, or the model never found the way to finish.
 
-The result is never bare: it lists the last change commands and, with `--verify`, whether the gates pass now (`Stalled` ends the same way). A run that stopped with passing gates already holds a usable result in the workspace.
+The result is never bare: it lists the last change commands and, with `--verify`, whether the gates pass now (a hand-back lists what was tried instead). A run that stopped with passing gates already holds a usable result in the workspace.
 
 A session whose last test run passed after its final change ends `COMPLETED` instead ("Finished by the harness"), even without `--verify`.
 

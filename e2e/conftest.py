@@ -151,6 +151,9 @@ class Tether:
     def events(self, sid: str) -> list[str]:
         return [t["event_type"] for t in self.turns(sid) if t["role"] == "assistant"]
 
+    def restarts(self, sid: str) -> int:
+        return sum(t["event_type"] == "restart" for t in self.turns(sid))
+
     def tool_outputs(self, sid: str) -> list[str]:
         return [t["content"] for t in self.turns(sid) if t["role"] == "tool"]
 

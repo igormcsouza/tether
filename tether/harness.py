@@ -797,6 +797,44 @@ class Harness:
         quiet_run = 0
         steps_hinted = False
 
+        def get_unstuck(step: int, check: str | None, out: str | None) -> SessionRecord | None:
+            """Stuck, however it showed (the same check failing after edits, or stalls the
+            wrap-up did not end): restart from a described state, and once restarts are used
+            up hand the task back to the caller (WAITING_INPUT) instead of burning steps."""
+            nonlocal restarts, last_action_sig, read_file, read_run, loop_run, stalls
+            files = modified_files(sandbox.workspace_root, rec.created_at)
+            tried = describe_attempts(
+                list(files), changes, read_counts, check, fail_runs.get(check or "", 0)
+            )
+            handback = restarts if restarts >= MAX_RESTARTS else 0
+            text = restart_message(
+                step=step,
+                check_cmd=check,
+                failing_output=out,
+                files=files,
+                tried=tried,
+                handback=handback,
+            )
+            if handback:
+                self.store.add_turn(
+                    session_id=session_id, step=step, role="tool", content=f"[WAITING_INPUT] {text}"
+                )
+                self.store.update_session(
+                    session_id, status="WAITING_INPUT", result=text, step_count=step
+                )
+                return self.store.get_session(session_id)
+            self.store.add_turn(
+                session_id=session_id, step=step, role="user", content=text, event_type="restart"
+            )
+            restarts += 1
+            fail_runs.clear()
+            stale.clear()
+            read_counts.clear()
+            action_history.clear()
+            last_action_sig = None
+            read_file, read_run, loop_run, stalls = None, 0, 0, 0
+            return None
+
         try:
             for step in range(step_start + 1, step_limit + 1):
                 # 1. Poll SQLite inbox before each reasoning step
@@ -953,23 +991,16 @@ class Harness:
                                 ),
                             )
                             continue
-                        self.store.update_session(
-                            session_id,
-                            status="COMPLETED" if finished else "FAILED",
-                            result=(
-                                finished
-                                or await self._unfinished_result(
-                                    f"Stalled: {stalls} loop warnings without a change; "
-                                    "stopped early instead of using all steps.",
-                                    sandbox,
-                                    verify_commands,
-                                    changes,
-                                )
-                            ),
-                        )
-                        done_rec = self.store.get_session(session_id)
-                        assert done_rec is not None
-                        return done_rec
+                        if finished:
+                            self.store.update_session(
+                                session_id, status="COMPLETED", result=finished
+                            )
+                            done_rec = self.store.get_session(session_id)
+                            assert done_rec is not None
+                            return done_rec
+                        if (handed := get_unstuck(step, None, None)) is not None:
+                            return handed
+                        continue
                 if range_stall:
                     read_run = max(0, RANGE_STALL_READS - 2)  # repeat offenders: warn every 2nd
                     self.store.add_turn(
@@ -1269,31 +1300,9 @@ class Harness:
                     if check not in fail_runs or check in stale:
                         fail_runs[check] = fail_runs.get(check, 0) + 1
                         stale.discard(check)
-                    if fail_runs[check] >= RESTART_AFTER_FAILS and restarts < MAX_RESTARTS:
-                        files = modified_files(sandbox.workspace_root, rec.created_at)
-                        tried = describe_attempts(
-                            list(files), changes, read_counts, check, fail_runs[check]
-                        )
-                        self.store.add_turn(
-                            session_id=session_id,
-                            step=step,
-                            role="user",
-                            content=restart_message(
-                                step=step,
-                                check_cmd=check,
-                                failing_output=out,
-                                files=files,
-                                tried=tried,
-                            ),
-                            event_type="restart",
-                        )
-                        restarts += 1
-                        fail_runs.clear()
-                        stale.clear()
-                        read_counts.clear()
-                        action_history.clear()
-                        last_action_sig = None
-                        read_file, read_run, loop_run, stalls = None, 0, 0, 0
+                    if fail_runs[check] >= RESTART_AFTER_FAILS:
+                        if (handed := get_unstuck(step, check, out)) is not None:
+                            return handed
 
             # Max steps reached without explicit `done`
             finished = await self._finished_by_harness(sandbox, verify_commands, green_cmd, changed)
