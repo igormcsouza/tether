@@ -50,11 +50,11 @@ def flags(tether_bin):
     return _HELP[tether_bin]
 
 
-def little_coder_env(rd, context_tokens=16384):
+def little_coder_env(rd, context_tokens=16384, model_id="qwen3.5:9b"):
     """Env for little-coder: Ollama via the 11435 proxy, its state and models file kept inside the run dir."""
     models, pi = f"{rd}/models.json", f"{rd}/pi-agent"
     os.makedirs(pi, exist_ok=True)
-    prov = {"api": "openai-completions", "baseUrl": "http://localhost:11435/v1", "apiKey": "OLLAMA_API_KEY", "models": [{"id": "qwen3.5:9b", "contextWindow": context_tokens or 16384}]}
+    prov = {"api": "openai-completions", "baseUrl": "http://localhost:11435/v1", "apiKey": "OLLAMA_API_KEY", "models": [{"id": model_id, "contextWindow": context_tokens or 16384}]}
     with open(models, "w") as f:
         json.dump({"providers": {"ollama": prov}}, f)
     return {"LITTLE_CODER_MODELS_FILE": models, "PI_CODING_AGENT_DIR": pi, "OLLAMA_API_KEY": "noop",
@@ -155,7 +155,7 @@ async def one(sem, rec, args, results):
         if model.startswith("openai/"):  # old tether has no providers.yaml: route openai/ to NVIDIA's OpenAI-compatible API
             env.update(OPENAI_BASE_URL="https://integrate.api.nvidia.com/v1", OPENAI_API_KEY=os.environ.get("NVIDIA_API_KEY", ""))
         if runner == "littlecoder":
-            env.update(little_coder_env(rd, args.context_tokens or 16384))
+            env.update(little_coder_env(rd, args.context_tokens or 16384, model.split("/", 1)[1]))
             if os.environ.get("LITTLE_CODER_SANDBOX"):  # opt-in: wrap the autonomous agent in the sandbox just before it starts
                 cmd = sandboxed(cmd, ws, rd, os.environ["LITTLE_CODER_SANDBOX"])
         t0 = time.time()
