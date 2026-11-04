@@ -26,3 +26,26 @@ Raw tool outputs stay in the prompt while there is room. Once the history fills 
 - **Re-viewing files loops, then invents data.** The model runs `edit view`, the output folds (two turns later once the context is more than half full), it views again, and eventually writes from memory.
 - **What worked: one compact joined view, used right before the write, that ends with the exact next call.** The `course-source <module>` tool returns a module's plan and chosen videos in one output and finishes with `NOW WRITE THIS MODULE: act("edit write part-N.md", ...)`, so the data is still in the prompt when the write happens.
 - **Write long outputs in small pieces.** One big write dropped a whole section. The writer skill writes one `part-N.md` per module with `edit write`, then a `course-build` tool concatenates them into `course.md`.
+
+## Restart after repeated failures
+
+For a model that keeps re-running a failing test, the history itself is the problem: the failed commands and their output pull it toward the same edit again. After the same check command has failed 3 times, with an edit between each run, the harness adds one `restart` turn and continues from that turn alone. The message holds the files as they are now (up to 3, capped), the last failing output (trimmed) and short counts of what was tried. Failed commands are not replayed, so the model sees a state to fix rather than a transcript to copy. A session restarts at most once. Everything before the restart turn stays in SQLite, and the restart costs no static prompt tokens and no extra model call.
+
+Example of the message (trimmed):
+
+```text
+[RESTART at step 14. Earlier steps are not shown; the files are as you left them.]
+
+Your files now:
+calc.py:
+def add(a, b):
+    return a - b
+
+Last result of `pytest -q`:
+FAILED test_calc.py::test_add - assert -1 == 5
+
+What was tried so far:
+- calc.py changed 3 times
+- `pytest -q` run 3 times with a failing result each time
+Re-read the failing output above before you change anything.
+```

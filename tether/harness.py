@@ -9,15 +9,22 @@ import subprocess
 import sys
 import time
 import traceback
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from tether.context import (
     ACT_TOOL_SCHEMA,
+    MAX_RESTARTS,
+    RESTART_AFTER_FAILS,
     ContextAssembler,
+    after_restart,
+    describe_attempts,
     estimate_messages_tokens,
     live_read_obs,
+    modified_files,
+    restart_message,
 )
 from tether.decorator import ToolSpec, build_tool_spec
 from tether.multiplexer import Multiplexer, normalize_cmd
@@ -782,6 +789,11 @@ class Harness:
         green_cmd: str | None = None  # last passing test run, cleared by any later change
         green_nudged = False
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
+        # Restart state: failing check runs per command (counted once per edit in between)
+        fail_runs: dict[str, int] = {}
+        stale: set[str] = set()
+        read_counts: Counter[str] = Counter()
+        restarts = 0
         quiet_run = 0
         steps_hinted = False
 
@@ -801,7 +813,7 @@ class Harness:
                     )
 
                 # 2. Assemble context with ephemeral observation folding
-                turns = self.store.get_turns(session_id)
+                turns = after_restart(self.store.get_turns(session_id))
                 observations = self.store.list_observations(session_id)
                 pins = self.store.get_pins(session_id)
                 messages = assembler.assemble(
@@ -892,6 +904,7 @@ class Harness:
                 if target is None or target != read_file:
                     read_file, read_run = target, 0
                 read_run += 1 if target else 0
+                read_counts.update([target] if target else [])
                 range_stall = bool(target) and read_run >= RANGE_STALL_READS
 
                 assistant_turn_id = self.store.add_turn(
@@ -1194,6 +1207,7 @@ class Harness:
                     stalls = 0
                     green_cmd = None
                     green_nudged = False
+                    stale.update(fail_runs)
 
                 out = dispatch.output
                 if changed and not dispatch.is_error and tests_green(cmd, out):
@@ -1247,6 +1261,39 @@ class Harness:
                     obs_id=obs.id,
                     duration_ms=tool_duration_ms,
                 )
+
+                # Restart: the same check failed again after another edit. Continue from a fresh
+                # history that describes the state instead of replaying the failed attempts.
+                check = cmd.strip()
+                if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
+                    if check not in fail_runs or check in stale:
+                        fail_runs[check] = fail_runs.get(check, 0) + 1
+                        stale.discard(check)
+                    if fail_runs[check] >= RESTART_AFTER_FAILS and restarts < MAX_RESTARTS:
+                        files = modified_files(sandbox.workspace_root, rec.created_at)
+                        tried = describe_attempts(
+                            list(files), changes, read_counts, check, fail_runs[check]
+                        )
+                        self.store.add_turn(
+                            session_id=session_id,
+                            step=step,
+                            role="user",
+                            content=restart_message(
+                                step=step,
+                                check_cmd=check,
+                                failing_output=out,
+                                files=files,
+                                tried=tried,
+                            ),
+                            event_type="restart",
+                        )
+                        restarts += 1
+                        fail_runs.clear()
+                        stale.clear()
+                        read_counts.clear()
+                        action_history.clear()
+                        last_action_sig = None
+                        read_file, read_run, loop_run, stalls = None, 0, 0, 0
 
             # Max steps reached without explicit `done`
             finished = await self._finished_by_harness(sandbox, verify_commands, green_cmd, changed)

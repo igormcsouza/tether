@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Features
+
+- After the same test command has failed 3 times with an edit in between, the session restarts once from a fresh history: one bounded message with the files as they are, the last failing output and short counts of what was tried. Failed commands are not replayed, and everything before the restart stays in the store. No prompt, schema or model-call cost.
+
 ### Fixes
 
 - A provider that stays down now ends the session after two failed calls in a row (the call and one turn-level retry), not four. Each call already includes the provider's own 3 attempts, so a hung endpoint used to cost up to 12 timeouts (#147).
