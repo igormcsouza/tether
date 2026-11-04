@@ -28,6 +28,7 @@ PROVIDERS = {
     "opencode": {"prefix": "opencode/", "base": "", "key": ""},  # OpenCode's own free models: only its own client may call them
     "nvidia": {"prefix": "nvidia/", "base": "https://integrate.api.nvidia.com/v1", "key": "NVIDIA_API_KEY"},
     "openrouter": {"prefix": "openrouter/", "base": "https://openrouter.ai/api/v1", "key": "OPENROUTER_API_KEY"},
+    "claude-softmedium": {"prefix": "claude-softmedium/", "base": "", "key": ""},  # tether command provider: the Claude CLI
 }
 
 ATTEMPTS = [  # (think, extra params, max_steps, fold_after)
@@ -69,7 +70,16 @@ def capabilities(model):
         return []
 
 
-def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think, params, steps, fold, provider="ollama"):
+def retry_goal(task, prev):
+    """The task goal, plus (on a retry) what the previous attempt did and how it ended: a bounded hint."""
+    if prev is None:
+        return task.goal
+    s = prev.get("session_status")
+    how = s if s and s != "n/a" else prev["run_status"]
+    return task.goal + f"\n\nA previous attempt at this task did not pass ({prev['detail'][:200]}; it ended: {how}). Try again, and check your work against the task before you finish."
+
+
+def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think, params, steps, fold, provider="ollama", goal=None):
     prov = PROVIDERS[provider]
     if harness == "tether":
         cmd = [tether_bin, "run", "--model", f"{prov['prefix']}{model}", "--tools", "edit,bash", "--max-steps", str(steps),
@@ -80,14 +90,14 @@ def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think,
             cmd += ["--param", p]
         if fold:
             cmd += ["--fold-after", str(fold)]
-        return cmd + [task.goal]
+        return cmd + [goal or task.goal]
     if harness == "naive":  # plain tool loop, same model: what the model does without tether
         return [sys.executable, f"{HERE}/../naive_agent.py", "--base-url", prov["base"], "--key-env", prov["key"],
-                "--model", model, "--ws", str(ws), "--goal", task.goal, "--max-turns", str(steps),
+                "--model", model, "--ws", str(ws), "--goal", goal or task.goal, "--max-turns", str(steps),
                 "--result-file", str(rd / "result.txt"), "--stats-file", str(rd / "stats.json")]
     if harness == "opencode" and provider == "opencode":  # built-in provider, no config needed
         return [os.path.expanduser("~/.claude/skills/gru/sandbox.sh"), str(ws), "--", "opencode", "run", "--auto",
-                "--format", "json", "-m", f"opencode/{model}", task.goal]
+                "--format", "json", "-m", f"opencode/{model}", goal or task.goal]
     if harness == "opencode":
         opts = {"baseURL": prov["base"]}
         if prov["key"]:
@@ -96,15 +106,15 @@ def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think,
             provider: {"npm": "@ai-sdk/openai-compatible", "name": provider, "options": opts,
                        "models": {model: {"name": model, "limit": {"context": ctx, "output": 8192}}}}}}))
         return [os.path.expanduser("~/.claude/skills/gru/sandbox.sh"), str(ws), "--", "opencode", "run", "--standalone", "--auto",
-                "--format", "json", "-m", f"{provider}/{model}", task.goal]
+                "--format", "json", "-m", f"{provider}/{model}", goal or task.goal]
     if harness == "claude":  # Claude Code, print mode, the model alias is the part after cc/
-        return ["env", "-u", "ANTHROPIC_API_KEY", "claude", "-p", task.goal, "--model", model.removeprefix("cc/"),
+        return ["env", "-u", "ANTHROPIC_API_KEY", "claude", "-p", goal or task.goal, "--model", model.removeprefix("cc/"),
                 "--permission-mode", "bypassPermissions", "--output-format", "json", "--setting-sources", "",
                 "--disable-slash-commands", "--no-session-persistence", "--max-budget-usd", "1"]
     raise SystemExit(f"unknown harness {harness}")
 
 
-def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True, harness="tether", provider="ollama"):
+def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True, harness="tether", provider="ollama", prev=None):
     think, params, steps, fold = ATTEMPTS[attempt]
     rd = Path(out) / "runs" / f"{harness}__{model.replace(':', '-').replace('/', '_')}__{task.id}__a{attempt}"
     shutil.rmtree(rd, ignore_errors=True)
@@ -113,7 +123,8 @@ def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True
         p = ws / path
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
-    cmd = harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think, params, steps, fold, provider)
+    cmd = harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think, params, steps, fold, provider,
+                      goal=retry_goal(task, prev))
     env = dict(os.environ, OLLAMA_HOST="http://localhost:11435", PYTHONDONTWRITEBYTECODE="1")
     t0 = time.time()
     status = "ok"
@@ -190,16 +201,19 @@ def main():
                 if a.tasks and task.id not in a.tasks.split(","):
                     continue
                 passed = False
+                last = None  # the previous attempt's record: the retry is told how it went
                 for attempt in range(1 if a.single else a.attempts):
-                    prev = [r for r in done if (r.get("harness", "tether"), r["model"], r["task"], r["attempt"]) == (a.harness, model, task.id, attempt)]
-                    rec = prev[0] if prev else None
+                    found = [r for r in done if (r.get("harness", "tether"), r["model"], r["task"], r["attempt"]) == (a.harness, model, task.id, attempt)]
+                    rec = found[0] if found else None
                     if rec is None:
-                        rec = run_attempt(model, task, attempt, ctx, a.out, a.tether_bin, a.wall, can_think, a.harness, a.provider)
+                        rec = run_attempt(model, task, attempt, ctx, a.out, a.tether_bin, a.wall, can_think, a.harness, a.provider,
+                                          prev=last if attempt > 0 else None)
                         done.append(rec)
                         with log.open("a") as fh:
                             fh.write(json.dumps(rec) + "\n")
                     print(f"{a.harness:8} {model:18} {task.id:9} a{attempt} think={int(rec['think'])} score={rec['score']:.2f} "
                           f"{'PASS' if rec['pass'] else 'TIMEOUT' if rec['run_status'] == 'timeout' else 'fail'} {rec['wall_s']}s steps={rec.get('steps')} {rec['detail']}", flush=True)
+                    last = rec
                     if rec["pass"]:
                         passed = True
                         break
