@@ -64,6 +64,26 @@ def test_a_littlecoder_timeout_is_not_called_infra(run) -> None:
     assert run.is_infra(rec) is False
 
 
+def test_sandboxed_confines_the_agent_to_its_run_dir(
+    run, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    node_bin = tmp_path / "node" / "bin"
+    node_bin.mkdir(parents=True)
+    (node_bin / "node").write_text("")
+    monkeypatch.setattr(run.shutil, "which", lambda name: str(node_bin / "node"))
+    monkeypatch.setenv("LITTLE_CODER_DIR", str(tmp_path / "lc"))
+    inner = ["node", "launcher.mjs", "-p", "GOAL"]
+    cmd = run.sandboxed(inner, "/run/ws", "/run", "/skills/sandbox.sh")
+    assert cmd[0] == "env"
+    assert "GRU_SANDBOX_RW=/run" in cmd, "the agent may write only inside the run dir"
+    ro = next(c for c in cmd if c.startswith("GRU_SANDBOX_RO="))
+    assert str(tmp_path / "lc") in ro and str(tmp_path / "node") in ro
+    i = cmd.index("/skills/sandbox.sh")
+    assert cmd[i : i + 3] == ["/skills/sandbox.sh", "/run/ws", "--"]
+    assert any(c == f"PATH={node_bin}:/usr/bin:/bin" for c in cmd), "node must resolve inside"
+    assert cmd[-len(inner) :] == inner
+
+
 def test_unknown_runner_still_fails_loudly(run) -> None:
     with pytest.raises(SystemExit):
         run.build_cmd("nope", "ollama/qwen3.5:9b", "poly-x", "g", "/ws", "/rd", "tether")
@@ -97,3 +117,37 @@ async def test_one_runs_the_launcher_in_the_workspace_and_records_the_result(
     assert (Path(info["dir"]) / "ws" / "ran.txt").read_text() == "accept-all"
     assert "final answer" in (Path(info["dir"]) / "result.txt").read_text()
     assert json.loads((Path(info["dir"]) / "models.json").read_text())["providers"]["ollama"]
+
+
+async def test_one_wraps_the_agent_in_the_sandbox_when_one_is_configured(
+    run, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import argparse
+    import asyncio
+
+    box = (
+        tmp_path / "sandbox.sh"
+    )  # a stand-in that records how it was called, then runs the command
+    box.write_text('#!/bin/sh\necho "$@" > "$GRU_SANDBOX_RW/box-args.txt"\nshift 2\nexec "$@"\n')
+    box.chmod(0o755)
+    lc = tmp_path / "lc"
+    (lc / "bin").mkdir(parents=True)
+    (lc / "bin" / "little-coder.mjs").write_text("console.log('ok');\n")
+    monkeypatch.setenv("LITTLE_CODER_DIR", str(lc))
+    monkeypatch.setenv("LITTLE_CODER_SANDBOX", str(box))
+    out = tmp_path / "out"
+    out.mkdir()
+    args = argparse.Namespace(
+        out=str(out), force=False, redo_infra=False, tether_bin="tether", param=[],
+        seeded=False, context_tokens=None,
+    )  # fmt: skip
+    results: list = []
+    await run.one(
+        {"ollama": asyncio.Semaphore(1)},
+        ("littlecoder", "ollama/qwen3.5:9b", "code-simple", 0),
+        args,
+        results,
+    )
+    rd = Path(results[0]["dir"])
+    assert (rd / "box-args.txt").exists(), "the sandbox wrapper ran, with the run dir as RW"
+    assert str(rd / "ws") in (rd / "box-args.txt").read_text()
