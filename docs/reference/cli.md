@@ -10,9 +10,8 @@ The `tether` command is the primary entry point for running, inspecting, and con
 |------|---------|
 | `0` | Completed successfully |
 | `1` | Usage error (bad arguments, missing required flags) |
-| `2` | Waiting for input (`WAITING_INPUT`) |
+| `2` | Waiting for input (`WAITING_INPUT`), including a session that is stuck or out of steps and was handed back |
 | `3` | Verification gate failed |
-| `4` | Max steps reached or stalled |
 | `5` | Worker or provider error |
 
 ## tether run

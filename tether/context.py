@@ -6,6 +6,8 @@ import json
 import os
 import re
 import shlex
+from collections import Counter
+from pathlib import Path
 from typing import Any
 
 from tether.store import ObservationRecord, TurnRecord
@@ -98,6 +100,94 @@ def _argv(cmd: str | None) -> list[str]:
 
 # Unedited file reads kept unfolded; older ones fold normally. #81 is the real budget backstop.
 MAX_LIVE_READS = 8
+
+
+# Restart (north star): after RESTART_AFTER_FAILS failing check runs separated by edits the
+# history is replaced by one bounded message that describes the state and what was tried,
+# without replaying the failed commands. Gumaan, "Feedback That Backfires" (arXiv 2608.23651):
+# a failed action's verbatim text in the context makes small models repeat it, and a clean
+# restart that restores the same context is the worst case, so the new context must differ.
+RESTART_AFTER_FAILS = 3
+MAX_RESTARTS = 2
+RESTART_MAX_CHARS = 6000
+_RESTART_FILES_CHARS = 4000
+_RESTART_OUTPUT_CHARS = 1500
+_SKIP_DIRS = {"__pycache__", "node_modules"}
+
+
+def after_restart(turns: list[TurnRecord]) -> list[TurnRecord]:
+    """The turns from the latest restart message on (all of them when there was none)."""
+    for i in range(len(turns) - 1, -1, -1):
+        if turns[i].event_type == "restart":
+            return turns[i:]
+    return turns
+
+
+def modified_files(root: str | Path, since: float) -> dict[str, str]:
+    """Up to 3 text files under `root` written after `since`, newest first (hidden dirs skipped)."""
+    found: list[tuple[float, str, str]] = []
+    for dirpath, dirs, names in os.walk(root):
+        dirs[:] = [d for d in dirs if not d.startswith(".") and d not in _SKIP_DIRS]
+        for name in names:
+            path = Path(dirpath) / name
+            try:
+                mtime = path.stat().st_mtime
+                if mtime >= since:
+                    found.append((mtime, str(path.relative_to(root)), path.read_text("utf-8")))
+            except (OSError, UnicodeDecodeError):
+                continue
+    return {rel: text for _, rel, text in sorted(found, reverse=True)[:3]}
+
+
+def describe_attempts(
+    files: list[str], changes: list[str], reads: Counter[str], check_cmd: str | None, runs: int
+) -> list[str]:
+    """What was tried, as counts: no command text from the failed steps is repeated."""
+    tried = []
+    for name in files:
+        n = sum(name in c for c in changes)
+        tried += [f"{name} changed {n} times"] if n else []
+    tried += [f"{p} read {n} times" for p, n in reads.most_common(3) if n >= 2]
+    if check_cmd:
+        tried.append(f"`{check_cmd}` run {runs} times with a failing result each time")
+    return tried
+
+
+def restart_message(
+    *,
+    step: int,
+    check_cmd: str | None,
+    failing_output: str | None,
+    files: dict[str, str],
+    tried: list[str],
+    handback: int = 0,
+) -> str:
+    """The one message a restarted history starts from, or (`handback` = restarts used) the
+    summary handed back to the caller; at most RESTART_MAX_CHARS."""
+    share = _RESTART_FILES_CHARS // max(1, len(files))
+    blocks = []
+    for name, text in files.items():
+        cut = f"\n[{len(text) - share} more chars not shown]" if len(text) > share else ""
+        blocks.append(f"{name}:\n{text[:share]}{cut}")
+    if handback:
+        head = f"[STUCK at step {step} after {handback} restarts. Handing back to you.]"
+    else:
+        head = f"[RESTART at step {step}. Earlier steps are not shown; files are as you left them.]"
+    lines = [head, *(["", "Your files now:", *blocks] if blocks else [])]
+    if failing_output is not None:
+        out = failing_output.strip()
+        if len(out) > _RESTART_OUTPUT_CHARS:
+            out = f"{out[:900]}\n...\n{out[-500:]}"
+        lines += ["", f"Last result of `{check_cmd}`:", out]
+    lines += ["", "What was tried so far:", *(f"- {t}" for t in tried)]
+    lines += [
+        "The work is not progressing. Refine the request or give guidance, then send it again."
+        if handback
+        else "Re-read the failing output above before you change anything."
+        if failing_output is not None
+        else "Change your approach before you repeat anything."
+    ]
+    return "\n".join(lines)[:RESTART_MAX_CHARS]
 
 
 def _read_path(cmd: str) -> str | None:

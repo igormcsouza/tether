@@ -14,7 +14,7 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 ```
 
 - `result` is the deliverable, or the pending question when `WAITING_INPUT`. It is `null` on failure.
-- `failure` is `{"kind": "gate|max_steps|stalled|stopped|worker_error", "gate": "<cmd>|output-schema|null", "message": "…"}`.
+- `failure` is `{"kind": "gate|stopped|worker_error", "gate": "<cmd>|output-schema|null", "message": "…"}`.
 - Keys are stable; new keys may be added.
 
 `--json` is available on `run`, `pipeline`, `status`, `list`, `read` (also `--digest`, `--steps`, `--full`), `wait`, `send` and `stats`. With `--headless` it prints `{"v":1,"id":"ses_…"}`.
@@ -25,9 +25,8 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 |------|---------|
 | 0 | completed |
 | 1 | usage error (bad flag, unknown session, invalid pipeline) |
-| 2 | waiting for input (`done --ask`) |
+| 2 | waiting for input (`done --ask`), or handed back as `[STUCK ...]` after two restarts that did not help |
 | 3 | verification gate failed or misconfigured (including `--output-schema`) |
-| 4 | max steps reached, or stopped early as `stalled` (repeated loop warnings with no change) |
 | 5 | worker or provider error, or `tether stop` |
 
 In plain mode the failure reason goes to **stderr**; stdout only ever holds a deliverable. `wait` returns the highest code among its sessions.

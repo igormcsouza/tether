@@ -45,13 +45,13 @@ def test_hard_context_budget_trims_old_history(tether: Tether, chaos) -> None:
 
 
 def test_range_shifting_reads_stop_the_session_early(tether: Tether, chaos) -> None:
-    views = [f"edit view big.py --lines {i}:{i + 39}" for i in range(1, 40)]
+    views = [f"edit view big.py --lines {i}:{i + 39}" for i in range(1, 100)]
     chaos.script(*views)
     (tether.ws / "big.py").write_text("x = 1\n" * 200)
-    d = tether.run("explore forever", "--tools", "edit", "--max-steps", "30")
-    assert d["rc"] == 4 and d["failure"]["kind"] == "stalled"
-    assert d["steps"] < 30, "the stall guard must end the session before max_steps"
-    assert tether.events(d["id"]).count("cycle_stall") == 5  # the 4th is answered with a wrap-up
+    d = tether.run("explore forever", "--tools", "edit", "--max-steps", "80")
+    assert d["rc"] == 2 and d["status"] == "WAITING_INPUT"  # handed back, not run to max_steps
+    assert d["steps"] < 80, "the stall guard must end the session before max_steps"
+    assert tether.restarts(d["id"]) == 2 and d["result"].startswith("[STUCK")
     assert any("reads of `big.py`" in o for o in tether.tool_outputs(d["id"]))
 
 

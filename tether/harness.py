@@ -9,15 +9,22 @@ import subprocess
 import sys
 import time
 import traceback
+from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from tether.context import (
     ACT_TOOL_SCHEMA,
+    MAX_RESTARTS,
+    RESTART_AFTER_FAILS,
     ContextAssembler,
+    after_restart,
+    describe_attempts,
     estimate_messages_tokens,
     live_read_obs,
+    modified_files,
+    restart_message,
 )
 from tether.decorator import ToolSpec, build_tool_spec
 from tether.multiplexer import Multiplexer, normalize_cmd
@@ -175,7 +182,7 @@ class Harness:
 
     `output_schema` (JSON Schema subset) is a deterministic pre-`done` gate: the deliverable
     must be JSON matching it. `tether.api.failure_info` classifies FAILED results by the
-    prefixes "Verification gate", "Max steps", "Stalled", "Stopped" and "Worker error".
+    prefixes "Verification gate", "Stopped" and "Worker error".
     """
 
     def __init__(
@@ -782,8 +789,51 @@ class Harness:
         green_cmd: str | None = None  # last passing test run, cleared by any later change
         green_nudged = False
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
+        # Restart state: failing check runs per command (counted once per edit in between)
+        fail_runs: dict[str, int] = {}
+        stale: set[str] = set()
+        read_counts: Counter[str] = Counter()
+        restarts = 0
         quiet_run = 0
         steps_hinted = False
+
+        def get_unstuck(step: int, check: str | None, out: str | None) -> SessionRecord | None:
+            """Stuck, however it showed (the same check failing after edits, or stalls the
+            wrap-up did not end): restart from a described state, and once restarts are used
+            up hand the task back to the caller (WAITING_INPUT) instead of burning steps."""
+            nonlocal restarts, last_action_sig, read_file, read_run, loop_run, stalls
+            files = modified_files(sandbox.workspace_root, rec.created_at)
+            tried = describe_attempts(
+                list(files), changes, read_counts, check, fail_runs.get(check or "", 0)
+            )
+            handback = restarts if restarts >= MAX_RESTARTS else 0
+            text = restart_message(
+                step=step,
+                check_cmd=check,
+                failing_output=out,
+                files=files,
+                tried=tried,
+                handback=handback,
+            )
+            if handback:
+                self.store.add_turn(
+                    session_id=session_id, step=step, role="tool", content=f"[WAITING_INPUT] {text}"
+                )
+                self.store.update_session(
+                    session_id, status="WAITING_INPUT", result=text, step_count=step
+                )
+                return self.store.get_session(session_id)
+            self.store.add_turn(
+                session_id=session_id, step=step, role="user", content=text, event_type="restart"
+            )
+            restarts += 1
+            fail_runs.clear()
+            stale.clear()
+            read_counts.clear()
+            action_history.clear()
+            last_action_sig = None
+            read_file, read_run, loop_run, stalls = None, 0, 0, 0
+            return None
 
         try:
             for step in range(step_start + 1, step_limit + 1):
@@ -801,7 +851,7 @@ class Harness:
                     )
 
                 # 2. Assemble context with ephemeral observation folding
-                turns = self.store.get_turns(session_id)
+                turns = after_restart(self.store.get_turns(session_id))
                 observations = self.store.list_observations(session_id)
                 pins = self.store.get_pins(session_id)
                 messages = assembler.assemble(
@@ -892,6 +942,7 @@ class Harness:
                 if target is None or target != read_file:
                     read_file, read_run = target, 0
                 read_run += 1 if target else 0
+                read_counts.update([target] if target else [])
                 range_stall = bool(target) and read_run >= RANGE_STALL_READS
 
                 assistant_turn_id = self.store.add_turn(
@@ -940,23 +991,16 @@ class Harness:
                                 ),
                             )
                             continue
-                        self.store.update_session(
-                            session_id,
-                            status="COMPLETED" if finished else "FAILED",
-                            result=(
-                                finished
-                                or await self._unfinished_result(
-                                    f"Stalled: {stalls} loop warnings without a change; "
-                                    "stopped early instead of using all steps.",
-                                    sandbox,
-                                    verify_commands,
-                                    changes,
-                                )
-                            ),
-                        )
-                        done_rec = self.store.get_session(session_id)
-                        assert done_rec is not None
-                        return done_rec
+                        if finished:
+                            self.store.update_session(
+                                session_id, status="COMPLETED", result=finished
+                            )
+                            done_rec = self.store.get_session(session_id)
+                            assert done_rec is not None
+                            return done_rec
+                        if (handed := get_unstuck(step, None, None)) is not None:
+                            return handed
+                        continue
                 if range_stall:
                     read_run = max(0, RANGE_STALL_READS - 2)  # repeat offenders: warn every 2nd
                     self.store.add_turn(
@@ -1194,6 +1238,7 @@ class Harness:
                     stalls = 0
                     green_cmd = None
                     green_nudged = False
+                    stale.update(fail_runs)
 
                 out = dispatch.output
                 if changed and not dispatch.is_error and tests_green(cmd, out):
@@ -1248,19 +1293,41 @@ class Harness:
                     duration_ms=tool_duration_ms,
                 )
 
+                # Restart: the same check failed again after another edit. Continue from a fresh
+                # history that describes the state instead of replaying the failed attempts.
+                check = cmd.strip()
+                if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
+                    if check not in fail_runs or check in stale:
+                        fail_runs[check] = fail_runs.get(check, 0) + 1
+                        stale.discard(check)
+                    if fail_runs[check] >= RESTART_AFTER_FAILS:
+                        if (handed := get_unstuck(step, check, out)) is not None:
+                            return handed
+
             # Max steps reached without explicit `done`
             finished = await self._finished_by_harness(sandbox, verify_commands, green_cmd, changed)
-            self.store.update_session(
-                session_id,
-                status="COMPLETED" if finished else "FAILED",
-                result=finished
-                or await self._unfinished_result(
-                    f"Max steps ({rec.max_steps}) reached without calling `done`.",
+            if finished:
+                self.store.update_session(session_id, status="COMPLETED", result=finished)
+            else:
+                # Out of steps without `done` is stuck too: hand back what is known (`send`
+                # extends the budget) instead of failing
+                text = await self._unfinished_result(
+                    f"[STUCK: out of steps ({rec.max_steps}) without calling `done`.]",
                     sandbox,
                     verify_commands,
                     changes,
-                ),
-            )
+                )
+                self.store.add_turn(
+                    session_id=session_id,
+                    step=step_limit,
+                    role="tool",
+                    content=f"[WAITING_INPUT] {text}",
+                )
+                self.store.update_session(
+                    session_id,
+                    status="WAITING_INPUT",
+                    result=f"{text}\nRefine the request or give guidance, then send it again.",
+                )
         except Exception as exc:
             cur = self.store.get_session(session_id)
             self.store.add_turn(

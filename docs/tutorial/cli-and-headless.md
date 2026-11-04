@@ -91,7 +91,7 @@ tether run --context-tokens 32000 --fold-after 8 "refactor the parser"
 
 ## Scripting: `--json` and exit codes
 
-`run`, `pipeline`, `status`, `list`, `read`, `wait`, `send` and `stats` accept `--json`. Exit codes: `0` completed, `1` usage error, `2` waiting for input, `3` gate failed, `4` max steps or stalled (repeated loop warnings with no change), `5` worker error or `tether stop`. A failure reason goes to stderr, never stdout. `--result-file <path>` writes the deliverable to a file, `--output-schema <schema.json>` rejects a `done` whose JSON does not match, and `tether events <id> --follow` streams turns as JSONL. Details: [Agent Interface reference](../reference/agent-interface.md).
+`run`, `pipeline`, `status`, `list`, `read`, `wait`, `send` and `stats` accept `--json`. Exit codes: `0` completed, `1` usage error, `2` waiting for input (also a session that is stuck or out of steps, handed back), `3` gate failed, `5` worker error or `tether stop`. A failure reason goes to stderr, never stdout. `--result-file <path>` writes the deliverable to a file, `--output-schema <schema.json>` rejects a `done` whose JSON does not match, and `tether events <id> --follow` streams turns as JSONL. Details: [Agent Interface reference](../reference/agent-interface.md).
 
 ### When a model's replies are not understood
 

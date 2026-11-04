@@ -41,6 +41,6 @@ def test_every_flag_is_documented_in_its_section() -> None:
 
 def test_exit_codes_and_nav() -> None:
     text = DOC.read_text()
-    for code in ("`0`", "`1`", "`2`", "`3`", "`4`", "`5`"):
+    for code in ("`0`", "`1`", "`2`", "`3`", "`5`"):
         assert code in text
     assert "reference/cli.md" in (ROOT / "mkdocs.yml").read_text()

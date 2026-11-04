@@ -126,7 +126,7 @@ Every MCP tool has a CLI twin with the same JSON, so any harness that can run a 
 
 ```bash
 tether run --json --model ollama/qwen3.5:9b --verify "pytest -q" "fix the failing tests"
-echo $?   # 0 ok, 2 needs input, 3 gate failed, 4 max steps, 5 error
+echo $?   # 0 ok, 2 needs input, 3 gate failed, 5 error
 ```
 
 See the [reference](../reference/agent-interface.md) for the JSON shape, exit codes and all tools.

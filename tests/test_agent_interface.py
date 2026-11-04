@@ -61,15 +61,17 @@ async def test_json_and_exit_codes(tmp_path: Path, capsys: pytest.CaptureFixture
     code, out, err = await _run(
         capsys, ["run", "--model", loop, "--db", db, "--max-steps", "2", "g"]
     )
-    assert code == 4 and out == "" and "Max steps" in err  # failure text on stderr, not stdout
+    assert code == 2 and "out of steps" in (out + err)  # handed back, not failed
 
     code, out, _ = await _run(
         capsys, ["run", "--json", "--model", loop, "--db", db, "--max-steps", "2", "g"]
     )
     d = json.loads(out)
-    assert d["failure"]["kind"] == "max_steps" and d["result"] is None
+    assert d["status"] == "WAITING_INPUT" and d["failure"] is None
 
     boom = _reg("ai-boom", [AssertionError()])
+    code, out, err = await _run(capsys, ["run", "--model", boom, "--db", db, "g"])
+    assert code == 5 and out == "" and "Worker error" in err  # failure text on stderr
     code, out, _ = await _run(capsys, ["run", "--json", "--model", boom, "--db", db, "g"])
     d = json.loads(out)
     assert code == 5 and d["failure"]["message"] == "Worker error: AssertionError"  # #41
@@ -298,7 +300,7 @@ async def test_mcp_run_accepts_params(tmp_path: Path) -> None:
     assert SQLiteStore(db).list_sessions()[0].sandbox_config["params"] == {"temperature": 0}
 
 
-def test_stalled_and_stopped_failures_are_classified() -> None:
+def test_stopped_failure_is_classified() -> None:
     from tether import api
     from tether.store import SessionRecord
 
@@ -309,7 +311,4 @@ def test_stalled_and_stopped_failures_are_classified() -> None:
             pid=None, created_at=0.0, updated_at=0.0,
         )  # fmt: skip
 
-    stalled = api.failure_info(rec("Stalled: 4 loop warnings"))
-    assert stalled and stalled["kind"] == "stalled"
-    assert api.exit_code(rec("Stalled: x")) == api.EXIT_MAX_STEPS
     assert api.exit_code(rec("Stopped by user.")) == api.EXIT_ERROR

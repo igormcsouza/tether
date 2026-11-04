@@ -58,7 +58,7 @@ prints, per model, how many sessions passed, the average steps and tokens, and w
 
 ## When it goes wrong
 
-- **`FAILED: Stalled`, exit code 4.** The model repeated itself and no gate passed. Run `tether read <id> --steps` to see the loop, name the file and the edit in the goal, or use a stronger model.
+- **`WAITING_INPUT` with `[STUCK ...]`, exit code 2.** The model repeated itself or kept failing the same test, tether restarted it twice from a short description of the state, and it was still stuck. The result says what was tried. `tether send <id> "<guidance>"` to continue, name the file and the edit in the goal, or use a stronger model.
 - **`FAILED: Verification gate ... misconfigured`.** The gate command itself is broken (command not found, sandbox refused it). Run the gate by hand first.
 - **Not sure the gate is strict enough?** A gate that exits `0` when its input is missing checks nothing. Make it fail when the file or test is absent.
 

@@ -22,10 +22,13 @@ def test_done_ask_pauses_with_exit_2_and_send_resumes(tether: Tether, chaos) -> 
     assert "beta" in str(chaos.requests[0]["messages"]), "the human's reply must reach the model"
 
 
-def test_max_steps_exit_4_and_resume_never_exceeds_ceiling(tether: Tether, chaos) -> None:
+def test_out_of_steps_is_handed_back_and_resume_never_exceeds_ceiling(
+    tether: Tether, chaos
+) -> None:
     chaos.script(*[("bash true",)] * 20)  # never calls done
     r = tether.run("never finishes", "--tools", "bash", "--max-steps", "3")
-    assert (r["rc"], r["status"], r["steps"], r["max_steps"]) == (4, "FAILED", 3, 3)
+    assert (r["rc"], r["status"], r["steps"], r["max_steps"]) == (2, "WAITING_INPUT", 3, 3)
+    assert r["result"].startswith("[STUCK: out of steps (3)")
     r2 = tether.send(r["id"], "go on")  # #75: resume extends the ceiling, never overshoots it
     assert r2["steps"] > 3 and r2["steps"] <= r2["max_steps"], r2
 
