@@ -61,11 +61,23 @@ def little_coder_env(rd, context_tokens=16384):
             "LITTLE_CODER_PERMISSION_MODE": "accept-all", "LITTLE_CODER_MAX_TURNS": "40", "PI_SKIP_VERSION_CHECK": "1"}
 
 
+def lc_dir():
+    return os.environ.get("LITTLE_CODER_DIR") or f"{HERE}/.little-coder"
+
+
+def sandboxed(cmd, ws, rd, sandbox):
+    """Wrap the littlecoder agent in the sandbox: it runs autonomously with accept-all permissions, so it may write only inside its run dir."""
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("littlecoder sandbox: `node` not found on PATH")
+    node_bin = os.path.dirname(node)
+    return ["env", f"GRU_SANDBOX_RW={rd}", f"GRU_SANDBOX_RO={lc_dir()}:{os.path.dirname(node_bin)}", sandbox, ws, "--", "env", f"PATH={node_bin}:/usr/bin:/bin", *cmd]
+
+
 def build_cmd(runner, model, task, goal, ws, rd, tether_bin, params=(), context_tokens=None):
     tools, steps, _ = cfg(task)
     if runner == "littlecoder":
-        lc = os.environ.get("LITTLE_CODER_DIR") or f"{HERE}/.little-coder"
-        return ["node", f"{lc}/bin/little-coder.mjs", "--no-update-check", "-p", "--no-session", "--model", model, goal]
+        return ["node", f"{lc_dir()}/bin/little-coder.mjs", "--no-update-check", "-p", "--no-session", "--model", model, goal]
     if runner == "tether":
         h = flags(tether_bin)
         cmd = [tether_bin, "run", "--model", model, "--max-steps", str(steps), "--db", f"{rd}/t.db"]
@@ -144,6 +156,8 @@ async def one(sem, rec, args, results):
             env.update(OPENAI_BASE_URL="https://integrate.api.nvidia.com/v1", OPENAI_API_KEY=os.environ.get("NVIDIA_API_KEY", ""))
         if runner == "littlecoder":
             env.update(little_coder_env(rd, args.context_tokens or 16384))
+            if os.environ.get("LITTLE_CODER_SANDBOX"):  # opt-in: wrap the autonomous agent in the sandbox just before it starts
+                cmd = sandboxed(cmd, ws, rd, os.environ["LITTLE_CODER_SANDBOX"])
         t0 = time.time()
         p = await asyncio.create_subprocess_exec(*cmd, cwd=ws, env=env, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, start_new_session=True)
         status = "ok"
