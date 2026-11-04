@@ -112,6 +112,7 @@ nav:
       - Benchmark Evaluation: benchmarks.md
       - Coding Ladder: ladder/index.md
       - Coding Ladder results: ladder/results.md
+      - Coding Ladder results, Claude Haiku: ladder/claude-haiku.md
       - Glossary: glossary.md
   - Reference:
       - reference/index.md
