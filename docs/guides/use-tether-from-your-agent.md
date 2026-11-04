@@ -50,7 +50,7 @@ Any agent that can run a shell command can delegate the same way. The exit code 
 
 ```bash
 tether run --json --model ollama/qwen3.5:9b --verify "pytest -q" "fix the failing tests"
-echo $?    # 0 done, 1 usage error, 2 needs input or stuck (handed back), 3 gate failed, 4 max steps, 5 error
+echo $?    # 0 done, 1 usage error, 2 needs input or stuck (handed back), 3 gate failed, 5 error
 ```
 
 ## Two-way

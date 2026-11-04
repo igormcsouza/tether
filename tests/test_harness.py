@@ -181,7 +181,7 @@ async def test_harness_lifecycle_and_edge_cases(
 
     h_max = Harness(db_path=tmp_path / "tether.db", provider=NeverDoneProvider(), max_steps=2)
     s_max = await h_max.run("Never finishes")
-    assert s_max.status == "FAILED" and "Max steps" in (s_max.result or "")
+    assert s_max.status == "WAITING_INPUT" and "out of steps" in (s_max.result or "")
 
     class CrashProvider:
         model_name = "qwen3.5:9b"
@@ -609,10 +609,10 @@ async def test_send_extends_exhausted_session_ceiling(tmp_path: Path) -> None:
 
     h = Harness(db_path=tmp_path / "t.db", provider=NeverDoneProvider(), max_steps=3)
     first = await h.run("goal")
-    assert (first.status, first.step_count, first.max_steps) == ("FAILED", 3, 3)
+    assert (first.status, first.step_count, first.max_steps) == ("WAITING_INPUT", 3, 3)
 
     second = await h.send(first.id, "go on")
-    assert (second.status, second.step_count, second.max_steps) == ("FAILED", 6, 6)
+    assert (second.status, second.step_count, second.max_steps) == ("WAITING_INPUT", 6, 6)
 
     # a session paused early keeps its larger remaining budget (no extension)
     paused = h.create_session("g2")
@@ -885,12 +885,12 @@ async def test_max_steps_result_reports_changes_and_gate(tmp_path: Path) -> None
     """#171 floor: a session that never calls done still ends with something usable."""
     write = "edit write a.py\nprint(1)"
     res = await _unfinished(tmp_path, [write], ["false"])
-    assert res.startswith("Max steps (1) reached without calling `done`.")
+    assert res.startswith("[STUCK: out of steps (1) without calling `done`.]")
     assert "Changed: `edit write a.py" in res and "Gate `false` fails (exit 1)" in res
     (tmp_path / "ok").mkdir()
     assert "Finished by the harness" in await _unfinished(tmp_path / "ok", [write], ["true"])
     res = await _unfinished(tmp_path, ["ls"], [])
-    assert res.endswith("No change was made.")
+    assert "No change was made." in res
 
 
 _PASSING_TEST = (
@@ -944,7 +944,8 @@ async def test_unfinished_session_with_green_last_test_is_completed(tmp_path: Pa
 
 async def test_a_change_after_the_green_run_cancels_it(tmp_path: Path) -> None:
     session, _ = await _green_run(tmp_path, [WRITE, TEST, "edit write b.txt\ny"])
-    assert session.status == "FAILED" and (session.result or "").startswith("Max steps")
+    assert session.status == "WAITING_INPUT"
+    assert (session.result or "").startswith("[STUCK: out of steps")
 
 
 async def test_green_run_that_now_fails_stays_failed(tmp_path: Path) -> None:
@@ -967,7 +968,8 @@ async def test_green_run_that_now_fails_stays_failed(tmp_path: Path) -> None:
         sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
     )
     session = await h.run("goal")
-    assert session.status == "FAILED" and (session.result or "").startswith("Max steps")
+    assert session.status == "WAITING_INPUT"
+    assert (session.result or "").startswith("[STUCK: out of steps")
 
 
 async def test_green_rerun_that_crashes_leaves_the_session_failed(
@@ -999,7 +1001,8 @@ async def test_green_rerun_that_crashes_leaves_the_session_failed(
         sandbox=sandbox,
     )
     session = await h.run("goal")
-    assert session.status == "FAILED" and (session.result or "").startswith("Max steps")
+    assert session.status == "WAITING_INPUT"
+    assert (session.result or "").startswith("[STUCK: out of steps")
 
 
 async def test_read_only_stall_gets_one_wrap_up_turn_and_can_finish(tmp_path: Path) -> None:

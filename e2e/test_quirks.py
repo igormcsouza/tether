@@ -109,7 +109,8 @@ def test_stall_with_a_failing_gate_restarts_then_hands_back(tether: Tether, chao
 def test_unfinished_session_reports_changes_and_gate(tether: Tether, chaos) -> None:
     chaos.script(*(f"bash touch f{i}.txt" for i in range(6)))  # #171: never a bare error
     r = tether.run("loop", "--tools", "bash", "--verify", "test -f missing.txt", "--max-steps", "4")
-    msg = r["failure"]["message"]
+    msg = r["result"]
+    assert r["status"] == "WAITING_INPUT"
     assert "Changed: `bash touch f0.txt`" in msg and "Gate `test -f missing.txt` fails" in msg
 
 

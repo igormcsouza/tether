@@ -16,15 +16,15 @@ With `--verify` gates configured, a stall after a change whose gates all pass en
 
 **Fix.** Read the `[STUCK]` result: it says what was tried. Refine the goal (name the file and the edit) and `tether send <id> "<guidance>"`, or try a stronger model. Raising `--max-steps` only repeats the loop.
 
-### `FAILED` with `Max steps (N) reached without calling done`
+### `WAITING_INPUT` with `[STUCK: out of steps (N) ...]` (exit code 2)
 
-**Cause.** The task needs more steps than allowed, or the model never found the way to finish.
+**Cause.** The task needs more steps than allowed, or the model never found the way to finish. The session is handed back instead of failed, so you can continue it.
 
-The result is never bare: it lists the last change commands and, with `--verify`, whether the gates pass now (a hand-back lists what was tried instead). A run that stopped with passing gates already holds a usable result in the workspace.
+The result is never bare: it lists the last change commands and, with `--verify`, whether the gates pass now. A run that stopped with passing gates already holds a usable result in the workspace.
 
 A session whose last test run passed after its final change ends `COMPLETED` instead ("Finished by the harness"), even without `--verify`.
 
-**Fix.** Check `tether read <id> --steps`: if the work is done and the model keeps verifying, tell it to call `done` in the goal. A bare `done` is enough: it ends the session with the result `Done.` once the gates pass. If it needs more room, raise `--max-steps` (for a pipeline, per stage). `tether send <id> "keep going"` resumes a finished session with a fresh budget.
+**Fix.** Check `tether read <id> --steps`: if the work is done and the model keeps verifying, tell it to call `done` in the goal. A bare `done` is enough: it ends the session with the result `Done.` once the gates pass. If it needs more room, raise `--max-steps` (for a pipeline, per stage). `tether send <id> "keep going"` resumes the session with a fresh budget.
 
 ### `FAILED` with `Verification gate ... misconfigured`
 

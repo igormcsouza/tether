@@ -63,7 +63,7 @@ ses_f6b0921b   COMPLETED  ...   2/15   Read changes.txt and call done with the l
 
 ## When it goes wrong
 
-- **A stage ends `Max steps reached`.** Raise `max_steps` for that stage (or for the whole pipeline). There is no resume yet, so progress that lives in files is what you keep; re-run the stage by hand with `tether run --skill ...`.
+- **A stage ends `[STUCK: out of steps]`.** The pipeline waits (`WAITING_INPUT`) with what the stage did. Raise `max_steps` for that stage (or for the whole pipeline); progress that lives in files is what you keep.
 - **A stage's gate keeps failing.** Run the gate command by hand; make the stage goal name the file it must produce.
 - **Invalid manifest.** `Error: invalid pipeline ...` and exit code 1 name the field.
 

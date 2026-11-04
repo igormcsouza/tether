@@ -182,7 +182,7 @@ class Harness:
 
     `output_schema` (JSON Schema subset) is a deterministic pre-`done` gate: the deliverable
     must be JSON matching it. `tether.api.failure_info` classifies FAILED results by the
-    prefixes "Verification gate", "Max steps", "Stopped" and "Worker error".
+    prefixes "Verification gate", "Stopped" and "Worker error".
     """
 
     def __init__(
@@ -1306,17 +1306,28 @@ class Harness:
 
             # Max steps reached without explicit `done`
             finished = await self._finished_by_harness(sandbox, verify_commands, green_cmd, changed)
-            self.store.update_session(
-                session_id,
-                status="COMPLETED" if finished else "FAILED",
-                result=finished
-                or await self._unfinished_result(
-                    f"Max steps ({rec.max_steps}) reached without calling `done`.",
+            if finished:
+                self.store.update_session(session_id, status="COMPLETED", result=finished)
+            else:
+                # Out of steps without `done` is stuck too: hand back what is known (`send`
+                # extends the budget) instead of failing
+                text = await self._unfinished_result(
+                    f"[STUCK: out of steps ({rec.max_steps}) without calling `done`.]",
                     sandbox,
                     verify_commands,
                     changes,
-                ),
-            )
+                )
+                self.store.add_turn(
+                    session_id=session_id,
+                    step=step_limit,
+                    role="tool",
+                    content=f"[WAITING_INPUT] {text}",
+                )
+                self.store.update_session(
+                    session_id,
+                    status="WAITING_INPUT",
+                    result=f"{text}\nRefine the request or give guidance, then send it again.",
+                )
         except Exception as exc:
             cur = self.store.get_session(session_id)
             self.store.add_turn(

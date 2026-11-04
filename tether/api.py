@@ -17,7 +17,6 @@ EXIT_OK = 0
 EXIT_USAGE = 1
 EXIT_WAITING = 2
 EXIT_GATE = 3
-EXIT_MAX_STEPS = 4
 EXIT_ERROR = 5
 
 EXIT_CODES = {
@@ -25,7 +24,6 @@ EXIT_CODES = {
     "usage": EXIT_USAGE,
     "waiting_input": EXIT_WAITING,
     "gate": EXIT_GATE,
-    "max_steps": EXIT_MAX_STEPS,
     "stopped": EXIT_ERROR,
     "worker_error": EXIT_ERROR,
 }
@@ -39,8 +37,6 @@ def failure_info(rec: SessionRecord) -> dict[str, Any] | None:
     if msg.startswith("Verification gate"):
         m = re.match(r"Verification gate `(.*)` (?:failed|misconfigured)", msg)
         return {"kind": "gate", "gate": m.group(1) if m else None, "message": msg}
-    if msg.startswith("Max steps"):
-        return {"kind": "max_steps", "gate": None, "message": msg}
     if msg.startswith("Stopped"):
         return {"kind": "stopped", "gate": None, "message": msg}
     return {"kind": "worker_error", "gate": None, "message": msg or "unknown failure"}
