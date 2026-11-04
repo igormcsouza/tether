@@ -56,9 +56,10 @@ def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list
 
 
 # Stall guard: warn after N reads of one file with varying ranges, abort after M warnings
-# A provider call that fails after its own retries is tried again at turn level (0 prompt
-# tokens); waits TETHER_OUTAGE_BACKOFF (default 10) seconds, doubling each time.
-OUTAGE_RETRIES = 3
+# A provider call that fails after its own retries is tried once more at turn level (0 prompt
+# tokens) after TETHER_OUTAGE_BACKOFF (default 10) seconds; a second failure in a row ends the
+# session (#147: a hung endpoint cost up to 12 timeouts before).
+OUTAGE_RETRIES = 1
 RANGE_STALL_READS = 7  # after the 6-step quiet [NUDGE], which gets the first word
 STALL_ABORT = 4
 _READERS = {"cat", "head", "tail", "grep", "rg", "sed", "wc", "awk", "gawk", "mawk"}

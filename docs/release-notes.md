@@ -4,6 +4,7 @@
 
 ### Fixes
 
+- A provider that stays down now ends the session after two failed calls in a row (the call and one turn-level retry), not four. Each call already includes the provider's own 3 attempts, so a hung endpoint used to cost up to 12 timeouts (#147).
 - A `providers.yaml` entry named `openrouter`, `vllm`, `groq` or `deepseek` is now used. Before, those four prefixes always went to the OpenAI adapter and its `OPENAI_BASE_URL` (default `api.openai.com`), so a declared OpenRouter endpoint was silently ignored and every call failed with HTTP 400. Without a declared entry the prefixes behave as before.
 
 ## v0.2.13 (2026-11-03)
