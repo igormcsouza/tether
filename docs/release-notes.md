@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.2.14 (2026-11-04)
+
+A session that is stuck now restarts from a short description of its state and, if that does not help, is handed back to the caller instead of failing. Out of steps is handed back the same way. This changes exit codes: `4` is no longer used (a handed-back session exits `2`), so scripts that check for `4` or for the `Stalled` and `Max steps` failures must check for `2` and a result starting with `[STUCK`.
+
 ### Features
 
 - A session that is stuck, however it shows (the same test failing 3 times after edits, or repeated commands, cycles and re-reads the wrap-up did not end), now restarts from one short message that describes the state (files as they are, last failing output, counts of what was tried) instead of replaying the failed steps. After two restarts that did not help it is handed back to the caller: status `WAITING_INPUT`, exit code `2`, a `[STUCK ...]` summary as the result, ready for `tether send`. This replaces the `Stalled` failure, and a session that runs out of steps is handed back the same way (`[STUCK: out of steps ...]`), so exit code `4` is no longer used. No prompt, schema or model-call cost.
