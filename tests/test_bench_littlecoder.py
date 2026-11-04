@@ -59,6 +59,36 @@ def test_env_points_it_at_ollama_with_a_16k_window_and_stays_inside_the_run_dir(
     assert int(env["LITTLE_CODER_MAX_TURNS"]) > 0
 
 
+def test_env_registers_the_model_that_was_asked_for(run, tmp_path: Path) -> None:
+    env = run.little_coder_env(str(tmp_path), 16384, "qwen3.5-9b-16k")
+    models = json.loads(Path(env["LITTLE_CODER_MODELS_FILE"]).read_text())
+    assert models["providers"]["ollama"]["models"][0]["id"] == "qwen3.5-9b-16k"
+
+
+async def test_one_registers_the_model_id_from_the_model_argument(
+    run, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import argparse
+    import asyncio
+
+    lc = tmp_path / "lc"
+    (lc / "bin").mkdir(parents=True)
+    (lc / "bin" / "little-coder.mjs").write_text("console.log('ok');\n")
+    monkeypatch.setenv("LITTLE_CODER_DIR", str(lc))
+    monkeypatch.delenv("LITTLE_CODER_SANDBOX", raising=False)
+    out = tmp_path / "out"
+    out.mkdir()
+    args = argparse.Namespace(
+        out=str(out), force=False, redo_infra=False, tether_bin="tether", param=[],
+        seeded=False, context_tokens=None,
+    )  # fmt: skip
+    results: list = []
+    rec = ("littlecoder", "ollama/qwen3.5-9b-16k", "code-simple", 0)
+    await run.one({"ollama": asyncio.Semaphore(1)}, rec, args, results)
+    models = json.loads((Path(results[0]["dir"]) / "models.json").read_text())
+    assert models["providers"]["ollama"]["models"][0]["id"] == "qwen3.5-9b-16k"
+
+
 def test_a_littlecoder_timeout_is_not_called_infra(run) -> None:
     rec = {"runner": "littlecoder", "run_status": "timeout", "exit": -9, "steps": None}
     assert run.is_infra(rec) is False
