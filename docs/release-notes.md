@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Documentation
+
+- The Coding Ladder results for Claude Haiku with and without tether, next to qwen3.5:9b ([page](ladder/claude-haiku.md)), and the ladder options `--attempts`, the failure hint on retries, `--provider` for any providers.yaml name and a sandboxed `--harness claude`.
+
 ## v0.2.14 (2026-11-04)
 
 A session that is stuck now restarts from a short description of its state and, if that does not help, is handed back to the caller instead of failing. Out of steps is handed back the same way. This changes exit codes: `4` is no longer used (a handed-back session exits `2`), so scripts that check for `4` or for the `Stalled` and `Max steps` failures must check for `2` and a result starting with `[STUCK`.

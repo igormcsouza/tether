@@ -2,7 +2,7 @@
 
 *For: people choosing a local model for coding work, and anyone who wants to check what tether does to a model before trusting it. After reading you can run the ladder on your own model and read its result.*
 
-The **Coding Ladder** is tether's own benchmark. It answers one question: **how far up a ladder of coding tasks does this model climb when tether is the harness around it, and what stops it?** The [results](results.md) page holds the baseline for the models tested so far.
+The **Coding Ladder** is tether's own benchmark. It answers one question: **how far up a ladder of coding tasks does this model climb when tether is the harness around it, and what stops it?** The [results](results.md) page holds the baseline for the models tested so far, and the [Claude Haiku results](claude-haiku.md) set Claude Haiku with and without tether next to `qwen3.5:9b`.
 
 ## The shape
 
@@ -35,6 +35,8 @@ For each model and each kind the tiers are tried in order. A tier gets **up to f
 3. thinking on, more steps and later folding of old tool output;
 4. thinking off, temperature 0, more steps and later folding.
 
+`--attempts N` stops a kind after N failed attempts at a tier (default 4); from the second attempt on, the goal carries a one-line hint of how the previous attempt ended.
+
 If all four fail, that kind's ladder ends and the next tier is never shown. A model without a thinking mode skips the thinking parameter, so its attempts differ only in steps and temperature. A run is stopped as soon as the work passes its grader ("delivered"), so a model that finishes but never calls `done` does not burn time.
 
 The context window is the largest that stays entirely in GPU memory (`bench/ladder/probe.py` finds it), because a window that spills to system memory makes every step much slower.
@@ -49,6 +51,8 @@ uv run python bench/ladder/run.py --out /tmp/ladder \
 uv run python bench/ladder/report.py /tmp/ladder
 ```
 
+`--provider` takes `ollama`, `nvidia`, `openrouter`, `opencode` or any provider name from `providers.yaml`.
+
 `report.py` prints, per task: whether it passed, how many attempts it took, the best score, the time, the steps and the prompt tokens. Runs are resumable.
 
 ## Compare harnesses
@@ -60,7 +64,7 @@ uv run python bench/ladder/run.py --harness naive --single --out /tmp/naive \
     --models qwen3.5-9b-40k --ctx qwen3.5-9b-40k=40960
 ```
 
-`--harness` takes `tether`, `naive` (a bare tool loop with no harness around the model), `opencode` and `claude` (Claude Code in print mode, with a cost cap). Model copies such as `qwen3.5-9b-40k` carry the context size, because an OpenAI-style endpoint cannot set it.
+`--harness` takes `tether`, `naive` (a bare tool loop with no harness around the model), `opencode` and `claude` (Claude Code in print mode, with a cost cap). The `claude` harness runs Claude Code inside the sandbox with only its workspace and the login directory named by `LADDER_CLAUDE_DIR` writable, and records steps and tokens from its event stream. Model copies such as `qwen3.5-9b-40k` carry the context size, because an OpenAI-style endpoint cannot set it.
 
 ## Freeze a baseline
 
