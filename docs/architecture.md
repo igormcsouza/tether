@@ -80,6 +80,19 @@ Small 8B/9B models occasionally fall into a probability trap where they emit the
 - **Loop-Stall Breaker:** `Harness.execute_session` tracks the `(cmd, stdin)` signature of the previous step and intercepts consecutive duplicates before executing the tool, returning a `[LOOP DETECTED]` nudge that forces the model to advance (direct wording from the second consecutive repeat). A read of an unchanged file whose earlier output is still live (`live_read_obs`) is answered once with a one-line `[obs_N unchanged]` pointer instead of re-running. A companion cycle detector (`detect_cycle`) catches a 2-command cycle repeated 3 times or a 3-command cycle repeated twice (6 actions, within the last 8), skips the repeated command, nudges with `[CYCLE DETECTED]` naming the commands, and records `cycle_stall`. Reading one file over varying line ranges 7 times in a row without a change (`edit view`, `sed -n`, `cat`, `grep`) is also a `cycle_stall`, which a repeated-command check cannot see. Four stall warnings without a change restart the session from a short description of its state (twice at most, see [context and store](reference/context-and-store.md)) and then hand it back to the caller as `WAITING_INPUT` instead of spending every step; any edit or other non-read command resets the count.
 - **Pre-`done` Verification Gates:** When configured via `Harness(verify=[...])`, CLI `--verify`, or Skill YAML `verify: [...]`, Tether intercepts `done` and runs each verification command inside the session's `SandboxPolicy`. It consumes **0 static prompt tokens** unless a gate exits non-zero—at which point termination is rejected and a compact `[VERIFICATION GATE FAILED]` observation is injected so the model can self-heal. A gate that errors rather than fails (sandbox violation, exit 124/126/127) ends the session `FAILED` immediately as `gate_error` instead of consuming retries.
 
+### Failing Test Source in the Observation — *Olausson et al. (ICLR 2024), Zhong et al. (LDB, ACL 2024)*
+Self-repair is limited by the quality of the feedback, not by the number of tries (Olausson et al.), and showing the runtime values behind a failure improves repair (Zhong et al.). A Python traceback shows the failing assert line (`self.assertEqual(total(basket), 10240)`) but not the inputs set on the lines above it, so a small model guesses or re-reads the whole test file. When a recognised test command fails, the harness appends the source of up to 3 failing test functions named in the traceback (files inside the workspace only, at most 1,500 chars, skipped when the output already shows it, as pytest does):
+
+```text
+[failing test source]
+# book_store_test.py:12
+    def test_four_groups_of_four(self):
+        basket = [1, 1, 2, 2, 3, 3, 4, 5, 1, 1, 2, 2, 3, 3, 4, 5]
+        self.assertEqual(total(basket), 10240)
+```
+
+0 static prompt tokens, no model call; the text is part of that observation and folds with it.
+
 ### Connection Pooling & Thread-Local SQLite WAL Reuse
 - Model providers reuse persistent `httpx.AsyncClient` connection pools across all turns in a session, eliminating repeated TCP/TLS handshakes.
 - `SQLiteStore` caches thread-local SQLite connections configured with `PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA temp_store=MEMORY; PRAGMA mmap_size=134217728;`.
@@ -92,3 +105,5 @@ Small 8B/9B models occasionally fall into a probability trap where they emit the
 2. **Wang, X., Chen, Y., Yuan, L., Zhang, Y., Li, Y., Peng, H., & Ji, H. (2024).** *Executable Code Actions Elicit Better LLM Agents (CodeAct)*. In **ICML 2024**. [arXiv:2402.01030](https://arxiv.org/abs/2402.01030)
 3. **Yang, J., Jimenez, C. E., Wettig, A., Lieret, K., Yao, S., Narasimhan, K., & Press, O. (2024).** *SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering*. In **NeurIPS 2024**. [arXiv:2405.15793](https://arxiv.org/abs/2405.15793)
 4. **Packer, C., Wooders, S., Lin, K., Fang, V., Patil, S. G., Stoica, I., & Gonzalez, J. E. (2023).** *MemGPT: Towards LLMs as Operating Systems*. [arXiv:2310.08560](https://arxiv.org/abs/2310.08560)
+5. **Olausson, T. X., Inala, J. P., Wang, C., Gao, J., & Solar-Lezama, A. (2024).** *Is Self-Repair a Silver Bullet for Code Generation?* In **ICLR 2024**. [arXiv:2306.09896](https://arxiv.org/abs/2306.09896)
+6. **Zhong, L., Wang, Z., & Shang, J. (2024).** *Debug like a Human: A Large Language Model Debugger via Verifying Runtime Execution Step-by-step (LDB)*. In **Findings of ACL 2024**. [arXiv:2402.16906](https://arxiv.org/abs/2402.16906)
