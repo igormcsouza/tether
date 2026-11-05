@@ -111,6 +111,8 @@ The same repair cycles show up in their smallest form: a model rewrites a whole 
 
 "Same code" means identical bytes, or for a `.py` file an identical syntax tree (comments and spacing do not count). New files, files over 256 KB and files outside the workspace are not compared. 0 static prompt tokens, no model call, at most 200 chars.
 
+The same check names a rewrite that changed only a few lines: when a whole-file write of a file of 20 or more lines changed at most a fifth of them, one line says how many lines changed and points to `edit replace`, once per file. Typing a 100-line file again to change two lines costs a 9B model about a minute; a replace costs seconds.
+
 ### Connection Pooling & Thread-Local SQLite WAL Reuse
 - Model providers reuse persistent `httpx.AsyncClient` connection pools across all turns in a session, eliminating repeated TCP/TLS handshakes.
 - `SQLiteStore` caches thread-local SQLite connections configured with `PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA temp_store=MEMORY; PRAGMA mmap_size=134217728;`.
