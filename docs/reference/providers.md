@@ -97,7 +97,7 @@ Every entry may set `timeout` (positive seconds). It applies to the HTTP kinds (
 
 ### Request parameters (`params`)
 
-HTTP kinds (`openai`, `ollama`, `anthropic`) accept `params`, merged into the request body over the adapter's defaults (temperature 0.2). `ollama` also sends `think=false` on a turn whose prompt leaves under 3072 tokens of `num_ctx` free, unless you set `think` yourself. For `ollama`, `think`, `keep_alive`, `format` and `stream` are request-level keys and everything else (`temperature`, `top_p`, ...) goes into `options`.
+HTTP kinds (`openai`, `ollama`, `anthropic`) accept `params`, merged into the request body. tether sets no sampling parameters of its own, so the model's defaults apply (for Ollama, the model's Modelfile or Ollama's defaults); set `temperature`, `top_p` or `top_k` here to follow a vendor's advice, e.g. Qwen3 recommends `{temperature: 0.6, top_p: 0.95, top_k: 20}` with thinking on and warns that greedy decoding causes endless repetition ([Qwen3 model card](https://huggingface.co/Qwen/Qwen3-8B#best-practices)). `ollama` also sends `think=false` on a turn whose prompt leaves under 3072 tokens of `num_ctx` free, unless you set `think` yourself. For `ollama`, `think`, `keep_alive`, `format` and `stream` are request-level keys and everything else (`temperature`, `top_p`, ...) goes into `options`.
 
 ```yaml
 my-gateway:

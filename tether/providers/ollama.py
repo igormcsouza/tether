@@ -117,7 +117,7 @@ class OllamaProvider:
             "tools": tools,
             "stream": False,
             "keep_alive": self.keep_alive,
-            "options": {"num_ctx": self.num_ctx, "temperature": 0.2},
+            "options": {"num_ctx": self.num_ctx},  # sampling is the model's own (#173)
         }
         if self.num_ctx - estimate_messages_tokens(messages, tools) < THINK_HEADROOM:
             payload["think"] = False  # an explicit `think` param below still wins
