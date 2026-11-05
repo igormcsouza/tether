@@ -213,6 +213,24 @@ async def test_no_second_ask_when_the_caller_set_the_budget() -> None:
     assert len(seen) == 1 and resp.action is None
 
 
+async def test_a_bad_tool_call_in_the_second_ask_becomes_a_hint() -> None:
+    """#173: Ollama's 500 for a malformed tool call in the think-off ask crashed the worker."""
+    from tether.providers.base import REJECTED_CALL_HINT
+
+    seen: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(1)
+        if len(seen) == 1:
+            return httpx.Response(200, json=_CUT)
+        return httpx.Response(500, json={"error": "error parsing tool call: raw='<tool_call>'"})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert len(seen) == 2
+    assert resp.action is None and resp.hint == REJECTED_CALL_HINT
+
+
 async def test_the_second_ask_is_asked_once() -> None:
     client, seen = _scripted([_CUT, _CUT, _CMD])
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
