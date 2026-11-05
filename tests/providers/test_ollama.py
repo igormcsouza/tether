@@ -231,6 +231,54 @@ async def test_a_bad_tool_call_in_the_second_ask_becomes_a_hint() -> None:
     assert resp.action is None and resp.hint == REJECTED_CALL_HINT
 
 
+_REJECTED = {"error": "error parsing tool call: raw='<tool_call>'"}
+
+
+def _replies(*replies: tuple[int, dict]) -> tuple[httpx.AsyncClient, list[dict]]:
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(__import__("json").loads(request.content))
+        code, body = replies[min(len(seen), len(replies)) - 1]
+        return httpx.Response(code, json=body)
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler)), seen
+
+
+async def test_a_call_cut_by_the_budget_is_asked_again_without_thinking() -> None:
+    """#173: 8 of 8 rejected calls in a bench arm came at ~2560 tokens (74-78 s at 33 tok/s).
+
+    The budget cut a whole-file write mid-call, Ollama could not parse the half call and
+    answered 500; the model lost the turn and wrote the file again. Thinking off, the same
+    turn fits.
+    """
+    client, seen = _replies((500, _REJECTED), (200, _CMD))
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert resp.action is not None and resp.action.cmd == "ls" and resp.hint is None
+    assert len(seen) == 2
+    assert seen[1]["think"] is False and "num_predict" not in seen[1]["options"]
+    assert seen[1]["messages"] == seen[0]["messages"]
+
+
+async def test_a_rejected_call_without_the_budget_is_a_hint_at_once() -> None:
+    """No budget, no cut: the call itself was malformed, the model is told to resend it."""
+    from tether.providers.base import REJECTED_CALL_HINT
+
+    for params in ({"think": False}, {"num_predict": -1}):
+        client, seen = _replies((500, _REJECTED), (200, _CMD))
+        prov = OllamaProvider("m", client=client, params=params)
+        resp = await prov.generate([{"role": "user", "content": "x"}], [])
+        assert len(seen) == 1 and resp.hint == REJECTED_CALL_HINT
+
+
+async def test_a_call_rejected_twice_is_a_hint() -> None:
+    from tether.providers.base import REJECTED_CALL_HINT
+
+    client, seen = _replies((500, _REJECTED), (500, _REJECTED), (200, _CMD))
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert len(seen) == 2 and resp.action is None and resp.hint == REJECTED_CALL_HINT
+
+
 async def test_the_second_ask_is_asked_once() -> None:
     client, seen = _scripted([_CUT, _CUT, _CMD])
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
