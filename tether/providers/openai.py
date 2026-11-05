@@ -81,7 +81,6 @@ class OpenAIProvider:
             "model": self.model_name,
             "messages": [_to_openai(m) for m in messages],
             "tools": tools,
-            "temperature": 0.2,
             **self.params,
         }
         client = self._get_client()

@@ -54,6 +54,16 @@ async def test_ollama_params_split_request_keys_and_options() -> None:
     assert seen[0]["options"] == {"num_ctx": 8192, "temperature": 0, "top_p": 0.5}
 
 
+async def test_no_param_leaves_sampling_to_the_model() -> None:
+    # A forced low temperature made qwen3 think in loops until the window filled (#173).
+    oc, o_seen = _capture({"message": {"content": "hi"}})
+    await OllamaProvider("m", client=oc).generate([{"role": "user", "content": "x"}], [])
+    assert o_seen[0]["options"] == {"num_ctx": 8192}
+    ac, a_seen = _capture({"choices": [{"message": {"content": "hi"}}]})
+    await OpenAIProvider("m", client=ac).generate([{"role": "user", "content": "x"}], [])
+    assert "temperature" not in a_seen[0]
+
+
 def test_yaml_params_sit_under_explicit_params(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

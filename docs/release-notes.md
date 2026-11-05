@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- tether no longer forces `temperature: 0.2` on Ollama and OpenAI-compatible requests; the model's own sampling defaults apply. On qwen3.5:9b the low temperature made the thinking repeat until it filled the context window: without it, turns that end with no command fall from 12.3% to about 6% on 8 Polyglot exercises. Set `temperature` in `params` to get the old behaviour.
+
 ### Documentation
 
 - The Coding Ladder results for Claude Haiku with and without tether, next to qwen3.5:9b ([page](ladder/claude-haiku.md)), and the ladder options `--attempts`, the failure hint on retries, `--provider` for any providers.yaml name and a sandboxed `--harness claude`.
