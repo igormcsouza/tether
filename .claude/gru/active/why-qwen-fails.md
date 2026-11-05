@@ -26,6 +26,13 @@ Overflow halves. Pass flat within noise (4/16 against 7/32). Out dirs: north-sta
 ## Decisions
 - 2026-11-04: drop the hardcoded temperature 0.2 in the ollama and openai adapters (PO: "commit what you've done"). Fixes the thinking runaway; does not fix the main cause (first design wrong).
 
+## Round 2 (2026-11-04)
+- e2e on fix/model-sampling-defaults: 80 passed.
+- Room theory rejected: overflow is 10% even at 2-3k prompts (5k+ free); healthy command turns use p97 about 1.6-2.2k tokens. Thinking either ends short or runs away.
+- Failure output hides the inputs: 1536 of 2304 traceback assert lines show only a variable (`total(basket)`), not the values. After a failing test run, failing runs re-read the test file next 27% of the time (passing 14%) and produce no command 17% (passing 6%); passing runs write the fix next 78% (failing 47%).
+- R3 (Haiku, $0.14): feedback quality is the repair bottleneck (Olausson ICLR 2024), runtime values help (LDB ACL 2024), debugging decays after 2-3 tries (arXiv 2506.18403).
+- Candidate: when a test fails, append the source of the failing test function (from the traceback frame in the workspace) to that observation. Bounded, 0 static tokens, no model call.
+
 ## Next steps
 - [ ] Full 34x2 run with the change for the north star line
 - [ ] New idea aimed at the first design (research card R3)
