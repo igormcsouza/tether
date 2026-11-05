@@ -36,3 +36,10 @@ Overflow halves. Pass flat within noise (4/16 against 7/32). Out dirs: north-sta
 ## Next steps
 - [ ] Full 34x2 run with the change for the north star line
 - [ ] New idea aimed at the first design (research card R3)
+
+### 2026-11-04 thinking budget (T1)
+- PO said "Yes, prepare it". Branch `feat/think-budget` (stacked on `feat/failing-test-source`).
+- Verified on tether-ollama: `num_predict` counts thinking tokens; a cut reply has `done_reason: "length"` and empty content.
+- Acceptance tests in `tests/providers/test_ollama.py` (5 new, 3 red before the change) + `tests/test_params.py` exact-options assert loosened.
+- Card: `.claude/gru/why-qwen-fails/cards/T1.md` (owns `tether/providers/ollama.py`). THINK_BUDGET 2560; one think-off re-ask when cut with no command; caller `num_predict` (e.g. -1) disables it.
+- src-ab arm B at 12/16 when written; book-store t0 passed in 150 s.
