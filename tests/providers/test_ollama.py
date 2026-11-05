@@ -142,3 +142,78 @@ async def test_thinking_is_off_when_little_window_is_left_for_the_reply() -> Non
     assert forced["think"] is True
     # headroom scales with the window: the same prompt is fine in a 32k window
     assert "think" not in await _sent_payload({"num_ctx": 32768}, "x" * 4 * 5200)
+
+
+def _scripted(replies: list[dict]) -> tuple[httpx.AsyncClient, list[dict]]:
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(__import__("json").loads(request.content))
+        return httpx.Response(200, json=replies[min(len(seen), len(replies)) - 1])
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler)), seen
+
+
+_CUT = {
+    "message": {"content": ""},
+    "done_reason": "length",
+    "eval_count": 2560,
+    "prompt_eval_count": 900,
+}
+_CMD = {
+    "message": {
+        "content": "",
+        "tool_calls": [{"function": {"name": "act", "arguments": {"cmd": "ls"}}}],
+    },
+    "done_reason": "stop",
+    "eval_count": 30,
+    "prompt_eval_count": 900,
+}
+
+
+async def test_a_thinking_turn_has_an_output_budget() -> None:
+    """#173: runaway thinking filled the window and lost the turn; healthy turns use < 2.2k."""
+    from tether.providers.ollama import THINK_BUDGET
+
+    assert 2048 <= THINK_BUDGET <= 4096
+    sent = await _sent_payload({"num_ctx": 8192}, "x" * 400)
+    assert sent["options"]["num_predict"] == THINK_BUDGET
+    # no budget when thinking is off (little room left, or the caller turned it off)
+    full = await _sent_payload({"num_ctx": 8192}, "x" * 4 * 5200)
+    assert "num_predict" not in full["options"]
+    off = await _sent_payload({"params": {"think": False}}, "x")
+    assert "num_predict" not in off["options"]
+    # an explicit num_predict always wins
+    own = await _sent_payload({"params": {"num_predict": -1}}, "x")
+    assert own["options"]["num_predict"] == -1
+
+
+async def test_a_turn_cut_while_thinking_is_asked_again_without_thinking() -> None:
+    client, seen = _scripted([_CUT, _CMD])
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert resp.action is not None and resp.action.cmd == "ls"
+    assert len(seen) == 2
+    assert seen[1]["think"] is False and "num_predict" not in seen[1]["options"]
+    assert seen[1]["messages"] == seen[0]["messages"]  # same turn, nothing added
+    assert resp.completion_tokens == 2560 + 30 and resp.prompt_tokens == 900 + 900
+
+
+async def test_no_second_ask_when_the_turn_has_a_command_or_was_not_cut() -> None:
+    cut_cmd = {**_CMD, "done_reason": "length"}
+    for first in (cut_cmd, {"message": {"content": "thinking out loud"}, "done_reason": "stop"}):
+        client, seen = _scripted([first, _CMD])
+        await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+        assert len(seen) == 1
+
+
+async def test_no_second_ask_when_the_caller_set_the_budget() -> None:
+    client, seen = _scripted([_CUT, _CMD])
+    prov = OllamaProvider("m", client=client, params={"num_predict": 100})
+    resp = await prov.generate([{"role": "user", "content": "x"}], [])
+    assert len(seen) == 1 and resp.action is None
+
+
+async def test_the_second_ask_is_asked_once() -> None:
+    client, seen = _scripted([_CUT, _CUT, _CMD])
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert len(seen) == 2 and resp.action is None

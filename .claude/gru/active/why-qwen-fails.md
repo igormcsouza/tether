@@ -36,3 +36,34 @@ Overflow halves. Pass flat within noise (4/16 against 7/32). Out dirs: north-sta
 ## Next steps
 - [ ] Full 34x2 run with the change for the north star line
 - [ ] New idea aimed at the first design (research card R3)
+
+### 2026-11-04 thinking budget (T1)
+- PO said "Yes, prepare it". Branch `feat/think-budget` (stacked on `feat/failing-test-source`).
+- Verified on tether-ollama: `num_predict` counts thinking tokens; a cut reply has `done_reason: "length"` and empty content.
+- Acceptance tests in `tests/providers/test_ollama.py` (5 new, 3 red before the change) + `tests/test_params.py` exact-options assert loosened.
+- Card: `.claude/gru/why-qwen-fails/cards/T1.md` (owns `tether/providers/ollama.py`). THINK_BUDGET 2560; one think-off re-ask when cut with no command; caller `num_predict` (e.g. -1) disables it.
+- src-ab arm B at 12/16 when written; book-store t0 passed in 150 s.
+- T1 done by claude:haiku (1 attempt, $0.021, 18 turns; could not run uv in sandbox, verified by gru): 481 passed, cov 100%, ruff, mypy green; tests byte-identical. Commit `6cb036d` on `feat/think-budget` with docs (release notes, providers.md, AGENTS.md §D). e2e + A/B pending (GPU busy with src-ab).
+
+### 2026-11-04 src-ab result (arm B = sampling fix + failing test source, 16 runs)
+| metric | arm A (samp-default+samp-vendor, 16) | arm B src-ab (16) |
+|---|---|---|
+| pass | 4/16 | 4/16 (book-store, go-counting, scale-generator, vlq t0) |
+| overflow turns | 5.4% / 6.2% | 9.2% |
+| lost model time | 28-29% | 33% |
+| rewrite better/same/worse | 56/26/19% (n=43) | 37/45/18% (n=38) |
+| after failing test, fail runs: write / read_test / none | 48 / 25 / 14% (n=64) | 43 / 17 / 23% (n=53) |
+- Read: source shown -> fewer test re-reads (25->17%), but more empty turns right after a failure (14->23%). Pass flat; n=16 cannot see < ~30 pt. Not a win yet, not a clear loss. The empty-after-failure turns are what T1 targets.
+- Started arm C `hosted-out/think-ab` (feat/think-budget, 6cb036d: sampling + source + budget), e2e first. Log /tmp/claude-1000/think_ab.log.
+
+### 2026-11-05 think-ab result (arm C = sampling + source + thinking budget, 16 runs), e2e 80/80
+| metric | arm A (16) | arm B src-ab (16) | arm C think-ab (16) |
+|---|---|---|---|
+| pass | 4/16 | 4/16 | 6/16 (hangman t0+t1, book-store t0, vlq t0+t1, go-counting t0) |
+| turns in 16 runs | 341 | 282 | 360 |
+| empty window-filling turns | 20 | 26 | 1 |
+| lost model time | 28-29% | 33% | 16% |
+| after failing test (fail runs): none | 14% | 23% | 6% |
+| rewrite better | 56% | 37% | 38% (n=61) |
+- Budget does what it should: empty turns 26 -> 1, lost time halved, empty-after-failure 23 -> 6%. Pass +2 is inside noise at n=16.
+- New limit: 7 of 10 failed runs end at the 30-step cap or 600 s, mostly near-passing (0.65-0.82). Rewrites still only 38% better: spec-misread remains the main cause.

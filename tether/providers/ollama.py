@@ -28,6 +28,32 @@ _TOP_LEVEL = frozenset({"think", "keep_alive", "format", "stream"})
 # A thinking reply needs room: below this many free tokens the window fills up mid-thought,
 # Ollama cuts the reply and the turn comes back empty (#183).
 THINK_HEADROOM = 3072
+# Healthy command turns use < 2.2k output tokens; a turn past this is runaway thinking (#173).
+THINK_BUDGET = 2560
+
+
+def _response(data: dict[str, Any]) -> ModelResponse:
+    msg = data.get("message") or {}
+    content = str(msg.get("content") or "").strip()
+    prompt_tokens = int(data.get("prompt_eval_count") or 0)
+    completion_tokens = int(data.get("eval_count") or 0)
+
+    action: ActionCall | None = None
+    tool_calls = msg.get("tool_calls") or []
+    if tool_calls:
+        first_tc = tool_calls[0]
+        fn_obj = first_tc.get("function") or {}
+        action = action_from_tool_call(fn_obj.get("name"), fn_obj.get("arguments") or {})
+
+    if action is None and content:
+        action = extract_fallback_action(content)
+
+    return ModelResponse(
+        content=content,
+        action=action,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+    )
 
 
 class OllamaProvider:
@@ -126,6 +152,9 @@ class OllamaProvider:
                 payload[key] = value
             else:
                 payload["options"][key] = value
+        budgeted = payload.get("think") is not False and "num_predict" not in self.params
+        if budgeted:
+            payload["options"]["num_predict"] = THINK_BUDGET
         client = self._get_client()
         resp = await self._chat(client, payload)
         if resp.status_code == 404:
@@ -160,25 +189,21 @@ class OllamaProvider:
                 )
         resp.raise_for_status()
         data = resp.json()
-
-        msg = data.get("message") or {}
-        content = str(msg.get("content") or "").strip()
-        prompt_tokens = int(data.get("prompt_eval_count") or 0)
-        completion_tokens = int(data.get("eval_count") or 0)
-
-        action: ActionCall | None = None
-        tool_calls = msg.get("tool_calls") or []
-        if tool_calls:
-            first_tc = tool_calls[0]
-            fn_obj = first_tc.get("function") or {}
-            action = action_from_tool_call(fn_obj.get("name"), fn_obj.get("arguments") or {})
-
-        if action is None and content:
-            action = extract_fallback_action(content)
-
-        return ModelResponse(
-            content=content,
-            action=action,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-        )
+        first = _response(data)
+        if budgeted and data.get("done_reason") == "length" and first.action is None:
+            # cut by the budget without a command: ask the same turn once more, thinking off
+            retry = {
+                **payload,
+                "think": False,
+                "options": {k: v for k, v in payload["options"].items() if k != "num_predict"},
+            }
+            resp = await self._chat(client, retry)
+            resp.raise_for_status()
+            second = _response(resp.json())
+            return ModelResponse(
+                content=second.content,
+                action=second.action,
+                prompt_tokens=first.prompt_tokens + second.prompt_tokens,
+                completion_tokens=first.completion_tokens + second.completion_tokens,
+            )
+        return first

@@ -58,7 +58,7 @@ async def test_no_param_leaves_sampling_to_the_model() -> None:
     # A forced low temperature made qwen3 think in loops until the window filled (#173).
     oc, o_seen = _capture({"message": {"content": "hi"}})
     await OllamaProvider("m", client=oc).generate([{"role": "user", "content": "x"}], [])
-    assert o_seen[0]["options"] == {"num_ctx": 8192}
+    assert not {"temperature", "top_p", "top_k"} & set(o_seen[0]["options"])
     ac, a_seen = _capture({"choices": [{"message": {"content": "hi"}}]})
     await OpenAIProvider("m", client=ac).generate([{"role": "user", "content": "x"}], [])
     assert "temperature" not in a_seen[0]
