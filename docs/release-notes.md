@@ -5,6 +5,7 @@
 ### Changed
 
 - tether no longer forces `temperature: 0.2` on Ollama and OpenAI-compatible requests; the model's own sampling defaults apply. On qwen3.5:9b the low temperature made the thinking repeat until it filled the context window: without it, turns that end with no command fall from 12.3% to about 6% on 8 Polyglot exercises. Set `temperature` in `params` to get the old behaviour.
+- A failing test run now shows the source of the failing tests (up to 3, at most 1,500 chars) after the traceback. A traceback shows `assertEqual(total(basket), 10240)` but not what `basket` is; small models then re-read the whole test file instead of fixing the code.
 
 ### Documentation
 

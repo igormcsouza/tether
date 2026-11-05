@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import os
 import re
@@ -120,6 +121,47 @@ _TESTS_GREEN = re.compile(r"^OK\b|\b\d+ passed\b|^ok\s", re.M)
 def tests_green(cmd: str, out: str) -> bool:
     """True when `cmd` is a test runner whose output reports success (#177)."""
     return bool(_TEST_CMD.search(cmd) and _TESTS_GREEN.search(out) and not _TESTS_RED.search(out))
+
+
+_TRACE_FRAME = re.compile(r'File "([^"]+)", line (\d+), in (\w+)')
+
+
+def failing_test_source(out: str, root: Path) -> str:
+    """Source of the failing test functions named in a traceback, inside `root` (#173)."""
+    base = root.resolve()
+    seen: set[tuple[str, str]] = set()
+    parts: list[str] = []
+    for raw, line_s, name in _TRACE_FRAME.findall(out):
+        if not name.startswith("test") or not raw.endswith(".py"):
+            continue
+        path = Path(raw) if Path(raw).is_absolute() else root / raw
+        resolved = path.resolve()
+        if not resolved.is_relative_to(base) or (str(resolved), name) in seen:
+            continue
+        seen.add((str(resolved), name))
+        try:
+            text = resolved.read_text(encoding="utf-8")
+            tree = ast.parse(text)
+        except (OSError, SyntaxError, ValueError):
+            continue
+        lines = text.splitlines()
+        line = int(line_s)
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            end = node.end_lineno or node.lineno
+            if node.name != name or not node.lineno <= line <= end:
+                continue
+            if lines[node.lineno - 1].strip() in out:
+                break
+            body = "\n".join(lines[node.lineno - 1 : end])[:600]
+            part = f"# {resolved.relative_to(base).as_posix()}:{node.lineno}\n{body}"
+            if len(parts) < 3 and len("\n".join([*parts, part])) <= 1475:
+                parts.append(part)
+            break
+    if not parts:
+        return ""
+    return "\n[failing test source]\n" + "\n".join(parts)
 
 
 _NOISE = re.compile(r"&>\s*/dev/null|\d?>>?\s*/dev/null|\d>&\d")
@@ -1241,6 +1283,8 @@ class Harness:
                     stale.update(fail_runs)
 
                 out = dispatch.output
+                if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
+                    out += failing_test_source(out, Path(sandbox.workspace_root))
                 if changed and not dispatch.is_error and tests_green(cmd, out):
                     green_cmd = cmd
                     if not green_nudged:
