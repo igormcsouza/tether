@@ -7,6 +7,7 @@
 - tether no longer forces `temperature: 0.2` on Ollama and OpenAI-compatible requests; the model's own sampling defaults apply. On qwen3.5:9b the low temperature made the thinking repeat until it filled the context window: without it, turns that end with no command fall from 12.3% to about 6% on 8 Polyglot exercises. Set `temperature` in `params` to get the old behaviour.
 - A failing test run now shows the source of the failing tests (up to 3, at most 1,500 chars) after the traceback. A traceback shows `assertEqual(total(basket), 10240)` but not what `basket` is; small models then re-read the whole test file instead of fixing the code.
 - Ollama: a thinking turn may produce at most 2,560 tokens (`num_predict`). A turn cut there without a command is asked again at once with `think=false`, so runaway thinking costs one short turn instead of a whole window and a lost step. Turns that end in a command use under 2,200 tokens. Set `num_predict` in `params` (e.g. `-1`) to turn the budget off.
+- After a test run (unittest or pytest), tests that passed in the previous run of the same suite and fail now are named in one line: `[regression] Your last change broke 1 test(s) that passed before: test_a; now passing: test_b. Keep what worked.` A count like "3 failed" hides that a change fixed one test and broke another; in failing qwen3.5:9b runs a third of the edits between two test runs did that.
 
 ### Fixed
 

@@ -67,3 +67,17 @@ Overflow halves. Pass flat within noise (4/16 against 7/32). Out dirs: north-sta
 | rewrite better | 56% | 37% | 38% (n=61) |
 - Budget does what it should: empty turns 26 -> 1, lost time halved, empty-after-failure 23 -> 6%. Pass +2 is inside noise at n=16.
 - New limit: 7 of 10 failed runs end at the 30-step cap or 600 s, mostly near-passing (0.65-0.82). Rewrites still only 38% better: spec-misread remains the main cause.
+
+### 2026-11-05 round 3: regression note (G1)
+- PO: "keep going, one small thing at a time, general, not over-fit to qwen".
+- think-ab fails: 10/10 end at 30 steps or 600 s, plateau at the same failing count. whack.py over A+B+C: edits between test runs in failing runs fix+break 25% / break only 10% (passing runs 8% / 4%).
+- Literature: Huang et al. ASE'26 (2607.01855): verification gate + rollback is the only mitigation that helps all 6 models (Llama-8B 31.6 -> 47.3%); recap alone small. Wang-Lin et al. 2026 (2609.10123): iterative fixing damages correct code, add/remove cycles.
+- Step 1 (no rollback yet): `[regression]` line naming broken + newly passing tests vs the last run of the same suite. Branch `feat/test-regression-note`, tests `6f0af32`, impl `d0257c8` (claude:haiku, 1 attempt, $0.019; my integration test had a pyc same-size/same-second bug, fixed by gru). 487 passed, 100%.
+- Started arm D `hosted-out/reg-ab` (main + note), e2e first. Watch: whack.py fix+break/break-only rate, then pass.
+- If the rate drops but pass stays flat: step 2 = opt-in rollback to the best version (the paper's gate).
+
+### 2026-11-05 arm D result (reg-ab, 8 ex x2)
+- e2e 80 passed. Pass 6/16 (= arm C). Note fired 18x in 9 runs (regcount.py).
+- whack.py failing runs, C -> D: fix+break 40% -> 15%, break only 10% -> 18%, any break 50% -> 33%, fix only 16% -> 32%. Passing runs: fix+break 9% -> 28% (n=18-22 edits, noisy).
+- 3 runs FAILED as worker_error (both book-store at step 5, connect t1 at step 16): Ollama 500. Cause: #228 think-off retry (ollama.py:200) calls raise_for_status without `rejected_call`, so a malformed tool call in the retry crashes the worker instead of becoming a hint. Arm C had 0 such errors (luck). Book-store passed 1/2 in C, so D lost about 1 pass to this bug.
+- Next: PR the note (honest: pass flat, regressions down); separate fix PR for the retry 500 (test first, minion types).
