@@ -198,6 +198,8 @@ class OllamaProvider:
                 "options": {k: v for k, v in payload["options"].items() if k != "num_predict"},
             }
             resp = await self._chat(client, retry)
+            if rejected := rejected_call(resp):
+                return rejected
             resp.raise_for_status()
             second = _response(resp.json())
             return ModelResponse(
