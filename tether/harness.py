@@ -164,6 +164,41 @@ def failing_test_source(out: str, root: Path) -> str:
     return "\n[failing test source]\n" + "\n".join(parts)
 
 
+_UNITTEST_RAN = re.compile(r"Ran (\d+) tests?")
+_UNITTEST_FAIL = re.compile(r"^(?:FAIL|ERROR): (\w+) \(", re.M)
+_PYTEST_COUNT = re.compile(r"(\d+) (?:passed|failed|errors?)\b")
+_PYTEST_FAIL = re.compile(r"^(?:FAILED|ERROR) \S*::(\w+)", re.M)
+
+
+def run_outcome(out: str) -> tuple[int, frozenset[str]] | None:
+    """Tests run and failing test names from a unittest or pytest summary, else None (#173)."""
+    if ran := _UNITTEST_RAN.search(out):
+        return int(ran.group(1)), frozenset(_UNITTEST_FAIL.findall(out))
+    counts = _PYTEST_COUNT.findall(out)
+    if not counts:
+        return None
+    return sum(map(int, counts)), frozenset(_PYTEST_FAIL.findall(out))
+
+
+def regression_note(before: tuple[int, frozenset[str]], after: tuple[int, frozenset[str]]) -> str:
+    """Note naming the tests the last change broke, when both runs are comparable (#173)."""
+    if before[0] != after[0] or not (broke := sorted(after[1] - before[1])):
+        return ""
+    fixed = sorted(before[1] - after[1])
+
+    def listed(names: list[str]) -> str:
+        more = f" (+{len(names) - 5} more)" if len(names) > 5 else ""
+        return ", ".join(names[:5]) + more
+
+    note = (
+        f"\n[regression] Your last change broke {len(broke)} test(s) that passed before: "
+        f"{listed(broke)}"
+    )
+    if fixed:
+        note += f"; now passing: {listed(fixed)}"
+    return (note + ". Keep what worked.")[:400]
+
+
 _NOISE = re.compile(r"&>\s*/dev/null|\d?>>?\s*/dev/null|\d>&\d")
 _STATEMENT = re.compile(r"""(?:"[^"]*"|'[^']*'|[^;&|\n"'])+""")
 _BLOCK_OPEN = re.compile(r"^(?:(?:do|then|else|elif|if|while|until)\b\s*)+")
@@ -830,6 +865,7 @@ class Harness:
         changes: list[str] = []
         green_cmd: str | None = None  # last passing test run, cleared by any later change
         green_nudged = False
+        last_run: tuple[int, frozenset[str]] | None = None  # outcome of the last test run
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
         # Restart state: failing check runs per command (counted once per edit in between)
         fail_runs: dict[str, int] = {}
@@ -1285,6 +1321,10 @@ class Harness:
                 out = dispatch.output
                 if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
                     out += failing_test_source(out, Path(sandbox.workspace_root))
+                if _TEST_CMD.search(cmd) and (outcome := run_outcome(dispatch.output)):
+                    if last_run:
+                        out += regression_note(last_run, outcome)
+                    last_run = outcome
                 if changed and not dispatch.is_error and tests_green(cmd, out):
                     green_cmd = cmd
                     if not green_nudged:

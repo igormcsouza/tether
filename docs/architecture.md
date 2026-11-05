@@ -93,6 +93,15 @@ Self-repair is limited by the quality of the feedback, not by the number of trie
 
 0 static prompt tokens, no model call; the text is part of that observation and folds with it.
 
+### Naming Regressions Between Test Runs — *Huang et al. (ASE 2026), Wang-Lin et al. (2026)*
+Iterative LLM repair often breaks code that already worked: across six models, 40% to 73% of multi-turn tasks lose behaviour that was correct earlier, and checking each new version against the earlier tests is the one mitigation that helped every model (Huang et al.). Repeated fixing also falls into cycles where the same change is added and removed (Wang-Lin et al.). A test summary like `FAILED (failures=3)` hides this: three failing before and after can be two different sets. The harness remembers the failing tests of the last run of the same suite (same number of tests) and, when tests that passed then fail now, appends one line:
+
+```text
+[regression] Your last change broke 1 test(s) that passed before: test_o_wins; now passing: test_x_wins. Keep what worked.
+```
+
+0 static prompt tokens, no model call, at most 400 chars; nothing is added when no test broke.
+
 ### Connection Pooling & Thread-Local SQLite WAL Reuse
 - Model providers reuse persistent `httpx.AsyncClient` connection pools across all turns in a session, eliminating repeated TCP/TLS handshakes.
 - `SQLiteStore` caches thread-local SQLite connections configured with `PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA temp_store=MEMORY; PRAGMA mmap_size=134217728;`.
@@ -107,3 +116,5 @@ Self-repair is limited by the quality of the feedback, not by the number of trie
 4. **Packer, C., Wooders, S., Lin, K., Fang, V., Patil, S. G., Stoica, I., & Gonzalez, J. E. (2023).** *MemGPT: Towards LLMs as Operating Systems*. [arXiv:2310.08560](https://arxiv.org/abs/2310.08560)
 5. **Olausson, T. X., Inala, J. P., Wang, C., Gao, J., & Solar-Lezama, A. (2024).** *Is Self-Repair a Silver Bullet for Code Generation?* In **ICLR 2024**. [arXiv:2306.09896](https://arxiv.org/abs/2306.09896)
 6. **Zhong, L., Wang, Z., & Shang, J. (2024).** *Debug like a Human: A Large Language Model Debugger via Verifying Runtime Execution Step-by-step (LDB)*. In **Findings of ACL 2024**. [arXiv:2402.16906](https://arxiv.org/abs/2402.16906)
+7. **Huang, Y., Ma, L., Tahir, A., Zhang, Q., Xiao, L., & Xiao, L. (2026).** *Regression Accumulation in Multi-Turn LLM Programming Conversations*. In **ASE 2026**. [arXiv:2607.01855](https://arxiv.org/abs/2607.01855)
+8. **Wang-Lin, X., Isopoussu, A., & Mahon, L. (2026).** *If It's Not Buggy, Don't Fix It: On the Dynamics of Iterative Bug-fixing with LLMs*. [arXiv:2609.10123](https://arxiv.org/abs/2609.10123)

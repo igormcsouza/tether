@@ -1,4 +1,4 @@
-"""After a test run, name the tests the last change broke: passed in the last run, fail now (#173)."""
+"""After a test run, name the tests the last change broke: passed last run, fail now (#173)."""
 
 from __future__ import annotations
 
@@ -86,7 +86,8 @@ class T(unittest.TestCase):
 async def test_the_observation_after_a_regressing_change_names_it(tmp_path: Path) -> None:
     (tmp_path / "mod_test.py").write_text(TEST_FILE)
     (tmp_path / "v1.py").write_text("def f():\n    return 1\n\n\ndef g():\n    return 0\n")
-    (tmp_path / "v2.py").write_text("def f():\n    return 0\n\n\ndef g():\n    return 2\n")
+    # a different size, so Python does not reuse v1's cached bytecode written in the same second
+    (tmp_path / "v2.py").write_text("def f():\n    return 0\n\n\ndef g():\n    return 2  # v2\n")
     test = "python3 -m unittest mod_test"
     cmds = ["cp v1.py mod.py", test, "cp v2.py mod.py", test, "ls"]
     provider = FakeScriptedProvider(
