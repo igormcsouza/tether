@@ -9,6 +9,10 @@
 - Ollama: a thinking turn may produce at most 2,560 tokens (`num_predict`). A turn cut there without a command is asked again at once with `think=false`, so runaway thinking costs one short turn instead of a whole window and a lost step. Turns that end in a command use under 2,200 tokens. Set `num_predict` in `params` (e.g. `-1`) to turn the budget off.
 - After a test run (unittest or pytest), tests that passed in the previous run of the same suite and fail now are named in one line: `[regression] Your last change broke 1 test(s) that passed before: test_a; now passing: test_b. Keep what worked.` A count like "3 failed" hides that a change fixed one test and broke another; in failing qwen3.5:9b runs a third of the edits between two test runs did that.
 
+### Fixed
+
+- Ollama: when the model wrote a malformed tool call in the `think=false` second ask, Ollama's HTTP 500 crashed the session. It now gets the same "fix your call" hint as the first ask.
+
 ### Documentation
 
 - The Coding Ladder results for Claude Haiku with and without tether, next to qwen3.5:9b ([page](ladder/claude-haiku.md)), and the ladder options `--attempts`, the failure hint on retries, `--provider` for any providers.yaml name and a sandboxed `--harness claude`.
