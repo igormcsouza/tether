@@ -77,7 +77,8 @@ def _policy(root: Path) -> SandboxPolicy:
 
 async def test_the_note_follows_a_rewrite_that_changed_nothing(tmp_path: Path) -> None:
     write = f"cat > m.py << 'EOF'\n{CODE}EOF"
-    cmds = [write, write, "ls"]
+    # an identical command is caught by the repeat guard; a comment makes it a new command
+    cmds = [write, f"cat > m.py << 'EOF'\n# try again\n{CODE}EOF", "ls"]
     provider = FakeScriptedProvider(
         [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
     )
@@ -93,6 +94,6 @@ async def test_the_note_follows_a_rewrite_that_changed_nothing(tmp_path: Path) -
     def seen(call: int) -> str:
         return "\n".join(str(m.get("content") or "") for m in provider.recorded_calls[call])
 
-    assert (tmp_path / "m.py").read_text() == CODE
+    assert (tmp_path / "m.py").read_text().startswith("# try again\ndef f(x):")
     assert "unchanged" not in seen(1)  # the first write created the file
     assert "[NUDGE]" in seen(2) and "m.py" in seen(2).split("unchanged", 1)[0][-200:]

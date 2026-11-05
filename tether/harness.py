@@ -46,6 +46,7 @@ from tether.tools import (
     make_mem_tool,
     make_web_tool,
 )
+from tether.unchanged import snapshot, unchanged_note
 
 
 def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
@@ -1150,6 +1151,7 @@ class Harness:
                     )
                     continue
 
+                before = {} if is_quiet(cmd) else snapshot(cmd, Path(sandbox.workspace_root))
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)
@@ -1325,6 +1327,8 @@ class Harness:
                     if last_run:
                         out += regression_note(last_run, outcome)
                     last_run = outcome
+                if before and not dispatch.is_error:
+                    out += unchanged_note(before, Path(sandbox.workspace_root))
                 if changed and not dispatch.is_error and tests_green(cmd, out):
                     green_cmd = cmd
                     if not green_nudged:
