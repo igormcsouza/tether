@@ -150,7 +150,8 @@ async def test_ollama_rejected_tool_call_is_model_feedback_not_an_outage() -> No
 
     prov = OllamaProvider("m", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
     resp = await prov.generate([{"role": "user", "content": "x"}], [])
-    assert calls == 1  # the same request would fail the same way
+    # one think-off re-ask (the budget may have cut the call), never the same request twice
+    assert calls == 2
     assert resp.action is None and "cut off" in resp.hint
 
 

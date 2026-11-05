@@ -254,7 +254,7 @@ async def test_a_call_cut_by_the_budget_is_asked_again_without_thinking() -> Non
     """
     client, seen = _replies((500, _REJECTED), (200, _CMD))
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
-    assert resp.action is not None and resp.action.cmd == "ls" and resp.hint is None
+    assert resp.action is not None and resp.action.cmd == "ls" and not resp.hint
     assert len(seen) == 2
     assert seen[1]["think"] is False and "num_predict" not in seen[1]["options"]
     assert seen[1]["messages"] == seen[0]["messages"]
