@@ -446,6 +446,9 @@ def test_detect_cycle_patterns() -> None:
     assert detect_cycle([a, a, a, a, a, a]) is None  # identical run is loop_stall's job
     assert detect_cycle([a, b, c, d]) is None
     assert detect_cycle([a, b, a, b, a, b], window=5) is None  # window cuts the history
+    # rm input / rm output / write / cat, twice: a 4-step loop that changes nothing (#173)
+    assert detect_cycle([a, b, c, d, a, b, c, d]) == ["a", "b", "c", "d"]
+    assert detect_cycle([b, c, d, a, b, c, d]) is None  # one repeat and a bit is not a cycle
 
 
 class _Run:
