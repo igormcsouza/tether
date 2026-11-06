@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Documentation
+
+- The Quickstart now says what the default expects before the first command (a running Ollama at `localhost:11434` with `qwen3.5:9b` pulled), how to point `OLLAMA_HOST` at Ollama in Docker or elsewhere, and links to [Model Providers](reference/providers.md) for any other model.
+
 ### Fixed
 
 - A loop of four commands repeated twice (for example `rm data.json` / rewrite it / `cat data.json` / `rm` again) is now a `[CYCLE DETECTED]` like the 2- and 3-command loops. On the everyday ladder qwen3.5:9b spent 20 steps this way on a 6-field extract. Replayed over 116 earlier runs (Polyglot and ladder), it shows up only in that one, so normal work is not flagged (#173).
