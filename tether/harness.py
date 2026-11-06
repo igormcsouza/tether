@@ -53,12 +53,12 @@ from tether.unchanged import small_change_note, snapshot, unchanged_note
 def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
     """Repeated n-gram at the tail of the last `window` actions, else None.
 
-    A 2-gram must repeat 3 times and a 3-gram 2 times (6 actions either way), so a
-    legitimate `test / view / test / view` pair is not flagged. Identical-command runs are
+    A 2-gram must repeat 3 times, a 3-gram or 4-gram 2 times, so a legitimate
+    `test / view / test / view` pair is not flagged. Identical-command runs are
     `loop_stall`'s job, so they are not a cycle here.
     """
     recent = history[-window:]
-    for n, reps in ((2, 3), (3, 2)):
+    for n, reps in ((2, 3), (3, 2), (4, 2)):
         tail = recent[-n:]
         if len(recent) >= n * reps and recent[-n * reps :] == tail * reps and len(set(tail)) > 1:
             return [cmd for cmd, _ in tail]
