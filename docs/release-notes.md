@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- The default context budget is now 32768 tokens instead of 8192 (also Ollama's `num_ctx`). 8192 was only tether's default: on an 8 GB GPU `qwen3.5:9b` stays fully on the GPU at 32k with the same speed (36 tok/s), and at 8k the history folded early and Ollama turned thinking off late in a run. On the 9 Polyglot exercises that hit the 600 s cap in v0.2.15 (2 trials each), 32k passed 7 of 18 runs against 2, with 9 at the cap against 12 and a mean score of 0.82 against 0.50. On Claude Haiku 32k changed neither the pass rate nor the token spend materially (34 of 34 Polyglot both ways, about 5% more prompt tokens). If your GPU cannot hold the model at 32k, set `--context-tokens` or `context_tokens` in `providers.yaml` (#173).
+
 ## v0.2.15 (2026-11-06)
 
 Small models now waste less time: thinking is capped per turn, a call cut by that cap is asked again without thinking, and short notes after a write or test run say what the model missed (the code did not change, a few lines changed in a whole-file rewrite, which tests the last change broke, the source of the failing tests). tether also stops forcing `temperature: 0.2`. Polyglot-Python (34 exercises, 2 trials, default 8192 context) on qwen3.5:9b: 40 of 68 passed (58.8%) against 37 of 68 on v0.2.13, 12 runs at the 600 s cap against 13, 295 min in total against 325; mean score 0.756 against 0.783. Paired flips +7 / -4 (sign test p = 0.55), so the gain is inside the noise.

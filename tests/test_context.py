@@ -249,7 +249,7 @@ def test_tombstone_hint_follows_mem_availability(tmp_path: Path) -> None:
     rec = store.create_session("g")
     obs = store.add_observation(rec.id, step=1, cmd="bash ls", raw_output="x" * 20000)
     store.add_turn(rec.id, step=1, role="tool", content="", obs_id=obs.id)
-    msgs = ContextAssembler(mem_enabled=False).assemble(
+    msgs = ContextAssembler(max_context_tokens=8192, mem_enabled=False).assemble(
         system_prompt="S",
         goal="g",
         turns=store.get_turns(rec.id),

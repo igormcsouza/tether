@@ -24,7 +24,7 @@ Tether is built the other way round:
 
 ## How well does it work
 
-Tether answers to one number: how many real coding exercises a small local model finishes. On the Polyglot-Python set (Aider's 34 Python exercises, graded by each exercise's own tests), `qwen3.5:9b` through Ollama at the default 8192-token context, 2 trials each (68 runs):
+Tether answers to one number: how many real coding exercises a small local model finishes. On the Polyglot-Python set (Aider's 34 Python exercises, graded by each exercise's own tests), `qwen3.5:9b` through Ollama at an 8192-token context (v0.2.15; the default is now 32768), 2 trials each (68 runs):
 
 | | before v0.2.10 | v0.2.10 | v0.2.13 | v0.2.15 |
 |---|---|---|---|---|

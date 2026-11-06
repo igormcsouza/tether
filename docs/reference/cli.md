@@ -32,7 +32,7 @@ tether run "your goal here" [flags]
 | `--sandbox` | Deterministic sandbox profile |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--max-steps` | Maximum reasoning steps |
-| `--context-tokens` | Context token budget (default 8192) |
+| `--context-tokens` | Context token budget (default 32768) |
 | `--fold-after` | Fold observations older than N turns (default 2), once the history fills half the context; raise it for long tasks |
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--param` | Model request parameter, repeatable (e.g., `--param temperature=0 --param think=false`) |
@@ -60,7 +60,7 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--max-steps` | Default max reasoning steps per stage |
 | `--db` | SQLite DB path (default .tether/tether.db) |
-| `--context-tokens` | Context token budget (default 8192) |
+| `--context-tokens` | Context token budget (default 32768) |
 | `--fold-after` | Fold observations older than N turns (default 2), once the history fills half the context; raise it for long tasks |
 | `--result-file` | Write the deliverable here, not to stdout |
 | `--json` | Machine-readable JSON output |

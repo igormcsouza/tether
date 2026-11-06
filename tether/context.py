@@ -30,6 +30,8 @@ ACT_TOOL_SCHEMA: dict[str, Any] = {
 
 
 STDIN_REPLAY_CHARS = 400
+# Default context budget (also Ollama's num_ctx): 32k keeps qwen3.5:9b fully on an 8 GB GPU (#173).
+DEFAULT_CONTEXT_TOKENS = 32768
 
 
 def estimate_tokens(text: str) -> int:
@@ -298,7 +300,7 @@ class ContextAssembler:
         fold_after_turns: int = 2,
         fold_char_threshold: int = 200,
         active_char_cap: int | None = None,
-        max_context_tokens: int = 8192,
+        max_context_tokens: int = DEFAULT_CONTEXT_TOKENS,
         structured: bool = False,
         mem_enabled: bool = True,
         workspace_root: str = "",
