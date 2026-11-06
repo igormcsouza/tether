@@ -72,6 +72,10 @@ def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list
 OUTAGE_RETRIES = 1
 RANGE_STALL_READS = 7  # after the 6-step quiet [NUDGE], which gets the first word
 STALL_ABORT = 4
+# A plain-text reply this long may be the answer: it is kept and the model told it was not
+# delivered (#173); a stuck hand-back carries the last one, bounded
+PROSE_ANSWER_CHARS = 80
+KEPT_REPLY_CHARS = 2000
 _READERS = {"cat", "head", "tail", "grep", "rg", "sed", "wc", "awk", "gawk", "mawk"}
 
 
@@ -206,6 +210,14 @@ _STATEMENT = re.compile(r"""(?:"[^"]*"|'[^']*'|[^;&|\n"'])+""")
 _BLOCK_OPEN = re.compile(r"^(?:(?:do|then|else|elif|if|while|until)\b\s*)+")
 _BLOCK_END = ("done", "fi", "esac")
 _QUIET_ONLY = _QUIET | {"echo", "pwd", "which", "cd", "true", "stat", "diff", "sort", "tree"}
+# Built-in tool verbs that only look things up
+_LOOKUPS = [
+    ["web", "search"],
+    ["web", "fetch"],
+    ["mem", "search"],
+    ["mem", "recall"],
+    *(["agent", v] for v in ("status", "wait", "read", "query")),
+]
 
 
 def is_quiet(cmd: str) -> bool:
@@ -232,7 +244,7 @@ def _quiet_statement(cmd: str) -> bool:
         return True
     if argv[0] in _QUIET_ONLY:
         return True
-    if argv[:2] == ["edit", "view"]:
+    if argv[:2] == ["edit", "view"] or argv[:2] in _LOOKUPS:
         return True
     if argv[0] == "git" and argv[1:2] in (["diff"], ["log"], ["status"], ["show"]):
         return True
@@ -877,6 +889,15 @@ class Harness:
         restarts = 0
         quiet_run = 0
         steps_hinted = False
+        last_reply = ""  # the model's last plain-text answer, never confirmed with `done`
+
+        def reply_note() -> str:
+            if not last_reply:
+                return ""
+            return (
+                "\n\nThe model's last reply, never confirmed with `done`:\n"
+                + last_reply[:KEPT_REPLY_CHARS]
+            )
 
         def get_unstuck(step: int, check: str | None, out: str | None) -> SessionRecord | None:
             """Stuck, however it showed (the same check failing after edits, or stalls the
@@ -897,6 +918,7 @@ class Harness:
                 handback=handback,
             )
             if handback:
+                text += reply_note()
                 self.store.add_turn(
                     session_id=session_id, step=step, role="tool", content=f"[WAITING_INPUT] {text}"
                 )
@@ -987,6 +1009,9 @@ class Harness:
 
                 # 3. If the model emitted plain text without calling `act`, nudge it (Rule 3)
                 if resp.action is None:
+                    prose = (resp.content or "").strip()
+                    if len(prose) >= PROSE_ANSWER_CHARS:
+                        last_reply = prose
                     self.store.add_turn(
                         session_id=session_id,
                         step=step,
@@ -1003,8 +1028,12 @@ class Harness:
                         role="user",
                         content=resp.hint
                         or (
-                            "System reminder: Use `act(cmd, stdin)` to execute a tool command, "
-                            'or call `act("done", stdin="<final deliverable>")` to finish.'
+                            "System reminder: your reply above was not delivered; only `done` "
+                            'delivers. If it is your answer, call `act("done", stdin="<your '
+                            'answer>")`; otherwise run your next command with `act(cmd, stdin)`.'
+                            if len(prose) >= PROSE_ANSWER_CHARS
+                            else "System reminder: Use `act(cmd, stdin)` to execute a tool "
+                            'command, or call `act("done", stdin="<final deliverable>")` to finish.'
                         ),
                     )
                     continue
@@ -1410,6 +1439,7 @@ class Harness:
                     verify_commands,
                     changes,
                 )
+                text += reply_note()
                 self.store.add_turn(
                     session_id=session_id,
                     step=step_limit,

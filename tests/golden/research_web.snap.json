@@ -126,7 +126,7 @@
     "role": "assistant"
    },
    {
-    "content": "System reminder: Use `act(cmd, stdin)` to execute a tool command, or call `act(\"done\", stdin=\"<final deliverable>\")` to finish.",
+    "content": "System reminder: your reply above was not delivered; only `done` delivers. If it is your answer, call `act(\"done\", stdin=\"<your answer>\")`; otherwise run your next command with `act(cmd, stdin)`.",
     "role": "user"
    }
   ],
@@ -168,7 +168,7 @@
     "role": "assistant"
    },
    {
-    "content": "System reminder: Use `act(cmd, stdin)` to execute a tool command, or call `act(\"done\", stdin=\"<final deliverable>\")` to finish.",
+    "content": "System reminder: your reply above was not delivered; only `done` delivers. If it is your answer, call `act(\"done\", stdin=\"<your answer>\")`; otherwise run your next command with `act(cmd, stdin)`.",
     "role": "user"
    },
    {
@@ -176,7 +176,7 @@
     "role": "assistant"
    },
    {
-    "content": "System reminder: Use `act(cmd, stdin)` to execute a tool command, or call `act(\"done\", stdin=\"<final deliverable>\")` to finish.",
+    "content": "System reminder: your reply above was not delivered; only `done` delivers. If it is your answer, call `act(\"done\", stdin=\"<your answer>\")`; otherwise run your next command with `act(cmd, stdin)`.",
     "role": "user"
    }
   ],
@@ -218,7 +218,7 @@
     "role": "assistant"
    },
    {
-    "content": "System reminder: Use `act(cmd, stdin)` to execute a tool command, or call `act(\"done\", stdin=\"<final deliverable>\")` to finish.",
+    "content": "System reminder: your reply above was not delivered; only `done` delivers. If it is your answer, call `act(\"done\", stdin=\"<your answer>\")`; otherwise run your next command with `act(cmd, stdin)`.",
     "role": "user"
    },
    {
@@ -226,7 +226,7 @@
     "role": "assistant"
    },
    {
-    "content": "System reminder: Use `act(cmd, stdin)` to execute a tool command, or call `act(\"done\", stdin=\"<final deliverable>\")` to finish.",
+    "content": "System reminder: your reply above was not delivered; only `done` delivers. If it is your answer, call `act(\"done\", stdin=\"<your answer>\")`; otherwise run your next command with `act(cmd, stdin)`.",
     "role": "user"
    },
    {
@@ -234,7 +234,7 @@
     "role": "assistant"
    },
    {
-    "content": "System reminder: Use `act(cmd, stdin)` to execute a tool command, or call `act(\"done\", stdin=\"<final deliverable>\")` to finish.",
+    "content": "System reminder: your reply above was not delivered; only `done` delivers. If it is your answer, call `act(\"done\", stdin=\"<your answer>\")`; otherwise run your next command with `act(cmd, stdin)`.",
     "role": "user"
    }
   ]
@@ -249,7 +249,7 @@
   "completed"
  ],
  "files": {},
- "peak_tokens": 2185,
+ "peak_tokens": 2236,
  "result": "Default completion",
  "status": "COMPLETED",
  "step_count": 7
