@@ -219,8 +219,8 @@ def _live_map(
 ) -> dict[tuple[str, str], str]:
     """Build a map of (normalized path, range) -> obs_id for live reads, oldest first.
 
-    A path stops being live on `edit write|replace` or on any non-read bash command
-    that mentions it (sed -i, tee, ...).
+    A path stops being live on `edit write|replace` or on any non-read command that
+    mentions it (sed -i, tee, `cat > p << EOF`, with or without a `bash` prefix).
     """
     live: dict[tuple[str, str], str] = {}  # (normalized path, cmd) -> obs_id, oldest first
 
@@ -238,7 +238,7 @@ def _live_map(
             argv = _argv(turn.tool_cmd)
             if argv[:2] in (["edit", "write"], ["edit", "replace"]) and len(argv) > 2:
                 live = {k: v for k, v in live.items() if k[0] != norm(argv[2])}
-            elif argv[:1] == ["bash"] and _read_path(turn.tool_cmd) is None:
+            elif _read_path(turn.tool_cmd) is None:  # bash, or a shell write via the bash fallback
                 # ponytail: token/substring match; won't catch paths built at runtime
                 tokens = {norm(t) for t in argv[1:]}
                 live = {
