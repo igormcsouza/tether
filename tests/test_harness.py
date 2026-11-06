@@ -629,6 +629,18 @@ async def test_send_extends_exhausted_session_ceiling(tmp_path: Path) -> None:
     [
         ("python3 -m unittest discover -s tests -t . 2>&1", True),
         ("bash python3 -m pytest -q", True),
+        # built-in tools that only look things up are reads, not changes (#173)
+        ('web search "brazil election news"', True),
+        ("web fetch https://example.com", True),
+        ("mem search budget", True),
+        ("mem recall obs_3", True),
+        ("agent status ses_1", True),
+        ("agent wait ses_1 ses_2", True),
+        ("agent read ses_1", True),
+        ("agent query ses_1 totals", True),
+        ("mem pin k v", False),
+        ("agent spawn research it", False),
+        ("agent send ses_1 more", False),
         ('python3 -c "print(1)"', True),
         ("python3 -c \"open('f','w').write('x')\"", False),
         ("cat a.py", True),
@@ -1040,3 +1052,49 @@ async def test_ignoring_the_wrap_up_after_a_change_hands_back_what_was_tried(
     assert run.session.status == "WAITING_INPUT"
     assert (run.session.result or "").startswith("[STUCK at step")
     assert "What was tried so far:" in (run.session.result or "")
+
+
+ANSWER = (
+    "Yes, there is news: after losing the election he left the country by land, then flew "
+    "to the United States, according to several reports."
+)
+
+
+async def _prose_then(tmp_path: Path, cmds: list[str], prose: str, max_steps: int) -> Any:
+    @tool(name="ping", description="Ping a host")
+    def ping(host: str) -> str:
+        return "pong"
+
+    script = [ModelResponse(content="", action=ActionCall(cmd="ping a"))]
+    script += [ModelResponse(content=prose)]
+    script += [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
+    provider = FakeScriptedProvider(script)
+    h = Harness(db_path=tmp_path / "t.db", tools=[ping], provider=provider, max_steps=max_steps)
+    return await h.run("goal"), provider
+
+
+async def test_a_prose_answer_is_told_it_was_not_delivered(tmp_path: Path) -> None:
+    """#173: a model that answers in plain text learns that only `done` delivers it."""
+    _, provider = await _prose_then(tmp_path, ["ping b"], ANSWER, 3)
+    sent = "\n".join(m["content"] for m in provider.recorded_calls[2])
+    assert "was not delivered" in sent and 'act("done", stdin=' in sent
+
+
+async def test_short_prose_keeps_the_plain_reminder(tmp_path: Path) -> None:
+    _, provider = await _prose_then(tmp_path, ["ping b"], "Let me check.", 3)
+    sent = "\n".join(m["content"] for m in provider.recorded_calls[2])
+    assert "was not delivered" not in sent and "System reminder" in sent
+
+
+async def test_a_session_out_of_steps_keeps_the_last_prose_answer(tmp_path: Path) -> None:
+    session, _ = await _prose_then(tmp_path, ["ping b"], ANSWER, 3)
+    assert session.status == "WAITING_INPUT"
+    assert "never confirmed with `done`" in (session.result or "")
+    assert ANSWER in (session.result or "")
+
+
+async def test_a_stuck_session_keeps_the_last_prose_answer(tmp_path: Path) -> None:
+    session, _ = await _prose_then(tmp_path, ["ping b"] * 45, ANSWER, 60)
+    assert session.status == "WAITING_INPUT"
+    assert (session.result or "").startswith("[STUCK at step")
+    assert ANSWER in (session.result or "")

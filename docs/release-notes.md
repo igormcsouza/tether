@@ -12,6 +12,8 @@
 
 ### Fixed
 
+- An answer the model writes as plain text, instead of passing it to `done`, is no longer lost. Asked for news with `--tools web`, qwen3.5:9b found it, wrote the answer twice as plain text, then repeated its search until the stall guard ended the session with nothing. Now a plain-text reply of 80 or more characters gets `System reminder: your reply above was not delivered; only done delivers. If it is your answer, call act("done", stdin="<your answer>")`. If the session still ends stuck or out of steps, its result carries that last reply, marked "never confirmed with `done`". Also, `web search|fetch`, `mem search|recall` and `agent status|wait|read|query` now count as reads, not changes, so a search-only session is no longer reported as "Changed: `web search ...`" and gets the read-only wrap-up ("answer now from what you have read") (#173).
+
 - A loop of four commands repeated twice (for example `rm data.json` / rewrite it / `cat data.json` / `rm` again) is now a `[CYCLE DETECTED]` like the 2- and 3-command loops. On the everyday ladder qwen3.5:9b spent 20 steps this way on a 6-field extract. Replayed over 116 earlier runs (Polyglot and ladder), it shows up only in that one, so normal work is not flagged (#173).
 - A file written with a shell command that has no `bash ` prefix (`cat > post.md << 'EOF'`, `echo ... > a.py`, which run through the bash fallback) no longer stays "unchanged" for tether. The next read of it ran nothing and answered `[obs_N unchanged] ... the file has not changed since`, so the model never saw what it had written and kept rewriting and re-reading it. In the v0.2.15 Polyglot run on qwen3.5:9b, up to 23 of these replies were possibly false, in 20 of 68 runs (#173).
 
