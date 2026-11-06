@@ -83,7 +83,7 @@ tether list
 
 ## Context budget and fold window
 
-By default Tether keeps an 8192-token context budget (a hard target: it folds, then drops, then shrinks to fit, and warns on stderr if the goal and latest step alone do not fit) and folds observations older than 2 turns. Tune both per run with `--context-tokens N` and `--fold-after N` (on `tether run` and `tether pipeline`), or per model in `providers.yaml` with `context_tokens` / `fold_after`. Flags override the provider entry, which overrides the defaults.
+By default Tether keeps a 32768-token context budget (on Ollama this is also `num_ctx`; lower it with `--context-tokens` if your GPU cannot hold the model at 32k) (a hard target: it folds, then drops, then shrinks to fit, and warns on stderr if the goal and latest step alone do not fit) and folds observations older than 2 turns. Tune both per run with `--context-tokens N` and `--fold-after N` (on `tether run` and `tether pipeline`), or per model in `providers.yaml` with `context_tokens` / `fold_after`. Flags override the provider entry, which overrides the defaults.
 
 ```bash
 tether run --context-tokens 32000 --fold-after 8 "refactor the parser"

@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from tether.context import estimate_messages_tokens
+from tether.context import DEFAULT_CONTEXT_TOKENS, estimate_messages_tokens
 from tether.providers.base import (
     ActionCall,
     ModelResponse,
@@ -66,7 +66,7 @@ class OllamaProvider:
         model_name: str = "qwen3.5:9b",
         *,
         host: str | None = None,
-        num_ctx: int = 8192,
+        num_ctx: int = DEFAULT_CONTEXT_TOKENS,
         keep_alive: str = "10m",
         timeout: float = 300.0,
         client: httpx.AsyncClient | None = None,

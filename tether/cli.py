@@ -84,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument("--max-steps", type=int, default=15, help="Max reasoning steps")
     p_run.add_argument(
-        "--context-tokens", type=int, default=None, help="Context token budget (default 8192)"
+        "--context-tokens", type=int, default=None, help="Context token budget (default 32768)"
     )
     p_run.add_argument(
         "--fold-after",
@@ -148,7 +148,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--db", type=str, default=None, help="SQLite DB path (default .tether/tether.db)"
     )
     p_pipe.add_argument(
-        "--context-tokens", type=int, default=None, help="Context token budget (default 8192)"
+        "--context-tokens", type=int, default=None, help="Context token budget (default 32768)"
     )
     p_pipe.add_argument(
         "--fold-after",

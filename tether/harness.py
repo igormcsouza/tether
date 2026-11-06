@@ -17,6 +17,7 @@ from typing import Any
 
 from tether.context import (
     ACT_TOOL_SCHEMA,
+    DEFAULT_CONTEXT_TOKENS,
     MAX_RESTARTS,
     RESTART_AFTER_FAILS,
     ContextAssembler,
@@ -293,7 +294,7 @@ class Harness:
         except ValueError:
             declared = {}
         self.max_context_tokens: int = int(
-            max_context_tokens or declared.get("context_tokens") or 8192
+            max_context_tokens or declared.get("context_tokens") or DEFAULT_CONTEXT_TOKENS
         )
         self.fold_observations_after: int = int(
             fold_observations_after or declared.get("fold_after") or 2

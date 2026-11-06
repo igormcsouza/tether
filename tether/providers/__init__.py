@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from tether.context import DEFAULT_CONTEXT_TOKENS
 from tether.providers.anthropic import AnthropicProvider
 from tether.providers.base import (
     ActionCall,
@@ -32,7 +33,7 @@ def register_provider(prefix: str, factory: ProviderFactory) -> None:
 
 
 def resolve_provider(
-    model: str, *, num_ctx: int = 8192, params: dict[str, Any] | None = None
+    model: str, *, num_ctx: int = DEFAULT_CONTEXT_TOKENS, params: dict[str, Any] | None = None
 ) -> ModelProvider:
     """Resolve `<provider>/<model_name>` into an async ModelProvider instance."""
     spec = model.strip() or "ollama/qwen3.5:9b"

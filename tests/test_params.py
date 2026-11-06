@@ -51,7 +51,7 @@ async def test_ollama_params_split_request_keys_and_options() -> None:
     )
     await prov.generate([{"role": "user", "content": "x"}], [])
     assert seen[0]["think"] is False
-    assert seen[0]["options"] == {"num_ctx": 8192, "temperature": 0, "top_p": 0.5}
+    assert seen[0]["options"] == {"num_ctx": 32768, "temperature": 0, "top_p": 0.5}
 
 
 async def test_no_param_leaves_sampling_to_the_model() -> None:
