@@ -14,6 +14,8 @@ Before the guard ends the session it adds one `[WRAP UP]` turn: a session that o
 
 With `--verify` gates configured, a stall after a change whose gates all pass ends `COMPLETED` instead ("Finished by the harness"), because the work is verified.
 
+If the model wrote its answer as plain text instead of passing it to `done` (common with small models on questions), the result ends with that reply under "The model's last reply, never confirmed with `done`". It is often the answer you wanted.
+
 **Fix.** Read the `[STUCK]` result: it says what was tried. Refine the goal (name the file and the edit) and `tether send <id> "<guidance>"`, or try a stronger model. Raising `--max-steps` only repeats the loop.
 
 ### `WAITING_INPUT` with `[STUCK: out of steps (N) ...]` (exit code 2)
