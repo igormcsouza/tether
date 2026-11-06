@@ -38,6 +38,12 @@ A session whose last test run passed after its final change ends `COMPLETED` ins
 
 **Fix.** Check the server is up and the model is loaded. A slow first call can need a larger `timeout` in `providers.yaml`. See [Model providers](reference/providers.md#entry-settings).
 
+### Nothing is printed for a long time
+
+**Cause.** The model is still answering: a local model may be loading into memory on the first call, and a thinking model can take a minute per step. Tether prints nothing to stdout until the deliverable is ready.
+
+**Fix.** Watch stderr: an animated `waiting for <model> ...` line shows the run is alive, and `--verbose` prints one line per finished step. No dots in a terminal means the run is not foreground or stderr is redirected. To inspect a run from another shell use `tether read <id> --steps`. See [`tether run`](reference/cli.md#tether-run).
+
 ## The model misbehaves
 
 ### Many nudges in `tether stats`, or an empty reply with no tool call

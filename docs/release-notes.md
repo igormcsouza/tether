@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `tether run` shows it is alive: on a terminal an animated `waiting for <model> ...` line (then `step N · <last command> ...`) is drawn on stderr until the run ends, so a slow first model call no longer looks like a hang. It is off with `--json`, `--headless` and when stderr is not a terminal. `--verbose` / `-v` prints one stderr line per step (`[step 3] edit view foo.py (2.1s, 812 tok)`). Both read the session's turns from SQLite: no change to the prompt, the tools or the harness loop.
+
 ### Documentation
 
 - The Quickstart now says what the default expects before the first command (a running Ollama at `localhost:11434` with `qwen3.5:9b` pulled), how to point `OLLAMA_HOST` at Ollama in Docker or elsewhere, and links to [Model Providers](reference/providers.md) for any other model.
