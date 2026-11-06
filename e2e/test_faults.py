@@ -37,13 +37,32 @@ def test_outage_that_outlasts_provider_retries_is_survived(tether: Tether, chaos
 def test_rejected_tool_call_reaches_the_model_instead_of_ending_the_session(
     tether: Tether, chaos
 ) -> None:
-    """#138: a 500 naming an invalid tool call is model feedback, not a provider outage."""
+    """#138: a 500 naming an invalid tool call is model feedback, not a provider outage.
+
+    #173: the thinking budget can cut a call mid-way, so the first rejection is asked once more
+    with thinking off; only a second rejection becomes the resend hint.
+    """
+    chaos.fault(
+        "status", times=2, code=500, error='invalid tool call arguments for "act": unexpected end'
+    )
+    chaos.script(("done", "ok"))
+    r = tether.run("go", "--max-steps", "6")
+    assert (r["rc"], r["status"]) == (0, "COMPLETED"), r
+    assert len(chaos.requests) == 3, "one think-off re-ask, then the hint turn"
+    assert chaos.requests[1]["think"] is False
+    assert "num_predict" not in chaos.requests[1].get("options", {})
+    assert "cut off" in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
+
+
+def test_a_call_cut_by_the_thinking_budget_is_asked_again(tether: Tether, chaos) -> None:
+    """#173: one rejection of a budgeted turn is re-asked with thinking off, no hint turn."""
     chaos.fault("status", code=500, error='invalid tool call arguments for "act": unexpected end')
     chaos.script(("done", "ok"))
     r = tether.run("go", "--max-steps", "6")
     assert (r["rc"], r["status"]) == (0, "COMPLETED"), r
-    assert len(chaos.requests) == 2, "the rejected call must not be retried"
-    assert "cut off" in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
+    assert len(chaos.requests) == 2
+    assert chaos.requests[0]["options"].get("num_predict") and chaos.requests[1]["think"] is False
+    assert "cut off" not in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
 
 
 def test_trickling_response_hits_the_per_attempt_deadline(tmp_path: Path, chaos) -> None:
