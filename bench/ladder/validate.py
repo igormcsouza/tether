@@ -1,6 +1,6 @@
 """Prove the graders: base+files scores < 1 (code), reference scores >= threshold, empty scores 0.
 
-`python3 bench/ladder/validate.py` must print OK for all 24 tasks before a ladder run is trusted.
+`python3 bench/ladder/validate.py` must print OK for every task (coding and general) before a ladder run is trusted.
 """
 import os
 import sys

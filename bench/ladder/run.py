@@ -1,4 +1,5 @@
-"""Coding ladder: 6 tiers x {write, bugfix, plan, review}, climbed per model until it gets stuck.
+"""Ladder: 6 tiers x {write, bugfix, plan, review} (coding), plus 3-4 tiers x {content, qa, critique, extract}
+(everyday non-coding work, `--kinds content,qa,critique,extract`), climbed per model until it gets stuck.
 
   python3 bench/ladder/run.py --out /tmp/ladder --models qwen3.5:9b,qwen3.5:4b,qwen2.5-coder:7b \
       --ctx qwen3.5:9b=40960,qwen3.5:4b=65536,qwen2.5-coder:7b=32768
@@ -143,6 +144,7 @@ def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True
     rd = Path(out) / "runs" / f"{harness}__{model.replace(':', '-').replace('/', '_')}__{task.id}__a{attempt}"
     shutil.rmtree(rd, ignore_errors=True)
     ws = rd / "ws"
+    ws.mkdir(parents=True)  # content-1 has no input files
     for path, text in T.workspace(task).items():
         p = ws / path
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -203,7 +205,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--models", default="qwen3.5:9b")
     ap.add_argument("--ctx", default="", help="model=tokens,... context window per model")
-    ap.add_argument("--kinds", default=",".join(T.KINDS))
+    ap.add_argument("--kinds", default=",".join(T.KINDS), help=f"default the coding kinds; also {','.join(T.GENERAL_KINDS)}")
     ap.add_argument("--tasks", default="", help="only these task ids, e.g. plan-5,bugfix-5")
     ap.add_argument("--max-tier", type=int, default=6)
     ap.add_argument("--wall", type=int, default=1200, help="seconds per attempt")
@@ -224,7 +226,9 @@ def main():
         print(f"{model}: context {ctx}, thinking {'yes' if can_think else 'no (attempts 0/1 and 2/3 differ only in steps/temperature)'}", flush=True)
         for kind in a.kinds.split(","):
             for tier in range(1, a.max_tier + 1):
-                task = T.TASKS[f"{kind}-{tier}"]
+                task = T.TASKS.get(f"{kind}-{tier}")
+                if task is None:  # the general kinds have fewer than 6 tiers
+                    break
                 if a.tasks and task.id not in a.tasks.split(","):
                     continue
                 passed = False
