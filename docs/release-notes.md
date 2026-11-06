@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- A file written with a shell command that has no `bash ` prefix (`cat > post.md << 'EOF'`, `echo ... > a.py`, which run through the bash fallback) no longer stays "unchanged" for tether. The next read of it ran nothing and answered `[obs_N unchanged] ... the file has not changed since`, so the model never saw what it had written and kept rewriting and re-reading it. In the v0.2.15 Polyglot run on qwen3.5:9b, up to 23 of these replies were possibly false, in 20 of 68 runs (#173).
+
 ### Changed
 
 - The default context budget is now 32768 tokens instead of 8192 (also Ollama's `num_ctx`). 8192 was only tether's default: on an 8 GB GPU `qwen3.5:9b` stays fully on the GPU at 32k with the same speed (36 tok/s), and at 8k the history folded early and Ollama turned thinking off late in a run. On the 9 Polyglot exercises that hit the 600 s cap in v0.2.15 (2 trials each), 32k passed 7 of 18 runs against 2, with 9 at the cap against 12 and a mean score of 0.82 against 0.50. On Claude Haiku 32k changed neither the pass rate nor the token spend materially (34 of 34 Polyglot both ways, about 5% more prompt tokens). If your GPU cannot hold the model at 32k, set `--context-tokens` or `context_tokens` in `providers.yaml` (#173).
