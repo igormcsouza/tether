@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Documentation
+
+- The Quickstart now says what the default expects before the first command (a running Ollama at `localhost:11434` with `qwen3.5:9b` pulled), how to point `OLLAMA_HOST` at Ollama in Docker or elsewhere, and links to [Model Providers](reference/providers.md) for any other model.
+
 ### Fixed
 
 - A file written with a shell command that has no `bash ` prefix (`cat > post.md << 'EOF'`, `echo ... > a.py`, which run through the bash fallback) no longer stays "unchanged" for tether. The next read of it ran nothing and answered `[obs_N unchanged] ... the file has not changed since`, so the model never saw what it had written and kept rewriting and re-reading it. In the v0.2.15 Polyglot run on qwen3.5:9b, up to 23 of these replies were possibly false, in 20 of 68 runs (#173).

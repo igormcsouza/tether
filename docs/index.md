@@ -71,6 +71,15 @@ Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-
 
 ## Quickstart
 
+!!! note "Before your first command: the default model"
+    With no `--model`, tether talks to **Ollama** at `http://localhost:11434` and asks for **`qwen3.5:9b`**. That server must be running and the model pulled, or the run fails with `ProviderError: ollama model ... unavailable ... ConnectError`.
+
+    ```sh
+    ollama pull qwen3.5:9b        # once; `ollama serve` (or the Ollama app) must be running
+    ```
+
+    Ollama in Docker or on another machine? Set `OLLAMA_HOST=http://localhost:11435` (use your port). Want another model or a hosted one (OpenAI, Claude, OpenRouter, vLLM, a custom `~/.tether/providers.yaml` entry)? Pass `--model <provider>/<model>`. See [Model Providers](reference/providers.md) for every option.
+
 === "CLI (Foreground & Headless)"
 
     ```sh
