@@ -46,7 +46,7 @@ from tether.tools import (
     make_mem_tool,
     make_web_tool,
 )
-from tether.unchanged import snapshot, unchanged_note
+from tether.unchanged import small_change_note, snapshot, unchanged_note
 
 
 def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
@@ -866,6 +866,7 @@ class Harness:
         changes: list[str] = []
         green_cmd: str | None = None  # last passing test run, cleared by any later change
         green_nudged = False
+        small_hinted: set[str] = set()  # files already pointed to `edit replace`
         last_run: tuple[int, frozenset[str]] | None = None  # outcome of the last test run
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
         # Restart state: failing check runs per command (counted once per edit in between)
@@ -1328,7 +1329,10 @@ class Harness:
                         out += regression_note(last_run, outcome)
                     last_run = outcome
                 if before and not dispatch.is_error:
-                    out += unchanged_note(before, Path(sandbox.workspace_root))
+                    root = Path(sandbox.workspace_root)
+                    out += unchanged_note(before, root) or small_change_note(
+                        cmd, before, root, small_hinted
+                    )
                 if changed and not dispatch.is_error and tests_green(cmd, out):
                     green_cmd = cmd
                     if not green_nudged:

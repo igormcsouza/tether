@@ -8,15 +8,20 @@ can say so instead of leaving the model to run the same failing tests again.
 from __future__ import annotations
 
 import ast
+import difflib
 import re
 from contextlib import suppress
 from pathlib import Path
 
 NOTE_LIMIT = 200  # max chars of the note
 MAX_BYTES = 256_000  # files larger than this are not compared
+SMALL_MIN_LINES = 20  # shorter files are cheap to rewrite
+SMALL_MAX_FRACTION = 0.2  # at most this share of the new file's lines changed
 
 _EDIT = re.compile(r"^(?:bash\s+)?edit\s+(?:write|replace)\s+(\S+)")
+_EDIT_WRITE = re.compile(r"^(?:bash\s+)?edit\s+write\s+(\S+)")
 _REDIRECT = re.compile(r">>?\s*([\w./-]+)")
+_SINGLE_REDIRECT = re.compile(r"(?<![>\d])>(?!>)\s*([\w./-]+)")
 _TEE = re.compile(r"\btee\b([^|;&<>\n]*)")
 
 
@@ -86,3 +91,50 @@ def unchanged_note(before: dict[str, bytes], root: Path) -> str:
         what = f"{paths}: only comments or spacing changed, the code is the same."
     note = f"\n[NUDGE] {what} The tests will fail the same way; change the logic."
     return note[:NOTE_LIMIT]
+
+
+def _whole_file_targets(cmd: str) -> list[str]:
+    """Paths `cmd` rewrites whole: `edit write <p>` or a single `> p` on its first line."""
+    head = cmd.partition("\n")[0]
+    if match := _EDIT_WRITE.match(head):
+        return [match.group(1)]
+    return _SINGLE_REDIRECT.findall(head)
+
+
+def _changed_lines(old: str, new: str) -> tuple[int, int]:
+    """Lines changed (per non-equal opcode, the longer side) and the new file's line count."""
+    a, b = old.splitlines(), new.splitlines()
+    changed = sum(
+        max(i2 - i1, j2 - j1)
+        for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b).get_opcodes()
+        if tag != "equal"
+    )
+    return changed, len(b)
+
+
+def small_change_note(cmd: str, before: dict[str, bytes], root: Path, hinted: set[str]) -> str:
+    """One line pointing to `edit replace` after a small whole-file rewrite, once per path.
+
+    Whole-file writes only: the first line of `cmd` is `edit write <p>` (optional leading `bash`)
+    or has a single `>` redirect to <p> (not `>>`, not `edit replace`, not tee). For each such p in
+    `before` and not in `hinted`: the file still exists, the new file has >= SMALL_MIN_LINES
+    lines, and changed lines k satisfy 0 < k <= SMALL_MAX_FRACTION * n. For the first such path
+    add it to `hinted` and return a [NUDGE] line truncated to NOTE_LIMIT. Otherwise "".
+    Never raises (decode with errors="replace").
+    """
+    for rel in [rel for rel in _whole_file_targets(cmd) if rel in before and rel not in hinted]:
+        new = _current(rel, root)
+        if new is None:
+            continue
+        changed, n = _changed_lines(
+            before[rel].decode(errors="replace"), new.decode(errors="replace")
+        )
+        if n >= SMALL_MIN_LINES and 0 < changed <= SMALL_MAX_FRACTION * n:
+            hinted.add(rel)
+            note = (
+                f"\n[NUDGE] {rel}: {changed} of {n} lines changed. For a small fix use "
+                f"`edit replace {rel}` (SEARCH/REPLACE or --lines a:b) instead of rewriting the "
+                "whole file; it is much faster."
+            )
+            return note[:NOTE_LIMIT]
+    return ""
