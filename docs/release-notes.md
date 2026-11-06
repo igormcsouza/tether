@@ -4,6 +4,7 @@
 
 ### Changed
 
+- A write that leaves a file's code as it was now gets one line in its output: `[NUDGE] hangman.py: only comments or spacing changed, the code is the same. The tests will fail the same way; change the logic.` "Same code" is identical bytes, or for a `.py` file an identical syntax tree. In 8 Polyglot exercises on qwen3.5:9b, 9 of 62 whole-file rewrites changed nothing and were followed by the same failing test run.
 - tether no longer forces `temperature: 0.2` on Ollama and OpenAI-compatible requests; the model's own sampling defaults apply. On qwen3.5:9b the low temperature made the thinking repeat until it filled the context window: without it, turns that end with no command fall from 12.3% to about 6% on 8 Polyglot exercises. Set `temperature` in `params` to get the old behaviour.
 - A failing test run now shows the source of the failing tests (up to 3, at most 1,500 chars) after the traceback. A traceback shows `assertEqual(total(basket), 10240)` but not what `basket` is; small models then re-read the whole test file instead of fixing the code.
 - Ollama: a thinking turn may produce at most 2,560 tokens (`num_predict`). A turn cut there without a command is asked again at once with `think=false`, so runaway thinking costs one short turn instead of a whole window and a lost step. Turns that end in a command use under 2,200 tokens. Set `num_predict` in `params` (e.g. `-1`) to turn the budget off.

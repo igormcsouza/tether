@@ -102,6 +102,15 @@ Iterative LLM repair often breaks code that already worked: across six models, 4
 
 0 static prompt tokens, no model call, at most 400 chars; nothing is added when no test broke.
 
+### Naming a Rewrite That Changed Nothing — *Wang-Lin et al. (2026)*
+The same repair cycles show up in their smallest form: a model rewrites a whole file with the code it already had, sometimes byte for byte, sometimes with only a comment changed, then runs the tests and gets the same failure. In one 8-exercise run of `qwen3.5:9b`, 9 of 62 rewrites were like this. Before a command that writes a file that already exists (`edit write|replace <p>`, `> p`, `>> p`, `tee p`), the harness keeps its bytes; after the command, when every such file holds the same code, it appends one line:
+
+```text
+[NUDGE] hangman.py: only comments or spacing changed, the code is the same. The tests will fail the same way; change the logic.
+```
+
+"Same code" means identical bytes, or for a `.py` file an identical syntax tree (comments and spacing do not count). New files, files over 256 KB and files outside the workspace are not compared. 0 static prompt tokens, no model call, at most 200 chars.
+
 ### Connection Pooling & Thread-Local SQLite WAL Reuse
 - Model providers reuse persistent `httpx.AsyncClient` connection pools across all turns in a session, eliminating repeated TCP/TLS handshakes.
 - `SQLiteStore` caches thread-local SQLite connections configured with `PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA temp_store=MEMORY; PRAGMA mmap_size=134217728;`.
