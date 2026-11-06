@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.2.15 (2026-11-06)
+
+Small models now waste less time: thinking is capped per turn, a call cut by that cap is asked again without thinking, and short notes after a write or test run say what the model missed (the code did not change, a few lines changed in a whole-file rewrite, which tests the last change broke, the source of the failing tests). tether also stops forcing `temperature: 0.2`. Polyglot-Python (34 exercises, 2 trials, default 8192 context) on qwen3.5:9b: 40 of 68 passed (58.8%) against 37 of 68 on v0.2.13, 12 runs at the 600 s cap against 13, 295 min in total against 325; mean score 0.756 against 0.783. Paired flips +7 / -4 (sign test p = 0.55), so the gain is inside the noise.
+
 ### Changed
 
 - A write that leaves a file's code as it was now gets one line in its output: `[NUDGE] hangman.py: only comments or spacing changed, the code is the same. The tests will fail the same way; change the logic.` "Same code" is identical bytes, or for a `.py` file an identical syntax tree. In 8 Polyglot exercises on qwen3.5:9b, 9 of 62 whole-file rewrites changed nothing and were followed by the same failing test run.
