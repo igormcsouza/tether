@@ -185,7 +185,7 @@ tether/
 ---
 - **Timeout/retry (#70):** `providers.yaml` `timeout` applies to every kind; HTTP providers retry timeouts/network errors/429/5xx twice (`post_with_retry` in `providers/base.py`) then raise `ProviderError` naming provider, model and timeout; each attempt is also bounded by a total `asyncio.wait_for(timeout)` deadline (#88).
 - **Context config (#54):** `max_context_tokens` / `fold_observations_after` resolve as explicit argument (`--context-tokens` / `--fold-after`, MCP `context_tokens` / `fold_after`) > `providers.yaml` entry keys `context_tokens` / `fold_after` > defaults 8192 / 2.
-- **Ollama thinking (#183, #173):** `think=false` when under 3072 tokens of `num_ctx` are free; a thinking turn gets `num_predict` 2560 and, if cut there with no command, is asked once more with `think=false` (tokens summed). A caller's `think`/`num_predict` param wins.
+- **Ollama thinking (#183, #173):** `think=false` when under 3072 tokens of `num_ctx` are free; a thinking turn gets `num_predict` 2560 and, if cut there with no command or with a half tool call Ollama rejects (HTTP 500), is asked once more with `think=false` (tokens summed; a second rejection is the resend hint). A caller's `think`/`num_predict` param wins.
 
 ## 4. Development Workflow & Commands
 

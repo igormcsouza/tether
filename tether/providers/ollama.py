@@ -174,7 +174,8 @@ class OllamaProvider:
                 self.model_name = fallback
                 payload["model"] = fallback
                 resp = await self._chat(client, payload)
-        if rejected := rejected_call(resp):
+        rejected = rejected_call(resp)
+        if rejected is not None and not budgeted:
             return rejected
         if context_overflow(resp):
             # Prompt longer than num_ctx: grow the window once (capped at 4x), the larger one sticks
@@ -187,10 +188,14 @@ class OllamaProvider:
                     f"ollama model `{self.model_name}`: the prompt does not fit num_ctx "
                     f"{self.num_ctx}; lower --context-tokens or raise the model's context window"
                 )
-        resp.raise_for_status()
-        data = resp.json()
-        first = _response(data)
-        if budgeted and data.get("done_reason") == "length" and first.action is None:
+        if rejected is None:
+            resp.raise_for_status()
+            data = resp.json()
+            first = _response(data)
+            cut = budgeted and data.get("done_reason") == "length" and first.action is None
+        else:  # budget cut a call mid-way: Ollama cannot parse it (500), so no token counts
+            first, cut = ModelResponse(content=""), True
+        if cut:
             # cut by the budget without a command: ask the same turn once more, thinking off
             retry = {
                 **payload,

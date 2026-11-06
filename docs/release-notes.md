@@ -12,6 +12,7 @@
 ### Fixed
 
 - Ollama: when the model wrote a malformed tool call in the `think=false` second ask, Ollama's HTTP 500 crashed the session. It now gets the same "fix your call" hint as the first ask.
+- Ollama: when the 2,560-token thinking budget ran out in the middle of a long tool call (thinking plus a whole file), Ollama could not parse the half call and answered HTTP 500. The model was told to resend and wrote the whole file again. Now the same turn is asked once more with `think=false`, as for a turn cut while thinking; only a second rejection becomes the hint. In 8 Polyglot exercises on qwen3.5:9b this happened 8 times in 10 failing runs, every time right at the budget (74-78 s at 33 tokens/s), and cost 11% of the model's time.
 
 ### Documentation
 
