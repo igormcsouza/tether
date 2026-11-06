@@ -38,7 +38,10 @@ tether run "your goal here" [flags]
 | `--param` | Model request parameter, repeatable (e.g., `--param temperature=0 --param think=false`) |
 | `--output-schema` | JSON Schema file; the `done` deliverable must validate or `done` is rejected |
 | `--result-file` | Write the deliverable here, not to stdout |
+| `--verbose`, `-v` | Print one line per step to stderr, e.g. `[step 3] edit view foo.py (2.1s, 812 tok)` |
 | `--json` | Machine-readable JSON output |
+
+**Progress feedback.** A foreground run shows it is alive without any flag: when stderr is a terminal, an animated `waiting for ollama/qwen3.5:9b ...` line (then `step 3 · bash pytest -q ...`) is redrawn until the run ends and erased when it does. The first model call can take a while, because a local model may still be loading into memory. The dots go to stderr only, never to stdout, and are off with `--json`, with `--headless` and when stderr is a pipe or a file. `--verbose` adds one permanent stderr line per step (also in pipes and logs); stdout still carries only the deliverable.
 
 ```bash
 tether run "Summarize the README in 3 bullets" --model openai/gpt-4o-mini --tools web,mem --json

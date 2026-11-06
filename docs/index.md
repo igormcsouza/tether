@@ -86,6 +86,9 @@ Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-
     # Zero-tool reasoning with a local 9B model (defaults to ollama/qwen3.5:9b)
     tether "Explain the CAP theorem in 3 bullet points"
 
+    # See each step as it happens (animated dots show it is alive even without -v)
+    tether --verbose "Explain the CAP theorem in 3 bullet points"
+
     # Opt-in to web search and memory tools
     tether --tools web,mem "Research 2026 solid-state battery breakthroughs"
 
