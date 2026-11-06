@@ -15,6 +15,7 @@ import yaml
 
 from tether import __version__, api
 from tether.harness import Harness
+from tether.progress import watch
 from tether.providers.base import parse_params
 from tether.sandbox import SandboxPolicy
 from tether.store import SessionRecord, SQLiteStore
@@ -110,6 +111,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument(
         "--result-file", type=str, default=None, help="Write the deliverable here, not to stdout"
+    )
+    p_run.add_argument(
+        "-v", "--verbose", action="store_true", help="Print one line per step to stderr"
     )
     _add_json(p_run)
     p_run.add_argument("goal", nargs="+", help="Task goal or instruction")
@@ -339,7 +343,23 @@ async def _async_main(argv: list[str]) -> int:
             sid = harness.spawn(goal)
             print(json.dumps({"v": api.SCHEMA_VERSION, "id": sid}) if ns.json else sid)
             return 0
-        return _finish(await harness.run(goal), ns)
+        rec = harness.create_session(goal)
+        watcher = asyncio.create_task(
+            watch(
+                harness.store,
+                rec.id,
+                harness.model,
+                verbose=ns.verbose,
+                tty=sys.stderr.isatty() and not ns.json,
+            )
+        )
+        await asyncio.sleep(0)  # let the watcher start so cancel reaches its cleanup
+        try:
+            rec = await harness.execute_session(rec.id)
+        finally:
+            watcher.cancel()
+            await watcher
+        return _finish(rec, ns)
 
     if cmd == "pipeline":
         goal = " ".join(ns.goal).strip()

@@ -58,9 +58,7 @@ def test_dots_label_waits_for_the_model_then_names_the_last_step(tmp_path: Path)
 
 async def _watching(store: SQLiteStore, sid: str, **kw: Any) -> tuple[io.StringIO, Any]:
     out = io.StringIO()
-    task = asyncio.create_task(
-        watch(store, sid, "ollama/m", stream=out, interval=0.01, **kw)
-    )
+    task = asyncio.create_task(watch(store, sid, "ollama/m", stream=out, interval=0.01, **kw))
     await asyncio.sleep(0.08)
     return out, task
 
@@ -132,3 +130,9 @@ async def test_cli_is_silent_by_default_when_stderr_is_not_a_tty(
     register_provider("prog-test", lambda name: _Done())
     assert await _async_main(["--model", "prog-test/m", "--db", str(tmp_path / "t.db"), "g"]) == 0
     assert capsys.readouterr().err == ""
+
+
+def test_dots_label_cuts_a_long_command(tmp_path: Path) -> None:
+    store, sid = _session(tmp_path)
+    _call(store, sid, 1, "bash " + "y" * 100)
+    assert len(dots_label("ollama/m", store.get_turns(sid))) < 60
