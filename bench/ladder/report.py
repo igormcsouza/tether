@@ -3,9 +3,6 @@ import json
 import sys
 from collections import defaultdict
 
-KINDS = ("write", "bugfix", "plan", "review")
-
-
 def main(out):
     rows = [json.loads(l) for l in open(f"{out}/results.jsonl")]
     by = defaultdict(lambda: defaultdict(list))
@@ -16,7 +13,7 @@ def main(out):
         print(f"\n== {harness} / {model}  (context {ctx})")
         print(f"{'task':10} {'result':8} {'att':>3} {'think':>5} {'score':>5} {'time':>6} {'steps':>5} {'prompt tok':>10}  note")
         total_t = 0
-        for kind in KINDS:
+        for kind in dict.fromkeys(r["kind"] for r in rows):  # the kinds that were run, in run order
             reached = 0
             for tier in range(1, 7):
                 rs = tasks.get(f"{kind}-{tier}")

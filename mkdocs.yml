@@ -113,6 +113,7 @@ nav:
       - Coding Ladder: ladder/index.md
       - Coding Ladder results: ladder/results.md
       - Coding Ladder results, Claude Haiku: ladder/claude-haiku.md
+      - Everyday work ladder, Claude Haiku: ladder/general.md
       - Glossary: glossary.md
   - Reference:
       - reference/index.md

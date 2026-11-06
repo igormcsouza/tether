@@ -26,6 +26,19 @@ There are 24 tasks: **6 tiers of difficulty × 4 kinds of work**. All of them ar
 
 Code is graded by tests the model never sees. A task passes when every hidden test passes (plans and reviews pass at 0.7). `python3 bench/ladder/validate.py` proves each grader: the starting state fails and a reference solution passes.
 
+## Everyday work: content, Q&A, critique, extraction
+
+Most people use AI for more than code. Four more kinds measure that, with 3 or 4 tiers each and the same rules: short self-contained texts in the workspace (no `shop` project, no web), one file to deliver, and a deterministic grader (no model judges another).
+
+| Kind | Tiers | What the model delivers | How it is graded |
+|---|---|---|---|
+| **content** | 4 | An announcement, a newsletter summary of an article, a public post from internal meeting notes, a customer email rewritten from an internal incident report | A checklist: word range, required facts, banned words, structure (headline, bullet count, last line), internal details left out, no number that is not in the source |
+| **qa** | 4 | `answers.md` for questions about a coworking handbook (and, at tier 4, a later email that corrects it) | One regex per answer; a question the documents do not answer must say so, an amended value must replace the old one (listing both fails), tier 4 also wants the source cited |
+| **critique** | 4 | `critique.md` on a budget, a proposal, a business idea and a memo, each with planted flaws (a total that does not add up, a biased sample, negative unit economics, correlation taken for causation, ...) | Share of the planted flaws found; false alarms on sound parts cost points, like **review** |
+| **extract** | 3 | `data.json` from an email, an invoice and a set of support tickets | JSON schema (the same validator as `--output-schema`) plus the exact values, including a computed total and `null` for a missing product |
+
+`content` and `qa` pass at 0.8, `critique` at 0.7 and `extract` only when every check passes. They are not run by default; name them with `--kinds content,qa,critique,extract`. The [results for Claude Haiku](general.md) show how far it gets.
+
 ## How a model climbs
 
 For each model and each kind the tiers are tried in order. A tier gets **up to four attempts**, and the first pass moves the model up:
@@ -44,7 +57,7 @@ The context window is the largest that stays entirely in GPU memory (`bench/ladd
 ## Run it
 
 ```bash
-uv run python bench/ladder/validate.py          # prove the graders (no model needed)
+uv run python bench/ladder/validate.py          # prove the graders (no model needed, all 39 tasks)
 
 uv run python bench/ladder/run.py --out /tmp/ladder \
     --models qwen3.5:9b --ctx qwen3.5:9b=40960 --tether-bin .venv/bin/tether

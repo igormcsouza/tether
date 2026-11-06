@@ -1,4 +1,5 @@
-"""24 ladder tasks: 6 tiers x {write, bugfix, plan, review}, all on the `shop` project (base.py).
+"""Coding ladder tasks: 6 tiers x {write, bugfix, plan, review}, all on the `shop` project (base.py).
+The non-coding kinds (content, qa, critique, extract) live in general.py and register here on import.
 
 Tier 1 hands over file, place and code. Each tier gives less: T2 names the behaviour, T3 makes the
 model find the file, T4 leaves cases unsaid that hidden tests check, T5 spans modules, T6 is an
@@ -15,6 +16,7 @@ from pathlib import Path
 from base import project
 
 KINDS = ("write", "bugfix", "plan", "review")
+GENERAL_KINDS = ("content", "qa", "critique", "extract")  # general.py
 
 
 @dataclass
@@ -30,10 +32,12 @@ class Task:
     ref: dict = field(default_factory=dict)  # files that solve it (validate.py)
     deliverable: str = ""  # text kinds: file the model must write
     allowed_files: tuple = ()  # plan: file names that exist or may be created
+    checks: list = field(default_factory=list)  # general kinds: (label, fn(text) -> bool) on the deliverable
 
 
 def workspace(task):
-    return {**project(), **task.files}
+    """Coding kinds start from the `shop` project; the general kinds (general.py) from their own texts only."""
+    return {**project(), **task.files} if task.kind in KINDS else dict(task.files)
 
 
 # ---------------------------------------------------------------- code grading
@@ -95,12 +99,13 @@ def grade_text(task, ws):
     found = [label for label, pats in task.rubric if hit(cs, pats) or hit([text], pats[:1]) and len(pats) == 1]
     score = len(found) / len(task.rubric)
     notes = [f"{len(found)}/{len(task.rubric)} items"]
-    if task.kind == "review":
+    if task.kind in ("review", "critique"):
         fp = sum(1 for c in cs if any(re.search(h, c, re.I) for h in task.herrings))
         if fp:
             score = max(0.0, score - 0.15 * fp)
             notes.append(f"{fp} false alarm(s)")
-        if len(cs) > 2 * len(task.rubric) + 2:
+        # a critique may raise more sound points than were planted; only herrings cost it points
+        if task.kind == "review" and len(cs) > 2 * len(task.rubric) + 2:
             score *= 0.7
             notes.append("noisy review")
     if task.kind == "plan":
@@ -113,8 +118,20 @@ def grade_text(task, ws):
     return score, ", ".join(notes)
 
 
+def grade_checks(task, ws):
+    path = Path(ws) / task.deliverable
+    text = path.read_text() if path.exists() else ""
+    if not text.strip():
+        return 0.0, f"{task.deliverable} missing or empty"
+    failed = [label for label, ok in task.checks if not ok(text)]
+    n = len(task.checks)
+    return (n - len(failed)) / n, f"{n - len(failed)}/{n} checks" + (f", failed: {', '.join(failed)}" if failed else "")
+
+
 def grade(task, ws):
-    return grade_text(task, ws) if task.kind in ("plan", "review") else grade_code(task, ws)
+    if task.checks:
+        return grade_checks(task, ws)
+    return grade_text(task, ws) if task.kind in ("plan", "review", "critique") else grade_code(task, ws)
 
 
 def grade_copy(task, ws):
@@ -129,7 +146,7 @@ def grade_copy(task, ws):
 
 
 def pass_threshold(task):
-    return 0.99 if task.kind in ("write", "bugfix") else 0.7
+    return 0.99 if task.kind in ("write", "bugfix", "extract") else 0.8 if task.kind in ("content", "qa") else 0.7
 
 
 def numbered(src):
@@ -851,3 +868,6 @@ add(Task(
 
 def by_kind(kind):
     return [t for t in TASKS.values() if t.kind == kind]
+
+
+import general  # noqa: E402,F401  registers the non-coding kinds (it imports Task and add from here)
