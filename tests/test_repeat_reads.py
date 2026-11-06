@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse, tool
 from tether.sandbox import SandboxPolicy
@@ -14,7 +16,9 @@ def _script(cmds: list[str]) -> list[ModelResponse]:
     return [*steps, ModelResponse(content="", action=ActionCall(cmd="done", stdin="ok"))]
 
 
-async def _run(tmp_path: Path, cmds: list[str]) -> tuple[Harness, FakeScriptedProvider, str]:
+async def _run(
+    tmp_path: Path, cmds: list[str], tools: tuple[str, ...] = ("edit",)
+) -> tuple[Harness, FakeScriptedProvider, str]:
     ws = tmp_path / "ws"
     ws.mkdir()
     for name in "abc":
@@ -22,7 +26,7 @@ async def _run(tmp_path: Path, cmds: list[str]) -> tuple[Harness, FakeScriptedPr
     provider = FakeScriptedProvider(_script(cmds))
     harness = Harness(
         db_path=tmp_path / "tether.db",
-        tools=["edit"],
+        tools=list(tools),
         sandbox=SandboxPolicy(workspace_root=ws, use_kernel_sandbox=False),
         provider=provider,
     )
@@ -64,6 +68,21 @@ async def test_an_edit_makes_the_file_readable_again(tmp_path: Path) -> None:
     cmds = ["edit view a.py", "edit write a.py", "edit view b.py", "edit view a.py"]
     harness, _, sid = await _run(tmp_path, cmds)
     assert _executed_views(harness, sid) == 4  # the edit invalidated a.py: the last read runs
+
+
+@pytest.mark.parametrize(
+    "write",
+    ["cat > a.py << 'EOF'\nX = 2\nEOF", "echo X = 2 > a.py", "printf 'X = 2' >> a.py"],
+)
+async def test_a_shell_write_without_bash_prefix_makes_the_file_readable_again(
+    tmp_path: Path, write: str
+) -> None:
+    """A write run through the bash fallback (no `bash ` prefix) is a change too: the next read
+    must show the new content, not claim the file is unchanged."""
+    cmds = ["cat a.py", write, "cat b.py", "cat a.py"]
+    harness, provider, sid = await _run(tmp_path, cmds, ("edit", "bash"))
+    assert _executed_views(harness, sid) == 4
+    assert "X = 2" in _prompt(provider, 4)
 
 
 async def test_escalated_loop_message_from_the_second_repeat(tmp_path: Path) -> None:
