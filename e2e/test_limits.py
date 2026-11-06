@@ -40,7 +40,7 @@ def test_hard_context_budget_trims_old_history(tether: Tether, chaos) -> None:
         )
     chaos.requests.clear()
     chaos.script(*big, ("done", "ok"))
-    tether.run("budget", "--tools", "bash", "--max-steps", "10")  # default 32768 budget: no trimming
+    tether.run("budget", "--tools", "bash", "--max-steps", "10")  # default budget: no trimming
     assert _size(chaos.requests[-1]) > 700 * 1.3, "control: without the small budget history grows"
 
 
