@@ -26,7 +26,7 @@ def test_precedence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     db = tmp_path / "t.db"
     monkeypatch.setenv("TETHER_PROVIDERS", str(tmp_path / "none.yaml"))
     h = Harness(model="decl/m", db_path=db)
-    assert (h.max_context_tokens, h.fold_observations_after) == (8192, 2)
+    assert (h.max_context_tokens, h.fold_observations_after) == (32768, 2)
     _yaml(monkeypatch, tmp_path, ENTRY + "  context_tokens: 32000\n  fold_after: 8\n")
     h = Harness(model="decl/m", db_path=db)
     assert (h.max_context_tokens, h.fold_observations_after) == (32000, 8)
@@ -34,7 +34,7 @@ def test_precedence(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert (h.max_context_tokens, h.fold_observations_after) == (100, 5)
     _yaml(monkeypatch, tmp_path, "decl:\n  kind: nope\n")
     h = Harness(model="decl/m", db_path=db)
-    assert h.max_context_tokens == 8192
+    assert h.max_context_tokens == 32768
 
 
 @pytest.mark.parametrize("key", ["context_tokens", "fold_after", "rpm"])
