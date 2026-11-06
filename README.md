@@ -26,13 +26,13 @@ Tether is built the other way round:
 
 Tether answers to one number: how many real coding exercises a small local model finishes. On the Polyglot-Python set (Aider's 34 Python exercises, graded by each exercise's own tests), `qwen3.5:9b` through Ollama at the default 8192-token context, 2 trials each (68 runs):
 
-| | before v0.2.10 | v0.2.10 | v0.2.13 |
-|---|---|---|---|
-| Passes | 35 of 68 (51.5%) | 35 of 68 (51.5%) | 37 of 68 (54.4%) |
-| Mean score | 0.718 | 0.763 | 0.783 |
-| Runs killed by the wall cap | 11 | 14 | 13 |
+| | before v0.2.10 | v0.2.10 | v0.2.13 | v0.2.15 |
+|---|---|---|---|---|
+| Passes | 35 of 68 (51.5%) | 35 of 68 (51.5%) | 37 of 68 (54.4%) | 40 of 68 (58.8%) |
+| Mean score | 0.718 | 0.763 | 0.783 | 0.756 |
+| Runs killed by the wall cap | 11 | 14 | 13 | 12 |
 
-The target is 80% by v0.3.0, so this is the number every change is ranked by. v0.2.13 is not distinguishable from v0.2.10 (paired score delta +0.020, 95% interval -0.060 to +0.101). One run is noisy (about 0.1), so read the pass count and the failure breakdown, not one decimal. The second yardstick is the [Coding Ladder](https://igormcsouza.github.io/tether/ladder/): 24 tasks, 6 tiers of difficulty times write, bugfix, plan and review, which shows how far up a model climbs and what stops it. Method, how to reproduce both and fair-comparison rules: [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/).
+The target is 80% by v0.3.0, so this is the number every change is ranked by. v0.2.15 passes 3 more runs than v0.2.13, but that is inside the noise too (pass flips +7/-4, paired score delta -0.026, 95% interval -0.093 to +0.041). One run is noisy (about 0.1), so read the pass count and the failure breakdown, not one decimal. The second yardstick is the [Coding Ladder](https://igormcsouza.github.io/tether/ladder/): 24 tasks, 6 tiers of difficulty times write, bugfix, plan and review, which shows how far up a model climbs and what stops it. Method, how to reproduce both and fair-comparison rules: [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/).
 
 ## How it works
 
