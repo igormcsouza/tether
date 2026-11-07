@@ -344,6 +344,8 @@ async def _async_main(argv: list[str]) -> int:
             print(json.dumps({"v": api.SCHEMA_VERSION, "id": sid}) if ns.json else sid)
             return 0
         rec = harness.create_session(goal)
+        # #90: a caller that kills a foreground run on its own timeout still has the id
+        print(f"session {rec.id}", file=sys.stderr, flush=True)
         watcher = asyncio.create_task(
             watch(
                 harness.store,

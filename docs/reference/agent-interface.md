@@ -17,7 +17,7 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 - `failure` is `{"kind": "gate|stopped|worker_error", "gate": "<cmd>|output-schema|null", "message": "…"}`.
 - Keys are stable; new keys may be added.
 
-`--json` is available on `run`, `pipeline`, `status`, `list`, `read` (also `--digest`, `--steps`, `--full`), `wait`, `send` and `stats`. With `--headless` it prints `{"v":1,"id":"ses_…"}`.
+`--json` is available on `run`, `pipeline`, `status`, `list`, `read` (also `--digest`, `--steps`, `--full`), `wait`, `send` and `stats`. With `--headless` it prints `{"v":1,"id":"ses_…"}`. A foreground `run` (with or without `--json`) writes `session ses_…` to stderr as soon as the session exists, before the first model call, so a caller that kills it on its own timeout can still `status`, `stop` or `send` it; stdout is unchanged.
 
 ## Exit codes
 
