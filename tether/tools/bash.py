@@ -59,7 +59,7 @@ def make_bash_tool(sandbox: SandboxPolicy) -> ToolSpec:
             return f"Error: missing `<command>`.\n{help_str}"
         note = ""
         if cd := _missing_cd(cmd_str, Path(sandbox.workspace_root)):
-            # qwen3.5:9b lost a step to `cd /testbed && ...` in 4 of 6 paasio runs
+            # qwen3.5:9b lost a step to `cd /testbed && ...` in 3 of 6 paasio runs
             cmd_str = cd[1]
             note = f"[`cd {cd[0]}` skipped: no such directory; commands run in the workspace]\n"
         if stdin is None and (head := _test_head(cmd_str)):

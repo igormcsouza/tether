@@ -59,7 +59,7 @@ async def test_other_commands_point_to_edit_and_bash_is_untouched(tmp_path: Path
 
 
 async def test_a_cd_into_a_missing_dir_is_skipped(tmp_path: Path) -> None:
-    """#79: `cd /testbed && python3 -m unittest` cost qwen3.5:9b a step in 4 of 6 paasio runs."""
+    """#79: `cd /testbed && python3 -m unittest` cost qwen3.5:9b a step in 3 of 6 paasio runs."""
     (tmp_path / "sub").mkdir()
     (tmp_path / "sub" / "x.txt").write_text("in sub")
     out = await _run(
