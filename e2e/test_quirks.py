@@ -16,6 +16,13 @@ def test_heredoc_in_cmd_becomes_stdin(tether: Tether, chaos) -> None:
     assert (tether.ws / "a.txt").read_text() == "hello"
 
 
+def test_shell_file_write_runs_as_edit_without_bash(tether: Tether, chaos) -> None:
+    chaos.script("echo ok > hello.txt", "cat hello.txt", ("done", "ok"))
+    r = tether.run("Create hello.txt containing ok", "--tools", "edit")
+    assert (tether.ws / "hello.txt").read_text() == "ok\n"
+    assert tether.events(r["id"])[:2] == ["ok", "ok"]
+
+
 def test_bare_shell_command_runs_through_bash(tether: Tether, chaos) -> None:
     (tether.ws / "marker.txt").write_text("x")
     chaos.script("ls", ("done", "ok"))

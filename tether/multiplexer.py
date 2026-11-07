@@ -179,6 +179,28 @@ def unescape_literal_newlines(stdin: str | None) -> str | None:
     return stdin
 
 
+def _as_edit(tokens: list[str], stdin: str | None) -> tuple[list[str], str | None] | None:
+    """A plain shell file read/write as `edit`, for a session with `edit` and no `bash`.
+
+    `cat p` -> `edit view p`; `echo t > p`, `printf t > p`, `cat > p` + heredoc -> `edit write p`.
+    qwen3.5:9b spent 10 of 13 steps on `echo ok > hello.txt` and friends with only `edit` on.
+    """
+    if tokens[:1] == ["bash"]:
+        tokens = tokens[1:]
+    if len(tokens) == 2 and tokens[0] == "cat":
+        return ["edit", "view", tokens[1]], stdin
+    if len(tokens) < 3 or tokens[-2] != ">":
+        return None
+    verb, words, path = tokens[0], tokens[1:-2], tokens[-1]
+    if verb == "cat" and not words and stdin is not None:
+        return ["edit", "write", path], stdin
+    if verb == "echo" and stdin is None:
+        return ["edit", "write", path], " ".join(words) + "\n"
+    if verb == "printf" and len(words) == 1 and stdin is None:
+        return ["edit", "write", path], words[0].replace("\\n", "\n").replace("\\t", "\t")
+    return None
+
+
 def split_cli(cmd: str) -> list[str]:
     """Split a CLI command string using POSIX shlex with graceful fallback on unclosed quotes."""
     try:
@@ -265,9 +287,16 @@ class Multiplexer:
                 # A bare shell command (`ls -la`): the sandboxed bash tool runs it, no retry step.
                 name, spec = "bash", self._tools["bash"]
                 clean_cmd = f"bash {clean_cmd}"
+        if spec is None and "edit" in self._tools and "bash" not in self._tools:
+            if as_edit := _as_edit(tokens, stdin):
+                tokens, stdin = as_edit
+                clean_cmd, name, args = shlex.join(tokens), "edit", tokens[1:]
+                spec = self._tools["edit"]
         if spec is None:
             avail = ", ".join(self._tools.keys())
             hint = f" For shell commands use `bash {clean_cmd}`." if "bash" in self._tools else ""
+            if "edit" in self._tools and "bash" not in self._tools:
+                hint = " Files: `edit view <path>`, `edit write <path>` with the text in stdin."
             from tether.tools import ALL_BUILTIN_TOOLS  # lazy: tools import this module
 
             head = (
