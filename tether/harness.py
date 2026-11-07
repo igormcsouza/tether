@@ -983,15 +983,9 @@ class Harness:
             )
             # #173: the same check kept failing: set the attempt aside and start fresh from the
             # files as they were (Olausson et al., ICLR 2024: for weaker models a new sample beats
-            # repairing a wrong one). Files the model created are left as they are. A version that
-            # already passed most tests with at most NEAR_PASS failing is kept instead: the files
-            # go back to it, not to the start.
-            near = best if check and not handback and best and best[0] <= NEAR_PASS else None
-            if near:
-                reset_originals(near[2])
-            fresh = (
-                sorted(reset_originals(originals)) if check and not handback and not near else []
-            )
+            # repairing a wrong one). Files the model created are left as they are. (A near pass
+            # never gets here: it goes back to its best version in place.)
+            fresh = sorted(reset_originals(originals)) if check and not handback else []
             text = restart_message(
                 step=step,
                 check_cmd=check,
@@ -1000,8 +994,7 @@ class Harness:
                 tried=tried,
                 handback=handback,
                 fresh=fresh,
-                failing=sorted(near[1] if near else last_run[1])[:5] if last_run else None,
-                best=bool(near),
+                failing=sorted(last_run[1])[:5] if last_run else None,
             )
             if handback:
                 text += reply_note()
@@ -1595,6 +1588,33 @@ class Harness:
                     )
                     steps_hinted = True
 
+                # The same check failed again after another edit (counted once per edit between)
+                check = tcmd.strip()
+                red = bool(
+                    _TEST_CMD.search(tcmd)
+                    and _TESTS_RED.search(tout)
+                    and not tests_green(tcmd, tout)
+                )
+                if red and (check not in fail_runs or check in stale):
+                    fail_runs[check] = fail_runs.get(check, 0) + 1
+                    stale.discard(check)
+                if (
+                    red
+                    and fail_runs[check] >= RESTART_AFTER_FAILS
+                    and best
+                    and best[0] <= NEAR_PASS
+                ):
+                    # #173: near a pass a restart wiped the history and paasio spent its last
+                    # ~100 s re-reading the tests; go back to the best version in place instead
+                    fail_runs.clear()
+                    stale.clear()
+                    if reset_originals(best[2]):
+                        out += (
+                            f"\n[RESTORED] Your last {RESTART_AFTER_FAILS} changes did not beat "
+                            "your best version, so its files are back. It failed only: "
+                            f"{', '.join(sorted(best[1])[:5])}. Fix those from there."
+                        )
+
                 # Record tool observation in SQLite (auto-chunks into FTS5)
                 obs = self.store.add_observation(
                     session_id=session_id,
@@ -1611,20 +1631,11 @@ class Harness:
                     duration_ms=tool_duration_ms,
                 )
 
-                # Restart: the same check failed again after another edit. Continue from a fresh
-                # history that describes the state instead of replaying the failed attempts.
-                check = tcmd.strip()
-                if (
-                    _TEST_CMD.search(tcmd)
-                    and _TESTS_RED.search(tout)
-                    and not tests_green(tcmd, tout)
-                ):
-                    if check not in fail_runs or check in stale:
-                        fail_runs[check] = fail_runs.get(check, 0) + 1
-                        stale.discard(check)
-                    if fail_runs[check] >= RESTART_AFTER_FAILS:
-                        if (handed := get_unstuck(step, check, tout)) is not None:
-                            return handed
+                # Restart: continue from a fresh history that describes the state instead of
+                # replaying the failed attempts.
+                if red and fail_runs[check] >= RESTART_AFTER_FAILS:
+                    if (handed := get_unstuck(step, check, tout)) is not None:
+                        return handed
 
             # Max steps reached without explicit `done`
             finished = await self._finished_by_harness(sandbox, verify_commands, green_cmd, changed)

@@ -155,8 +155,10 @@ async def test_a_failing_check_restart_starts_fresh_from_the_original_files(
     assert "# TRY" not in body  # nothing of the failed attempt for the model to copy
 
 
-async def test_a_restart_after_a_near_pass_goes_back_to_that_version(tmp_path: Path) -> None:
-    """paasio: the first write passed 24 of 25, 3 failed fixes later the restart reset the stub."""
+async def test_a_near_pass_goes_back_to_that_version_in_place(tmp_path: Path) -> None:
+    """paasio: the first write passed 24 of 25, 3 failed fixes later the restart reset the stub;
+    a restart back to the best version then wiped the history and the model re-read the tests
+    until the wall cap, so the files go back in place and the history stays."""
     ws = tmp_path / "ws"
     ws.mkdir()
     (ws / "a.py").write_text("X = 0  # STUB\n", encoding="utf-8")
@@ -182,9 +184,10 @@ async def test_a_restart_after_a_near_pass_goes_back_to_that_version(tmp_path: P
     )
     session = await harness.run("make the tests pass")
     assert (ws / "a.py").read_text(encoding="utf-8") == best
-    body = next(t for t in harness.store.get_turns(session.id) if t.event_type == "restart").content
-    assert "back to your best version" in body and "test_x" in body and "# BEST" in body
-    assert "# WORST" not in body and "different approach" not in body
+    turns = harness.store.get_turns(session.id)
+    assert not [t for t in turns if t.event_type == "restart"]
+    note = next(t.content for t in turns if "[RESTORED]" in t.content)
+    assert "best version" in note and "test_x" in note
 
 
 def test_failing_count_reads_the_summary_when_names_are_cut() -> None:
