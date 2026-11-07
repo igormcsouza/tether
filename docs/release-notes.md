@@ -1,6 +1,8 @@
 # Release Notes
 
-## Unreleased
+## v0.2.17 (2026-11-07)
+
+When tests fail, tether now works around them on its own time: it re-runs them after each edit, traces the smallest failing test, starts fresh when an approach keeps failing, and keeps a version that nearly passes instead of throwing it away. The north star (74% on Polyglot-Python with qwen3.5:9b) moves to v0.4.0. No full Polyglot run was made for this release; the numbers below are from targeted labs.
 
 ### Added
 
