@@ -9,6 +9,8 @@
 
 ### Fixed
 
+- `cd /testbed && python3 -m unittest ...`, with a directory that does not exist, now runs the command after the `cd` in the workspace, with one line saying the `cd` was skipped. Models assume a container path; qwen3.5:9b lost a step to it in 4 of the last 6 paasio runs. A `cd` into a real directory runs as before (#79).
+- `tether stats` offenders: a leading `cd <dir> &&` no longer makes `cd` the offending command (the command after it is counted), and a turn without a command shows as `(no command)` instead of `unknown` (#79).
 - With `edit` enabled and `bash` not, a plain shell file write or read now runs as `edit`: `echo ok > hello.txt`, `printf 'a\nb' > f`, `cat > f << 'EOF' ... EOF` become `edit write`, and `cat f` becomes `edit view f`. Any other shell command still answers `unknown command`, now with a pointer to `edit view|write`. In the v0.2.17 release check (`--tools edit`, "Create hello.txt containing ok"), qwen3.5:9b tried `echo`, `printf`, `cat` and `ls` 10 times before writing the file at step 12 of 15. Pipes are not translated.
 
 ## v0.2.17 (2026-11-07)

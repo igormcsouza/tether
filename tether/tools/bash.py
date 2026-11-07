@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from tether.decorator import ToolSpec, build_tool_spec
 from tether.sandbox import SandboxPolicy
@@ -10,6 +11,17 @@ from tether.sandbox import SandboxPolicy
 # `<tests> 2>&1 | head -N` cuts the runner's summary (it prints last) and hides its exit code.
 _HEAD_PIPE = re.compile(r"(?P<cmd>.+?)\s*\|\s*head(?:\s+-n)?(?:\s+-?(?P<n>\d+))?\s*", re.DOTALL)
 HEAD_TAIL_LINES = 6
+# `cd /testbed && <cmd>`: models assume a container path, but the shell starts in the workspace
+_CD_PREFIX = re.compile(r"cd\s+(?P<dir>\S+)\s*(?:&&|;)\s*(?P<rest>.+)", re.DOTALL)
+
+
+def _missing_cd(cmd: str, root: Path) -> tuple[str, str] | None:
+    """(dir, rest) of `cd <dir> && <rest>` when <dir> does not exist, else None (#79)."""
+    m = _CD_PREFIX.fullmatch(cmd)
+    if not m:
+        return None
+    path = root / m["dir"].strip("'\"")  # an absolute dir replaces root
+    return None if path.is_dir() else (m["dir"], m["rest"])
 
 
 def _test_head(cmd: str) -> tuple[str, int] | None:
@@ -45,9 +57,14 @@ def make_bash_tool(sandbox: SandboxPolicy) -> ToolSpec:
         cmd_str = " ".join(args).strip()
         if not cmd_str and not stdin:
             return f"Error: missing `<command>`.\n{help_str}"
+        note = ""
+        if cd := _missing_cd(cmd_str, Path(sandbox.workspace_root)):
+            # qwen3.5:9b lost a step to `cd /testbed && ...` in 4 of 6 paasio runs
+            cmd_str = cd[1]
+            note = f"[`cd {cd[0]}` skipped: no such directory; commands run in the workspace]\n"
         if stdin is None and (head := _test_head(cmd_str)):
-            return _keep_summary(await sandbox.execute_bash(head[0]), head[1])
-        return await sandbox.execute_bash(cmd_str, stdin=stdin)
+            return note + _keep_summary(await sandbox.execute_bash(head[0]), head[1])
+        return note + await sandbox.execute_bash(cmd_str, stdin=stdin)
 
     return build_tool_spec(
         _bash,

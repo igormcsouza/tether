@@ -136,16 +136,20 @@ _SUBCOMMAND_TOOLS: dict[str, set[str]] = {
 }
 
 
+_CD_LEAD = re.compile(r"^(?:bash\s+)?(?:cd\s+\S+\s*(?:&&|;)\s*)+")
+
+
 def canonical_tool_command(raw_cmd: str | None) -> str:
     """Normalize a raw tool command into its canonical `<tool>` or `<tool> <subcommand>` key."""
     if not raw_cmd:
-        return "unknown"
+        return "(no command)"  # a reply without a command, or a worker error (#79)
     cleaned = raw_cmd.strip().strip("`").lstrip("$>").strip()
     if cleaned.startswith("tether "):
         cleaned = cleaned[len("tether ") :].strip()
+    cleaned = _CD_LEAD.sub("", cleaned)  # `cd x && pytest` is a pytest run, not a `cd` (#79)
     tokens = [tok.strip("\"'") for tok in cleaned.split() if tok.strip("\"'")]
     if not tokens:
-        return "unknown"
+        return "(no command)"
     head = tokens[0]
     if head in _SUBCOMMAND_TOOLS and len(tokens) >= 2 and tokens[1] in _SUBCOMMAND_TOOLS[head]:
         return f"{head} {tokens[1]}"

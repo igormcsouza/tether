@@ -289,3 +289,11 @@ def test_edit_append_builds_a_file_in_parts(tether: Tether, chaos) -> None:
     )
     tether.run("plan", "--tools", "edit")
     assert (tether.ws / "plan.md").read_text() == "# Module 1\n# Module 2\n"
+
+
+def test_a_cd_into_a_missing_container_dir_is_skipped(tether: Tether, chaos) -> None:
+    (tether.ws / "marker.txt").write_text("x")
+    chaos.script("cd /testbed && ls", ("done", "ok"))
+    r = tether.run("list", "--tools", "bash")
+    out = tether.tool_outputs(r["id"])[0]
+    assert "`cd /testbed` skipped" in out and "marker.txt" in out
