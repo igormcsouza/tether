@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from e2e.conftest import Tether
 
 
@@ -15,7 +17,19 @@ def test_verbose_prints_one_stderr_line_per_step_and_keeps_stdout(tether: Tether
     assert "\r" not in p.stderr  # no dots when stderr is not a terminal
 
 
-def test_a_piped_run_without_verbose_is_silent_on_stderr(tether: Tether, chaos) -> None:
+def test_a_piped_run_without_verbose_prints_only_the_session_id_on_stderr(
+    tether: Tether, chaos
+) -> None:
     chaos.script(("done", "ok"))
     p = tether.cli("run", "--model", "e2e/scripted", "go")
-    assert (p.stdout, p.stderr) == ("ok\n", "")
+    assert p.stdout == "ok\n"
+    sid = p.stderr.removeprefix("session ").strip()  # #90: there before the first model call
+    assert p.stderr == f"session {sid}\n" and sid.startswith("ses_")
+    assert tether.cli("status", sid).returncode == 0
+
+
+def test_a_killed_json_run_still_names_its_session_on_stderr(tether: Tether, chaos) -> None:
+    chaos.script(("done", "ok"))
+    p = tether.cli("run", "--json", "--model", "e2e/scripted", "go")
+    assert p.stderr.startswith("session ses_")
+    assert p.stderr.split()[1] == json.loads(p.stdout)["id"]  # stdout JSON unchanged

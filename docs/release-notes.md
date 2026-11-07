@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Added
+
+- A foreground `tether run` (with or without `--json`) writes `session ses_<id>` to stderr as soon as the session is created, before the first model call. A caller that kills the run on its own timeout no longer needs `tether list` to find the id for `status`, `stop` or `send`; stdout is unchanged (#90).
+
 ## v0.2.17 (2026-11-07)
 
 When tests fail, tether now works around them on its own time: it re-runs them after each edit, traces the smallest failing test, starts fresh when an approach keeps failing, and keeps a version that nearly passes instead of throwing it away. The north star (74% on Polyglot-Python with qwen3.5:9b) moves to v0.4.0. No full Polyglot run was made for this release; the numbers below are from targeted labs.

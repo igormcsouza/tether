@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import re
 from pathlib import Path
 from typing import Any
 
@@ -129,7 +130,8 @@ async def test_cli_is_silent_by_default_when_stderr_is_not_a_tty(
 ) -> None:
     register_provider("prog-test", lambda name: _Done())
     assert await _async_main(["--model", "prog-test/m", "--db", str(tmp_path / "t.db"), "g"]) == 0
-    assert capsys.readouterr().err == ""
+    err = capsys.readouterr().err  # no spinner: only the session id line (#90)
+    assert re.fullmatch(r"session ses_\w+\n", err)
 
 
 def test_dots_label_cuts_a_long_command(tmp_path: Path) -> None:
