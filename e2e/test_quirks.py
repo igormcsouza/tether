@@ -66,6 +66,16 @@ def test_edit_write_with_inline_content_writes_it(tether: Tether, chaos) -> None
     assert tether.events(r["id"])[0] == "ok" and (tether.ws / "hello.txt").read_text() == "ok\n"
 
 
+def test_test_run_piped_to_head_keeps_its_summary(tether: Tether, chaos) -> None:
+    body = "".join(f"    def test_{i}(self):\n        assert {i} == -1\n" for i in range(20))
+    suite = f"import unittest\n\n\nclass T(unittest.TestCase):\n{body}"
+    (tether.ws / "x_test.py").write_text(suite)
+    chaos.script("python3 -m unittest discover -p '*_test.py' 2>&1 | head -20", ("done", "ok"))
+    r = tether.run("tests", "--tools", "bash")
+    out = tether.tool_outputs(r["id"])[0]
+    assert "cut by `head`" in out and "FAILED (failures=20)" in out and "[exit 1]" in out
+
+
 def test_plain_text_reply_gets_a_nudge_not_a_completion(tether: Tether, chaos) -> None:
     chaos.script({"text": "I will think about it."}, ("done", "ok"))
     r = tether.run("nudge")
