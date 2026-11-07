@@ -60,6 +60,12 @@ def test_literal_backslash_n_in_one_line_stdin_is_unescaped(tether: Tether, chao
     assert (tether.ws / "a.txt").read_text() == "one\ntwo"
 
 
+def test_edit_write_with_inline_content_writes_it(tether: Tether, chaos) -> None:
+    chaos.script("edit write hello.txt ok", ("done", "ok"))  # qwen3.5:9b in the v0.2.16 smoke run
+    r = tether.run("inline", "--tools", "edit")
+    assert tether.events(r["id"])[0] == "ok" and (tether.ws / "hello.txt").read_text() == "ok\n"
+
+
 def test_plain_text_reply_gets_a_nudge_not_a_completion(tether: Tether, chaos) -> None:
     chaos.script({"text": "I will think about it."}, ("done", "ok"))
     r = tether.run("nudge")

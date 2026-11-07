@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- `edit write hello.txt ok`, with the content typed after the path and no `stdin`, now writes `ok` instead of answering ``Error: `edit write` requires file content in `stdin` ``. qwen3.5:9b lost two steps this way creating a one-line file in the v0.2.16 smoke run. The text is taken as typed (spacing kept, one pair of surrounding quotes removed, literal `\n` unescaped); `stdin`, when given, still wins (#173).
+
 ## v0.2.16 (2026-11-07)
 
 The default context is now 32k tokens, which on an 8 GB GPU keeps qwen3.5:9b fully on the GPU and passed 7 of 18 runs that hit the time cap at 8k, against 2. `tether run` shows that it is alive (and `--verbose` prints one line per step), an answer written as plain text is no longer lost, and a file written with a bare shell command is no longer reported as unchanged. No full Polyglot run was made for this release; the numbers below are from targeted labs.
