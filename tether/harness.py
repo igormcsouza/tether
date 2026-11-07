@@ -47,6 +47,7 @@ from tether.tools import (
     make_mem_tool,
     make_web_tool,
 )
+from tether.trace import failing_test_id, runtime_trace
 from tether.unchanged import small_change_note, snapshot, unchanged_note
 
 
@@ -889,6 +890,8 @@ class Harness:
         green_nudged = False
         small_hinted: set[str] = set()  # files already pointed to `edit replace`
         last_run: tuple[int, frozenset[str]] | None = None  # outcome of the last test run
+        edited_since_run = False  # a change since the last test run
+        traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
         # Restart state: failing check runs per command (counted once per edit in between)
         fail_runs: dict[str, int] = {}
@@ -1358,6 +1361,7 @@ class Harness:
                     green_cmd = None
                     green_nudged = False
                     stale.update(fail_runs)
+                    edited_since_run = True
 
                 out = dispatch.output
                 if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
@@ -1365,7 +1369,14 @@ class Harness:
                 if _TEST_CMD.search(cmd) and (outcome := run_outcome(dispatch.output)):
                     if last_run:
                         out += regression_note(last_run, outcome)
+                    # #173: the same tests fail after a change: show what the code did at runtime
+                    same = last_run is not None and outcome[1] and outcome[1] == last_run[1]
+                    test_id = failing_test_id(dispatch.output)
+                    if same and edited_since_run and outcome[1] not in traced and test_id:
+                        traced.add(outcome[1])
+                        out += await runtime_trace(sandbox, test_id)
                     last_run = outcome
+                    edited_since_run = False
                 if before and not dispatch.is_error:
                     root = Path(sandbox.workspace_root)
                     out += unchanged_note(before, root) or small_change_note(
