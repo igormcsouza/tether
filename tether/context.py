@@ -163,9 +163,13 @@ def restart_message(
     files: dict[str, str],
     tried: list[str],
     handback: int = 0,
+    fresh: list[str] | None = None,
+    failing: list[str] | None = None,
 ) -> str:
     """The one message a restarted history starts from, or (`handback` = restarts used) the
-    summary handed back to the caller; at most RESTART_MAX_CHARS."""
+    summary handed back to the caller; at most RESTART_MAX_CHARS. `fresh` names the files put
+    back as they started (a fresh attempt): the failing output, which quotes the failed code, is
+    then left out and `failing` (test names) is listed instead."""
     share = _RESTART_FILES_CHARS // max(1, len(files))
     blocks = []
     for name, text in files.items():
@@ -173,9 +177,23 @@ def restart_message(
         blocks.append(f"{name}:\n{text[:share]}{cut}")
     if handback:
         head = f"[STUCK at step {step} after {handback} restarts. Handing back to you.]"
+    elif fresh:
+        head = (
+            f"[RESTART at step {step} with a fresh start. Your last approach kept failing the same "
+            f"tests, so it was set aside: {', '.join(fresh)} are back to how they started.]"
+        )
     else:
         head = f"[RESTART at step {step}. Earlier steps are not shown; files are as you left them.]"
     lines = [head, *(["", "Your files now:", *blocks] if blocks else [])]
+    if fresh:
+        failed = ", ".join(failing or [])
+        lines += ["", f"Tests that kept failing: {failed}"] if failed else []
+        lines += [
+            "",
+            "Write a new implementation with a different approach; do not rebuild the "
+            "one that failed. Read the tests first.",
+        ]
+        return "\n".join(lines)[:RESTART_MAX_CHARS]
     if failing_output is not None:
         out = failing_output.strip()
         if len(out) > _RESTART_OUTPUT_CHARS:

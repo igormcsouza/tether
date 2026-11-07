@@ -53,3 +53,11 @@ Re-read the failing output above before you change anything.
 ```
 
 The hand-back has the same body under the header `[STUCK at step 31 after 2 restarts. Handing back to you.]`, and ends with "The work is not progressing. Refine the request or give guidance, then send it again."
+
+When the restart comes from a failing check, it is a fresh start: the files the model changed go back to how they were when the session started (files it created stay), the message lists the tests that kept failing instead of the failed output, and asks for a different approach. A run that passes all but at most 3 tests (and more than twice as many as fail) is a near pass and is kept: when 3 later runs do not beat it, its files are put back in place with one line, and there is no restart, so the history stays:
+
+```text
+[RESTORED] Your last 3 changes did not beat your best version, so its files are back. It failed only: test_meteredfile_iteration. Fix those from there.
+```
+
+After the first test run, edits are followed by an automatic test run (`[auto-test]`), and those runs count toward the 3 like the model's own. See "The Repair Loop Around Tests" in [Architecture](../architecture.md).

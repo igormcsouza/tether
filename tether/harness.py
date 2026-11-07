@@ -12,6 +12,7 @@ import time
 import traceback
 from collections import Counter
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +48,8 @@ from tether.tools import (
     make_mem_tool,
     make_web_tool,
 )
-from tether.unchanged import small_change_note, snapshot, unchanged_note
+from tether.trace import NEAR_PASS, failing_test_id, runtime_trace, smallest_failing
+from tether.unchanged import small_change_note, snapshot, unchanged_note, whole_file_targets
 
 
 def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
@@ -173,6 +175,7 @@ def failing_test_source(out: str, root: Path) -> str:
 _UNITTEST_RAN = re.compile(r"Ran (\d+) tests?")
 _UNITTEST_FAIL = re.compile(r"^(?:FAIL|ERROR): (\w+) \(", re.M)
 _PYTEST_COUNT = re.compile(r"(\d+) (?:passed|failed|errors?)\b")
+_UNITTEST_SUMMARY = re.compile(r"^FAILED \(([^)]*)\)", re.M)
 _PYTEST_FAIL = re.compile(r"^(?:FAILED|ERROR) \S*::(\w+)", re.M)
 
 
@@ -184,6 +187,16 @@ def run_outcome(out: str) -> tuple[int, frozenset[str]] | None:
     if not counts:
         return None
     return sum(map(int, counts)), frozenset(_PYTEST_FAIL.findall(out))
+
+
+def failing_count(out: str, names: frozenset[str]) -> int:
+    """Failing tests by the summary line (`FAILED (failures=1, errors=2)`, `3 failed`), so a run cut
+    by `head` that names only a few still counts them all; at least `len(names)`."""
+    if summary := _UNITTEST_SUMMARY.search(out):
+        counts = re.findall(r"(?:failures|errors)=(\d+)", summary.group(1))
+    else:
+        counts = re.findall(r"(\d+) (?:failed|errors?)\b", out)
+    return max(len(names), sum(map(int, counts)))
 
 
 def regression_note(before: tuple[int, frozenset[str]], after: tuple[int, frozenset[str]]) -> str:
@@ -218,6 +231,34 @@ _LOOKUPS = [
     ["mem", "recall"],
     *(["agent", v] for v in ("status", "wait", "read", "query")),
 ]
+
+
+def suite_for(rel: str, root: Path, since: float) -> str | None:
+    """The test file next to `rel` (`x_test.py` or `test_x.py`) when `rel` existed at `since`."""
+    path = root / rel
+    stem = path.stem
+    if stem.startswith("test_") or stem.endswith("_test"):
+        return None
+    try:
+        if path.stat().st_mtime >= since:
+            return None
+    except OSError:
+        return None
+    # ponytail: Python test names only; other languages are written at once
+    for name in (f"{stem}_test.py", f"test_{stem}.py"):
+        if (path.parent / name).is_file():
+            return os.path.normpath(str(Path(rel).parent / name))
+    return None
+
+
+def suite_read(cmd: str, root: Path, since: float) -> tuple[str, str] | None:
+    """(starting file, its test file) when `cmd` names the test file of a starting file."""
+    for word in re.findall(r"[\w./-]+\.py\b", cmd):
+        test = Path(word)
+        src = str(test.with_name(test.stem.removeprefix("test_").removesuffix("_test") + ".py"))
+        if src != word and suite_for(src, root, since) == os.path.normpath(word):
+            return os.path.normpath(src), os.path.normpath(word)
+    return None
 
 
 def is_quiet(cmd: str) -> bool:
@@ -889,12 +930,21 @@ class Harness:
         green_nudged = False
         small_hinted: set[str] = set()  # files already pointed to `edit replace`
         last_run: tuple[int, frozenset[str]] | None = None  # outcome of the last test run
+        edited_since_run = False  # a change since the last test run
+        traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
+        last_test: str | None = None  # last test command, re-run by the harness after each edit
+        near_hinted = False  # pointed once to a small edit when only a few tests fail
+        asked_tests = False  # asked once to state what the tests expect before the first rewrite
+        reasoning_due: str | None = None  # the file whose rewrite waits on that answer
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
         # Restart state: failing check runs per command (counted once per edit in between)
         fail_runs: dict[str, int] = {}
         stale: set[str] = set()
         read_counts: Counter[str] = Counter()
         restarts = 0
+        originals: dict[str, bytes] = {}  # existing files as they were before the model wrote them
+        # the run that failed fewest tests while passing most, and those files as they were then
+        best: tuple[int, frozenset[str], dict[str, bytes]] | None = None
         quiet_run = 0
         steps_hinted = False
         last_reply = ""  # the model's last plain-text answer, never confirmed with `done`
@@ -907,23 +957,44 @@ class Harness:
                 + last_reply[:KEPT_REPLY_CHARS]
             )
 
+        def reset_originals(files: dict[str, bytes]) -> list[str]:
+            """Put the files the model changed back as in `files`; the names of those reset."""
+            reset = []
+            for rel, data in files.items():
+                path = Path(sandbox.workspace_root) / rel
+                with suppress(OSError):
+                    if path.read_bytes() != data:
+                        path.write_bytes(data)
+                        reset.append(rel)
+            return reset
+
         def get_unstuck(step: int, check: str | None, out: str | None) -> SessionRecord | None:
             """Stuck, however it showed (the same check failing after edits, or stalls the
             wrap-up did not end): restart from a described state, and once restarts are used
             up hand the task back to the caller (WAITING_INPUT) instead of burning steps."""
             nonlocal restarts, last_action_sig, read_file, read_run, loop_run, stalls
-            files = modified_files(sandbox.workspace_root, rec.created_at)
-            tried = describe_attempts(
-                list(files), changes, read_counts, check, fail_runs.get(check or "", 0)
-            )
             handback = restarts if restarts >= MAX_RESTARTS else 0
+            tried = describe_attempts(
+                list(modified_files(sandbox.workspace_root, rec.created_at)),
+                changes,
+                read_counts,
+                check,
+                fail_runs.get(check or "", 0),
+            )
+            # #173: the same check kept failing: set the attempt aside and start fresh from the
+            # files as they were (Olausson et al., ICLR 2024: for weaker models a new sample beats
+            # repairing a wrong one). Files the model created are left as they are. (A near pass
+            # never gets here: it goes back to its best version in place.)
+            fresh = sorted(reset_originals(originals)) if check and not handback else []
             text = restart_message(
                 step=step,
                 check_cmd=check,
                 failing_output=out,
-                files=files,
+                files=modified_files(sandbox.workspace_root, rec.created_at),
                 tried=tried,
                 handback=handback,
+                fresh=fresh,
+                failing=sorted(last_run[1])[:5] if last_run else None,
             )
             if handback:
                 text += reply_note()
@@ -1016,6 +1087,25 @@ class Harness:
                 )
 
                 # 3. If the model emitted plain text without calling `act`, nudge it (Rule 3)
+                if resp.action is None and reasoning_due and (resp.content or "").strip():
+                    # #173: the plain-words answer to [BEFORE WRITING] is the expected reply
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="assistant",
+                        content=resp.content,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        duration_ms=llm_duration_ms,
+                    )
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="user",
+                        content=f"Now write `{reasoning_due}` so it gives exactly those results.",
+                    )
+                    reasoning_due = None
+                    continue
                 if resp.action is None:
                     prose = (resp.content or "").strip()
                     if len(prose) >= PROSE_ANSWER_CHARS:
@@ -1046,6 +1136,7 @@ class Harness:
                     )
                     continue
 
+                reasoning_due = None
                 cmd = normalize_cmd(resp.action.cmd)
                 stdin = resp.action.stdin
                 action_sig = (cmd.strip(), stdin)
@@ -1190,7 +1281,40 @@ class Harness:
                     )
                     continue
 
+                rewrites = [os.path.normpath(p) for p in whole_file_targets(cmd)]
+
+                # #173: before the first rewrite of a starting file, state what its tests expect
+                # (AlphaCodium, Ridnik et al. 2024: test reasoning before code); asked once
+                root = Path(sandbox.workspace_root)
+                suite = (
+                    None
+                    if asked_tests or not rewrites
+                    else suite_for(rewrites[0], root, rec.created_at)
+                )
+                if suite:
+                    asked_tests, reasoning_due = True, rewrites[0]
+                    last_action_sig = None  # sending the same write again is not a loop
+                    action_history.pop()
+                    self.store.update_turn_telemetry(assistant_turn_id, event_type="nudge")
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=(
+                            f"[BEFORE WRITING] `{reasoning_due}` was not written yet. First reply "
+                            f"in plain words, with no command: for the 3 tests in `{suite}` that "
+                            "look hardest, what each one calls, the exact result it expects, and "
+                            f"how your design gives it. Then write `{reasoning_due}`."
+                        ),
+                    )
+                    continue
+
                 before = {} if is_quiet(cmd) else snapshot(cmd, Path(sandbox.workspace_root))
+                for rel, data in before.items():  # untouched since the session started
+                    with suppress(OSError):
+                        path = Path(sandbox.workspace_root) / rel
+                        if path.stat().st_mtime < rec.created_at:
+                            originals.setdefault(os.path.normpath(rel), data)
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)
@@ -1358,21 +1482,78 @@ class Harness:
                     green_cmd = None
                     green_nudged = False
                     stale.update(fail_runs)
+                    edited_since_run = True
 
                 out = dispatch.output
-                if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
-                    out += failing_test_source(out, Path(sandbox.workspace_root))
-                if _TEST_CMD.search(cmd) and (outcome := run_outcome(dispatch.output)):
+                tcmd, tout = cmd, dispatch.output  # the test run this step, if any
+                if _TEST_CMD.search(cmd) and is_quiet(cmd):
+                    last_test = cmd.strip()
+                elif last_test and before and not dispatch.is_error:
+                    # #173 (Aider's auto-test): run the tests after each edit, so a weak model
+                    # never types a second version blind (each rewrite costs it 30-100 s)
+                    tcmd, tout = last_test, (await mux.execute(last_test)).output
+                    out += f"\n[auto-test] `{last_test}` after your edit:\n{tout}"
+                if (
+                    _TEST_CMD.search(tcmd)
+                    and _TESTS_RED.search(tout)
+                    and not tests_green(tcmd, tout)
+                ):
+                    out += failing_test_source(tout, Path(sandbox.workspace_root))
+                elif (
+                    is_quiet(cmd)
+                    and not asked_tests
+                    and not _TEST_CMD.search(cmd)
+                    and (pair := suite_read(cmd, Path(sandbox.workspace_root), rec.created_at))
+                ):
+                    # #173: test reasoning (AlphaCodium) asked with the test file, so no
+                    # typed version is held back for it
+                    asked_tests, reasoning_due = True, pair[0]
+                    out += (
+                        f"\n[BEFORE WRITING] Before you write `{pair[0]}`, reply in plain words, "
+                        f"with no command: for the 3 tests in `{pair[1]}` that look hardest, what "
+                        "each one calls, the exact result it expects, and how your design gives "
+                        f"it. Then write `{pair[0]}`."
+                    )
+                if _TEST_CMD.search(tcmd) and (outcome := run_outcome(tout)):
                     if last_run:
                         out += regression_note(last_run, outcome)
+                    # #173: after a change the same tests fail again, or only a few still fail:
+                    # show what the code did at runtime
+                    same = last_run is not None and outcome[1] and outcome[1] == last_run[1]
+                    n_failed = failing_count(tout, outcome[1])
+                    near = 0 < n_failed <= NEAR_PASS
+                    test_id = failing_test_id(tout)
+                    if (same or near) and edited_since_run and outcome[1] not in traced and test_id:
+                        traced.add(outcome[1])
+                        root = Path(sandbox.workspace_root)
+                        smallest = smallest_failing(test_id, outcome[1], root)
+                        out += await runtime_trace(sandbox, smallest)
+                    if near and outcome[0] > 2 * n_failed and not near_hinted:
+                        # #173: paasio at 22/25 spent its last 100 s on 103-line rewrites
+                        near_hinted = True
+                        target = f"`edit replace {min(originals)}`" if originals else "a small edit"
+                        out += (
+                            f"\n[NUDGE] {n_failed} of {outcome[0]} tests still fail. Fix the code "
+                            f"they call with {target}; a whole-file rewrite is slow and can break "
+                            "what passes."
+                        )
                     last_run = outcome
+                    edited_since_run = False
+                    if outcome[0] > 2 * n_failed and (best is None or n_failed < best[0]):
+                        root = Path(sandbox.workspace_root)
+                        files = {
+                            rel: (root / rel).read_bytes()
+                            for rel in originals
+                            if (root / rel).is_file()
+                        }
+                        best = (n_failed, outcome[1], files)
                 if before and not dispatch.is_error:
                     root = Path(sandbox.workspace_root)
                     out += unchanged_note(before, root) or small_change_note(
                         cmd, before, root, small_hinted
                     )
-                if changed and not dispatch.is_error and tests_green(cmd, out):
-                    green_cmd = cmd
+                if changed and not dispatch.is_error and tests_green(tcmd, tout):
+                    green_cmd = tcmd
                     if not green_nudged:
                         out += (
                             "\n[NUDGE] Tests pass after your last change. If the task is complete "
@@ -1407,6 +1588,33 @@ class Harness:
                     )
                     steps_hinted = True
 
+                # The same check failed again after another edit (counted once per edit between)
+                check = tcmd.strip()
+                red = bool(
+                    _TEST_CMD.search(tcmd)
+                    and _TESTS_RED.search(tout)
+                    and not tests_green(tcmd, tout)
+                )
+                if red and (check not in fail_runs or check in stale):
+                    fail_runs[check] = fail_runs.get(check, 0) + 1
+                    stale.discard(check)
+                if (
+                    red
+                    and fail_runs[check] >= RESTART_AFTER_FAILS
+                    and best
+                    and best[0] <= NEAR_PASS
+                ):
+                    # #173: near a pass a restart wiped the history and paasio spent its last
+                    # ~100 s re-reading the tests; go back to the best version in place instead
+                    fail_runs.clear()
+                    stale.clear()
+                    if reset_originals(best[2]):
+                        out += (
+                            f"\n[RESTORED] Your last {RESTART_AFTER_FAILS} changes did not beat "
+                            "your best version, so its files are back. It failed only: "
+                            f"{', '.join(sorted(best[1])[:5])}. Fix those from there."
+                        )
+
                 # Record tool observation in SQLite (auto-chunks into FTS5)
                 obs = self.store.add_observation(
                     session_id=session_id,
@@ -1423,16 +1631,11 @@ class Harness:
                     duration_ms=tool_duration_ms,
                 )
 
-                # Restart: the same check failed again after another edit. Continue from a fresh
-                # history that describes the state instead of replaying the failed attempts.
-                check = cmd.strip()
-                if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
-                    if check not in fail_runs or check in stale:
-                        fail_runs[check] = fail_runs.get(check, 0) + 1
-                        stale.discard(check)
-                    if fail_runs[check] >= RESTART_AFTER_FAILS:
-                        if (handed := get_unstuck(step, check, out)) is not None:
-                            return handed
+                # Restart: continue from a fresh history that describes the state instead of
+                # replaying the failed attempts.
+                if red and fail_runs.get(check, 0) >= RESTART_AFTER_FAILS:
+                    if (handed := get_unstuck(step, check, tout)) is not None:
+                        return handed
 
             # Max steps reached without explicit `done`
             finished = await self._finished_by_harness(sandbox, verify_commands, green_cmd, changed)

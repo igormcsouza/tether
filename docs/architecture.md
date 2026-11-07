@@ -102,6 +102,24 @@ Iterative LLM repair often breaks code that already worked: across six models, 4
 
 0 static prompt tokens, no model call, at most 400 chars; nothing is added when no test broke.
 
+### The Repair Loop Around Tests — *Ridnik et al. (AlphaCodium, 2024), Zhong et al. (LDB, ACL 2024), Olausson et al. (ICLR 2024), Aider auto-test*
+On a small local model most of the time goes into typing code: a whole-file rewrite of a 100-line module costs `qwen3.5:9b` 30 to 100 seconds, while running the tests takes under one. So the harness spends its own (free) time around each test run, and never the model's:
+
+- **Tests after every edit.** Once the model has run a recognised test command, the harness re-runs it after each command that writes an existing workspace file and appends the result under `[auto-test]`. The model sees whether a version works before it types the next one.
+- **Say what the tests expect, first.** When the model reads the test file of a file it is about to write (`paasio_test.py` next to `paasio.py`), one `[BEFORE WRITING]` line asks it to state in plain words what the 3 hardest tests call and expect, then write. Reasoning about the tests before the code raised GPT-4 from 19% to 44% on CodeContests in AlphaCodium.
+- **Show what the code did.** When the same tests fail again after a change, or only a few still fail, the harness runs the smallest failing test once more under a tracer and appends the calls into workspace code, with their arguments and results (2 levels deep, at most 30 lines):
+
+  ```text
+  [runtime trace of test_f: calls into your code, arguments and results]
+  test_f(self=<m_checks.T testMethod=test_f>)
+    f()
+    -> 1
+    raised AssertionError: 1 != 3
+  ```
+- **Start fresh, or keep the near pass.** When the same check fails 3 times with edits between, the files the model changed go back to how they started and the history restarts from a short description that names the failing tests, not the failed code: for weaker models a new attempt beats repairing a wrong one (Olausson et al.). A version that already passes all but at most 3 tests is kept instead: when later edits do not beat it, its files come back in place with one `[RESTORED]` line and the history stays, so the model does not spend its last minutes re-reading the tests.
+
+0 static prompt tokens and no extra model call for any of these. On the `paasio` exercise with `qwen3.5:9b` (600 s cap), these moved the score from a mean of 0.63 over 3 runs to 0.94 over 5 runs, with 1 of 5 passing; the rest ended at the time cap with 22 to 24 of 25 tests passing.
+
 ### Naming a Rewrite That Changed Nothing — *Wang-Lin et al. (2026)*
 The same repair cycles show up in their smallest form: a model rewrites a whole file with the code it already had, sometimes byte for byte, sometimes with only a comment changed, then runs the tests and gets the same failure. In one 8-exercise run of `qwen3.5:9b`, 9 of 62 rewrites were like this. Before a command that writes a file that already exists (`edit write|replace <p>`, `> p`, `>> p`, `tee p`), the harness keeps its bytes; after the command, when every such file holds the same code, it appends one line:
 
