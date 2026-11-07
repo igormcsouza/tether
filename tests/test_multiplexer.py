@@ -133,6 +133,30 @@ async def test_heredoc_in_cmd_becomes_stdin(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    ("cmd", "want"),
+    [
+        ("edit write hello.txt ok", "ok\n"),
+        ("edit write a.py print('x  y')", "print('x  y')\n"),
+        ("edit write n.md 'two words'", "two words\n"),
+        ("edit write m.md line1\\nline2", "line1\nline2\n"),
+    ],
+)
+async def test_edit_write_inline_content_is_stdin(tmp_path: Path, cmd: str, want: str) -> None:
+    """`edit write <path> <text>` with no stdin writes the text as typed (spacing kept)."""
+    sandbox = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
+    harness = Harness(db_path=tmp_path / "t.db", tools=["edit"], sandbox=sandbox)
+    mux = harness.build_multiplexer("ses_iw", ["edit"], sandbox, "ollama/qwen3.5:9b")
+    out = await mux.execute(cmd)
+    assert not out.is_error, out.output
+    path = cmd.split()[2]
+    assert (tmp_path / path).read_text() == want
+    # stdin still wins over trailing words, and a bare write still asks for stdin
+    await mux.execute("edit write s.txt ignored", stdin="real")
+    assert (tmp_path / "s.txt").read_text() == "real"
+    assert (await mux.execute("edit write e.txt")).output.startswith("Error: `edit write` requires")
+
+
+@pytest.mark.parametrize(
     ("raw", "want"),
     [
         ("bash -lc 'ls -R | head'", "bash ls -R | head"),
