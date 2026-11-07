@@ -13,7 +13,7 @@ from pathlib import Path
 from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse
 from tether.sandbox import SandboxPolicy
-from tether.trace import TRACE_LIMIT, failing_test_id, runtime_trace
+from tether.trace import TRACE_DEPTH, TRACE_LIMIT, failing_test_id, runtime_trace, smallest_failing
 
 SOLUTION = (
     "class Node:\n"
@@ -53,6 +53,31 @@ async def test_runtime_trace_shows_calls_args_and_returns(tmp_path: Path) -> Non
     assert "-> 2" in trace and "object at 0x" not in trace
     assert "tree_test" not in trace.split("\n", 2)[2]  # only calls into the code under test
     assert len(trace) <= TRACE_LIMIT
+
+
+def test_the_smallest_failing_test_is_traced(tmp_path: Path) -> None:
+    body = (
+        "    def test_big(self):\n"
+        + "        x = 1\n" * 5
+        + "    def test_small(self):\n        y = 2\n"
+    )
+    (tmp_path / "s_test.py").write_text(f"import unittest\n\n\nclass S(unittest.TestCase):\n{body}")
+    names = frozenset({"test_big", "test_small"})
+    assert smallest_failing("s_test.S.test_big", names, tmp_path) == "s_test.S.test_small"
+    assert (
+        smallest_failing("s_test.S.test_big", frozenset({"test_q"}), tmp_path)
+        == "s_test.S.test_big"
+    )
+    assert smallest_failing("nofile.T.test_a", names, tmp_path) == "nofile.T.test_a"
+
+
+async def test_deep_recursion_is_counted_not_listed(tmp_path: Path) -> None:
+    (tmp_path / "tree.py").write_text(SOLUTION)
+    (tmp_path / "tree_test.py").write_text(
+        SUITE.replace("Node('b')", "Node('b', [Node('e', [Node('f')])])")
+    )
+    trace = await runtime_trace(_sandbox(tmp_path), "tree_test.TreeTest.test_depth")
+    assert trace.count("depth(node=") == TRACE_DEPTH and "deeper or later calls not shown" in trace
 
 
 async def test_runtime_trace_is_empty_when_nothing_ran(tmp_path: Path) -> None:

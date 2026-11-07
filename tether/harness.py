@@ -47,7 +47,7 @@ from tether.tools import (
     make_mem_tool,
     make_web_tool,
 )
-from tether.trace import failing_test_id, runtime_trace
+from tether.trace import failing_test_id, runtime_trace, smallest_failing
 from tether.unchanged import small_change_note, snapshot, unchanged_note
 
 
@@ -1374,7 +1374,9 @@ class Harness:
                     test_id = failing_test_id(dispatch.output)
                     if same and edited_since_run and outcome[1] not in traced and test_id:
                         traced.add(outcome[1])
-                        out += await runtime_trace(sandbox, test_id)
+                        root = Path(sandbox.workspace_root)
+                        smallest = smallest_failing(test_id, outcome[1], root)
+                        out += await runtime_trace(sandbox, smallest)
                     last_run = outcome
                     edited_since_run = False
                 if before and not dispatch.is_error:

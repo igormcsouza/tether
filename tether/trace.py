@@ -9,13 +9,16 @@ return value or exception), indented by depth.
 
 from __future__ import annotations
 
+import ast
 import re
 import shlex
+from pathlib import Path
 
 from tether.sandbox import SandboxPolicy
 
 TRACE_LIMIT = 1500  # max chars of the trace, header included
 TRACE_LINES = 30  # max call/return lines
+TRACE_DEPTH = 2  # calls deeper than this (recursive helpers) are counted, not listed
 
 _UNITTEST = re.compile(r"^(?:FAIL|ERROR): (\w+) \(([\w.]+)\)", re.M)
 _PYTEST = re.compile(r"^FAILED ([\w/.-]+)\.py::(\w+)(?:::(\w+))?", re.M)
@@ -61,7 +64,7 @@ def tracer(frame, event, arg):
     if not ours(code):
         return None
     if event == "call":
-        if len(lines) >= {TRACE_LINES}:
+        if len(lines) >= {TRACE_LINES} or depth[0] >= {TRACE_DEPTH}:
             skipped[0] += 1
             return None
         names = code.co_varnames[: code.co_argcount + code.co_kwonlyargcount]
@@ -83,7 +86,7 @@ sys.settrace(tracer)
 suite.run(unittest.TestResult())
 sys.settrace(None)
 if skipped[0]:
-    lines.append(f"... {{skipped[0]}} more calls")
+    lines.append(f"... {{skipped[0]}} deeper or later calls not shown")
 print("\\n".join(lines))
 """
 
@@ -97,6 +100,26 @@ def failing_test_id(out: str) -> str | None:
         path, first, second = m.groups()
         return ".".join([path.replace("/", "."), first, *([second] if second else [])])
     return None
+
+
+def smallest_failing(test_id: str, names: frozenset[str], root: Path) -> str:
+    """`test_id` re-pointed at the failing test with the shortest source in the same test file.
+
+    The smallest failing test gives the shortest trace (DebugRepair's test purification). Falls back
+    to `test_id` when the file cannot be read or holds none of `names`.
+    """
+    module, _, _ = test_id.rpartition(".")
+    path = root / (module.rpartition(".")[0].replace(".", "/") + ".py")
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return test_id
+    sizes = [
+        ((node.end_lineno or node.lineno) - node.lineno, node.name)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name in names
+    ]
+    return f"{module}.{min(sizes)[1]}" if sizes else test_id
 
 
 async def runtime_trace(sandbox: SandboxPolicy, test_id: str) -> str:
