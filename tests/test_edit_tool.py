@@ -248,3 +248,17 @@ async def test_unified_diff_stdin_is_applied_not_written(tmp_path: Path) -> None
     assert (tmp_path / "a.py").read_text().startswith("x = 9\n")
     bad = "--- a.py\n+++ a.py\n@@ -1 +1 @@\n-nope\n+yes\n"
     assert "not found" in (await mux.execute("edit a.py", stdin=bad)).output
+
+
+async def test_append_adds_to_the_file_instead_of_replacing_it(tmp_path: Path) -> None:
+    """#34: gemma4:e4b wrote a plan module by module with `edit write`, keeping only the last."""
+    mux = _mux(tmp_path)
+    out = (await mux.execute("edit append plan.md", stdin="# Module 1\n")).output
+    assert out == "Appended 1 lines to `plan.md` (1 lines now)."
+    (tmp_path / "plan.md").write_text("# Module 1")  # no trailing newline: one is added
+    await mux.execute("edit append plan.md", stdin="# Module 2\n")
+    await mux.execute("edit append plan.md # Module 3")  # text typed after the path
+    assert (tmp_path / "plan.md").read_text() == "# Module 1\n# Module 2\n# Module 3\n"
+    err = (await mux.execute("edit append plan.md")).output
+    assert err.startswith("Error: `edit append` requires `<path>` and the text in `stdin`.")
+    assert "write replaces the file" in (await mux.execute("edit --help")).output

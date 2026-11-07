@@ -18,7 +18,7 @@ MAX_BYTES = 256_000  # files larger than this are not compared
 SMALL_MIN_LINES = 20  # shorter files are cheap to rewrite
 SMALL_MAX_FRACTION = 0.2  # at most this share of the new file's lines changed
 
-_EDIT = re.compile(r"^(?:bash\s+)?edit\s+(?:write|replace)\s+(\S+)")
+_EDIT = re.compile(r"^(?:bash\s+)?edit\s+(?:write|replace|append)\s+(\S+)")
 _EDIT_WRITE = re.compile(r"^(?:bash\s+)?edit\s+write\s+(\S+)")
 _REDIRECT = re.compile(r">>?\s*([\w./-]+)")
 _SINGLE_REDIRECT = re.compile(r"(?<![>\d])>(?!>)\s*([\w./-]+)")

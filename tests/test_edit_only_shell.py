@@ -52,7 +52,7 @@ async def test_other_commands_point_to_edit_and_bash_is_untouched(tmp_path: Path
     calls = [("ls", None), ("echo ok >> a.txt", None), ("ls > c.txt", None)]
     out = await _run(tmp_path, calls, ["edit"])
     assert "unknown command `ls`" in out[0] and "`edit write <path>`" in out[0]
-    assert not (tmp_path / "a.txt").exists()  # appends are not translated
+    assert (tmp_path / "a.txt").read_text() == "ok\n"  # `>>` runs as `edit append` (#34)
     assert "unknown command `ls`" in out[2] and not (tmp_path / "c.txt").exists()
     out = await _run(tmp_path, [("echo ok > b.txt", None)], ["edit", "bash"])
     assert (tmp_path / "b.txt").read_text() == "ok\n"  # real shell, not the translation

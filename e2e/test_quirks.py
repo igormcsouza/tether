@@ -279,3 +279,13 @@ def test_act_call_typed_as_text_is_unwrapped(tether: Tether, chaos) -> None:
     chaos.script('act("done", stdin="all green")')
     r = tether.run("finish", "--tools", "bash")
     assert r["status"] == "COMPLETED" and r["result"] == "all green"
+
+
+def test_edit_append_builds_a_file_in_parts(tether: Tether, chaos) -> None:
+    chaos.script(
+        ("edit append plan.md", "# Module 1\n"),
+        ("edit append plan.md", "# Module 2\n"),
+        ("done", "ok"),
+    )
+    tether.run("plan", "--tools", "edit")
+    assert (tether.ws / "plan.md").read_text() == "# Module 1\n# Module 2\n"

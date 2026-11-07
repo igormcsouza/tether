@@ -182,22 +182,24 @@ def unescape_literal_newlines(stdin: str | None) -> str | None:
 def _as_edit(tokens: list[str], stdin: str | None) -> tuple[list[str], str | None] | None:
     """A plain shell file read/write as `edit`, for a session with `edit` and no `bash`.
 
-    `cat p` -> `edit view p`; `echo t > p`, `printf t > p`, `cat > p` + heredoc -> `edit write p`.
+    `cat p` -> `edit view p`; `echo t > p`, `printf t > p`, `cat > p` + heredoc -> `edit write p`
+    (`>>`: `edit append p`).
     qwen3.5:9b spent 10 of 13 steps on `echo ok > hello.txt` and friends with only `edit` on.
     """
     if tokens[:1] == ["bash"]:
         tokens = tokens[1:]
     if len(tokens) == 2 and tokens[0] == "cat":
         return ["edit", "view", tokens[1]], stdin
-    if len(tokens) < 3 or tokens[-2] != ">":
+    if len(tokens) < 3 or tokens[-2] not in (">", ">>"):
         return None
     verb, words, path = tokens[0], tokens[1:-2], tokens[-1]
+    sub = "write" if tokens[-2] == ">" else "append"
     if verb == "cat" and not words and stdin is not None:
-        return ["edit", "write", path], stdin
+        return ["edit", sub, path], stdin
     if verb == "echo" and stdin is None:
-        return ["edit", "write", path], " ".join(words) + "\n"
+        return ["edit", sub, path], " ".join(words) + "\n"
     if verb == "printf" and len(words) == 1 and stdin is None:
-        return ["edit", "write", path], words[0].replace("\\n", "\n").replace("\\t", "\t")
+        return ["edit", sub, path], words[0].replace("\\n", "\n").replace("\\t", "\t")
     return None
 
 
@@ -315,7 +317,12 @@ class Multiplexer:
             # shlex already stripped quotes; hand the shell the original text (#37).
             args = clean_cmd.split(None, 1)[1:]
 
-        if name == "edit" and args[:1] == ["write"] and len(args) > 2 and stdin is None:
+        if (
+            name == "edit"
+            and args[:1] in (["write"], ["append"])
+            and len(args) > 2
+            and stdin is None
+        ):
             # `edit write f ok`: the words after the path are the content, spacing as typed.
             parts = clean_cmd.split(None, 3)
             if len(parts) == 4 and _unquote(parts[2]) == args[1]:
