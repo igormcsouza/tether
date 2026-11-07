@@ -128,7 +128,7 @@ class StatsReport:
 
 
 _SUBCOMMAND_TOOLS: dict[str, set[str]] = {
-    "edit": {"view", "write", "replace"},
+    "edit": {"view", "write", "append", "replace"},
     "web": {"search", "fetch"},
     "mem": {"pin", "unpin", "list", "search", "recall"},
     "agent": {"spawn", "status", "wait", "query", "read", "send"},

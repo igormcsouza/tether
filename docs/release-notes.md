@@ -4,11 +4,12 @@
 
 ### Added
 
+- `edit append <path>` adds `stdin` to the end of a file (created if missing, with a newline added when the file does not end with one). Small models assumed `edit write` appends: gemma4:e4b wrote a plan module by module and kept only the last one. The `edit` help now says `write replaces the file` and stays within 59 tokens; with `bash` off, `echo t >> f` runs as `edit append f` (#34).
 - A foreground `tether run` (with or without `--json`) writes `session ses_<id>` to stderr as soon as the session is created, before the first model call. A caller that kills the run on its own timeout no longer needs `tether list` to find the id for `status`, `stop` or `send`; stdout is unchanged (#90).
 
 ### Fixed
 
-- With `edit` enabled and `bash` not, a plain shell file write or read now runs as `edit`: `echo ok > hello.txt`, `printf 'a\nb' > f`, `cat > f << 'EOF' ... EOF` become `edit write`, and `cat f` becomes `edit view f`. Any other shell command still answers `unknown command`, now with a pointer to `edit view|write`. In the v0.2.17 release check (`--tools edit`, "Create hello.txt containing ok"), qwen3.5:9b tried `echo`, `printf`, `cat` and `ls` 10 times before writing the file at step 12 of 15. Appends (`>>`) and pipes are not translated.
+- With `edit` enabled and `bash` not, a plain shell file write or read now runs as `edit`: `echo ok > hello.txt`, `printf 'a\nb' > f`, `cat > f << 'EOF' ... EOF` become `edit write`, and `cat f` becomes `edit view f`. Any other shell command still answers `unknown command`, now with a pointer to `edit view|write`. In the v0.2.17 release check (`--tools edit`, "Create hello.txt containing ok"), qwen3.5:9b tried `echo`, `printf`, `cat` and `ls` 10 times before writing the file at step 12 of 15. Pipes are not translated.
 
 ## v0.2.17 (2026-11-07)
 

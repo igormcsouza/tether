@@ -64,7 +64,7 @@ A session whose last test run passed after its final change ends `COMPLETED` ins
 
 **Cause.** One very long generation can drop content, and `edit write` replaces the whole file (it reports what an overwrite removed).
 
-**Fix.** Write one small file per section and join them with a tool, rewrite the complete file, or use `edit replace` for a range. See [Built-in Tools](tutorial/built-in-tools.md#example-course-builder).
+**Fix.** Write the file in parts with `edit append <path>` (each part in `stdin`), rewrite the complete file, or use `edit replace` for a range. See [Built-in Tools](tutorial/built-in-tools.md#example-course-builder).
 
 ### The model repeats a tool call with a value that was rejected
 

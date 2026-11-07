@@ -254,7 +254,10 @@ def _live_map(
                 live[key] = turn.obs_id
         elif turn.role == "assistant" and turn.tool_cmd:
             argv = _argv(turn.tool_cmd)
-            if argv[:2] in (["edit", "write"], ["edit", "replace"]) and len(argv) > 2:
+            if (
+                argv[:2] in (["edit", "write"], ["edit", "append"], ["edit", "replace"])
+                and len(argv) > 2
+            ):
                 live = {k: v for k, v in live.items() if k[0] != norm(argv[2])}
             elif _read_path(turn.tool_cmd) is None:  # bash, or a shell write via the bash fallback
                 # ponytail: token/substring match; won't catch paths built at runtime

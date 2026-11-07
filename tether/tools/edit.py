@@ -144,7 +144,7 @@ def _apply_patch(sandbox: SandboxPolicy, patch: str) -> str:
     return f"Patched: {done}." + "".join(notes)
 
 
-_VERBS = ("view", "write", "replace", "apply_patch")
+_VERBS = ("view", "write", "append", "replace", "apply_patch")
 
 
 def _infer_verb(args: list[str], stdin: str | None) -> list[str]:
@@ -191,10 +191,10 @@ def _parse_line_range(spec: str, total_lines: int) -> tuple[int, int] | str:
 
 def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
     help_str = (
-        "Usage: edit view <path> [--lines a:b] | edit write <path> [stdin] | "
+        "Usage: edit view <path> [--lines a:b] | edit write|append <path> [stdin] | "
         "edit replace <path> --lines a:b [stdin]\n"
-        "Desc : View, write file, or replace lines. Or stdin `<<<<<<< SEARCH`/`=======`/"
-        "`>>>>>>> REPLACE` blocks (exact text; no --lines)."
+        "Desc : write replaces the file. Or stdin "
+        "`<<<<<<< SEARCH`/`=======`/`>>>>>>> REPLACE` blocks (exact text; no --lines)."
     )
 
     def _edit(args: list[str], stdin: str | None = None) -> str:
@@ -258,6 +258,22 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
                     " File shrank; for partial changes use `edit replace <path> --lines a:b`."
                 )
             return summary + _syntax_warning(args[1], old_text, stdin)
+
+        if sub == "append":
+            # #34: small models wrote a file in parts with `edit write`, each one replacing it
+            if len(args) < 2 or stdin is None:
+                return (
+                    f"Error: `edit append` requires `<path>` and the text in `stdin`.\n{help_str}"
+                )
+            target = sandbox.resolve_safe_path(args[1], write=True)
+            old_text = (
+                target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
+            )
+            sep = "\n" if old_text and not old_text.endswith("\n") else ""
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(old_text + sep + stdin, encoding="utf-8")
+            total = len((old_text + sep + stdin).splitlines())
+            return f"Appended {len(stdin.splitlines())} lines to `{args[1]}` ({total} lines now)."
 
         if sub == "replace":
             if len(args) >= 2 and "--lines" not in args and stdin and "<<<<<<< SEARCH" in stdin:
