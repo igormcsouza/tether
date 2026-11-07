@@ -29,10 +29,10 @@ Tether stays **lightweight, reliable, extensible, model-agnostic, easy to use, r
 Reviewers and the Team Leader cite the failing line when they reject a change.
 
 ### North Star (the one number; see tracker #173)
-**Polyglot-Python pass rate on `ollama/qwen3.5:9b` (our weakest model), default config, full 34 exercises: 80% by v0.3.0.** Nothing important is set aside for it, but everything is ranked by it:
+**Polyglot-Python pass rate on `ollama/qwen3.5:9b` (our weakest model), default config, full 34 exercises x 2 runs: 74% (50 of 68) by v0.3.0.** 74% is what the model can already do: 25 of 34 exercises have passed at least once from scratch, so the goal is that each of them passes every run (reliability), not new capability. 9 exercises never passed from scratch (bowling, connect, forth, hangman, react, rest-api, scale-generator, sgf-parsing, transpose); beating 74% needs them, and is not planned for. Nothing important is set aside for it, but everything is ranked by it:
 1. Every issue, PR and benchmark must say how it moves this number (or tokens per solved exercise at the same pass rate). A benchmark that cannot show a change in it is not run; an issue that cannot name the link waits behind one that can.
-1b. Two lanes, both tracked: the **general-purpose default** (no role) is the official number and must reach 80%; the shipped **`swe` role** (#172) is reported next to it, must never score below the default, and gets its own target once its baseline is pinned.
-2. Weakest-model rule: every stronger model must score at least what `qwen3.5:9b` scores (and at least 80% once reached). If we plateau, stronger models may not fall below the plateau.
+1b. Two lanes, both tracked: the **general-purpose default** (no role) is the official number and must reach 74%; the shipped **`swe` role** (#172) is reported next to it, must never score below the default, and gets its own target once its baseline is pinned.
+2. Weakest-model rule: every stronger model must score at least what `qwen3.5:9b` scores (and at least 74% once reached). If we plateau, stronger models may not fall below the plateau.
 3. Other indicators (tokens per pass, steps, wall-clock, prompt size, coverage) may slow or pause but never degrade between releases.
 4. Floor, a promise rather than a goal: every task delivers a real, honest, usable result in a fair time; no unretried outage, no empty result, no unrelated hallucinated deliverable (#171).
 5. Every PR body and issue-close comment ends with `north star: <before> -> <after> (runs, noise, run dir)`; the tracker's History table and `bench/history.jsonl` are updated at every release.

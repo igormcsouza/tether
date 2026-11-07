@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- The north star is now 74% (50 of 68) on Polyglot-Python with qwen3.5:9b, instead of 80%. 74% is the share of exercises the model has already solved at least once from scratch (25 of 34), so the target is reliability: each of them passing every run. The 9 exercises it never solved are out of scope for this target (#173).
+
 ### Fixed
 
 - `edit write hello.txt ok`, with the content typed after the path and no `stdin`, now writes `ok` instead of answering ``Error: `edit write` requires file content in `stdin` ``. qwen3.5:9b lost two steps this way creating a one-line file in the v0.2.16 smoke run. The text is taken as typed (spacing kept, one pair of surrounding quotes removed, literal `\n` unescaped); `stdin`, when given, still wins (#173).
