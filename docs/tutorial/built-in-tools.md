@@ -35,6 +35,8 @@ act(cmd="bash grep -n \"return list\" app/main.py | head")
 act(cmd="bash", stdin="python3 - << 'EOF'\nimport math\nprint(math.pi)\nEOF")
 ```
 
+A test run piped to `head` (`python3 -m unittest 2>&1 | head -50`) still shows how it ended: tether keeps the first lines, marks what it cut, and adds the last lines with the summary and the tests' own exit code.
+
 ## `edit` — Workspace-Jailed File Operations
 
 Provides deterministic line-numbered viewing and `stdin`-based writing/replacement without sed/awk quoting bugs:
