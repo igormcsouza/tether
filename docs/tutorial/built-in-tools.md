@@ -46,6 +46,9 @@ act(cmd="edit view tether/harness.py --lines 1:40")
 # Create or overwrite a file via stdin
 act(cmd="edit write notes/summary.md", stdin="# Summary\n\n- Point 1\n")
 
+# A one-line file can take its text after the path (no stdin)
+act(cmd="edit write VERSION 1.4.0")
+
 # Replace lines start:end (1-indexed, inclusive) with stdin content
 act(cmd="edit replace notes/summary.md --lines 3:3", stdin="- Updated Point 1")
 ```
