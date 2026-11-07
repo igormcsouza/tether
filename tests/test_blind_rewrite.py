@@ -1,4 +1,4 @@
-"""A second whole-file rewrite with no test run since the first is refused once (#173).
+"""A whole-file rewrite with no test run since the last one is refused until the tests run (#173).
 
 On current main a paasio run hit the 600 s cap after 13 whole-file rewrites of paasio.py, 5 of them
 in a row with no test run between (about 40 s of model time each): the model never saw whether a
@@ -43,7 +43,7 @@ def _seen(provider: FakeScriptedProvider, call: int) -> str:
     return "\n".join(str(m.get("content") or "") for m in provider.recorded_calls[call])
 
 
-async def test_a_blind_second_rewrite_is_refused_once(tmp_path: Path) -> None:
+async def test_a_blind_second_rewrite_is_refused(tmp_path: Path) -> None:
     _, provider = await _run(tmp_path, [TEST, _write(1), _write(2), TEST, _write(3), "ls"])
     blocked = _seen(provider, 3)
     assert "[BLOCKED]" in blocked and "m.py" in blocked and TEST in blocked
@@ -57,10 +57,12 @@ async def test_the_refused_write_leaves_the_file_as_it_was(tmp_path: Path) -> No
     assert (tmp_path / "m.py").read_text().strip() == "def f():\n    return 1"
 
 
-async def test_insisting_after_the_refusal_writes(tmp_path: Path) -> None:
-    """Refused once per untested streak, so a model that insists is never locked out."""
-    await _run(tmp_path, [TEST, _write(1), _write(2), _write(2)])
-    assert (tmp_path / "m.py").read_text().strip() == "def f():\n    return 2"
+async def test_every_blind_rewrite_is_refused_until_the_tests_run(tmp_path: Path) -> None:
+    """On paasio 4 untested 1-line rewrites followed one refusal; a test run is all it takes."""
+    cmds = [TEST, _write(1), _write(2), _write(3), TEST, _write(4)]  # (an identical repeat loops)
+    _, provider = await _run(tmp_path, cmds)
+    assert _seen(provider, 4).count("[BLOCKED]") == 2  # both blind rewrites refused, not just one
+    assert (tmp_path / "m.py").read_text().strip() == "def f():\n    return 4"
 
 
 async def test_no_test_run_yet_or_another_file_is_not_refused(tmp_path: Path) -> None:

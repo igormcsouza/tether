@@ -93,7 +93,7 @@ def unchanged_note(before: dict[str, bytes], root: Path) -> str:
     return note[:NOTE_LIMIT]
 
 
-def _whole_file_targets(cmd: str) -> list[str]:
+def whole_file_targets(cmd: str) -> list[str]:
     """Paths `cmd` rewrites whole: `edit write <p>` or a single `> p` on its first line."""
     head = cmd.partition("\n")[0]
     if match := _EDIT_WRITE.match(head):
@@ -122,7 +122,7 @@ def small_change_note(cmd: str, before: dict[str, bytes], root: Path, hinted: se
     add it to `hinted` and return a [NUDGE] line truncated to NOTE_LIMIT. Otherwise "".
     Never raises (decode with errors="replace").
     """
-    for rel in [rel for rel in _whole_file_targets(cmd) if rel in before and rel not in hinted]:
+    for rel in [rel for rel in whole_file_targets(cmd) if rel in before and rel not in hinted]:
         new = _current(rel, root)
         if new is None:
             continue

@@ -49,7 +49,7 @@ from tether.tools import (
     make_web_tool,
 )
 from tether.trace import failing_test_id, runtime_trace, smallest_failing
-from tether.unchanged import small_change_note, snapshot, unchanged_note
+from tether.unchanged import small_change_note, snapshot, unchanged_note, whole_file_targets
 
 
 def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
@@ -893,6 +893,8 @@ class Harness:
         last_run: tuple[int, frozenset[str]] | None = None  # outcome of the last test run
         edited_since_run = False  # a change since the last test run
         traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
+        last_test: str | None = None  # last test command, named when a blind rewrite is refused
+        untested: set[str] = set()  # files rewritten whole since the last test run
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
         # Restart state: failing check runs per command (counted once per edit in between)
         fail_runs: dict[str, int] = {}
@@ -1215,6 +1217,24 @@ class Harness:
                     )
                     continue
 
+                # #173: a whole-file rewrite of a file already rewritten since the last test run is
+                # refused until the tests run
+                rewrites = [os.path.normpath(p) for p in whole_file_targets(cmd)]
+                blind = [p for p in rewrites if p in untested]
+                if last_test and blind:
+                    self.store.update_turn_telemetry(assistant_turn_id, event_type="nudge")
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=(
+                            f"[BLOCKED] `{blind[0]}` was already rewritten since the last test "
+                            f"run, so this version was not written. Run `{last_test}` first, then "
+                            "change the file from what the tests show."
+                        ),
+                    )
+                    continue
+
                 before = {} if is_quiet(cmd) else snapshot(cmd, Path(sandbox.workspace_root))
                 for rel, data in before.items():  # untouched since the session started
                     with suppress(OSError):
@@ -1389,6 +1409,12 @@ class Harness:
                     green_nudged = False
                     stale.update(fail_runs)
                     edited_since_run = True
+
+                if _TEST_CMD.search(cmd) and is_quiet(cmd):
+                    last_test = cmd.strip()
+                    untested.clear()
+                elif not dispatch.is_error:
+                    untested.update(rewrites)
 
                 out = dispatch.output
                 if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
