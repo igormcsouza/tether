@@ -376,3 +376,50 @@ async def test_pipeline_early_abort_on_stage_failure_and_waiting_input(
     # Headless spawn_pipeline
     spawned_id = harness.spawn_pipeline(ask_file, "Headless pipeline")
     assert spawned_id.startswith("ses_")
+
+
+def test_pipeline_row_records_its_stages_model(tmp_path: Path) -> None:
+    """The pipeline's own row shows its stages' model, not the harness default."""
+    harness = Harness(db_path=tmp_path / "tether.db", model="ollama/qwen3.5:9b")
+    same = Pipeline(
+        name="same",
+        stages=[
+            PipelineStage(id="a", model="local/qwen3.5:9b", goal="A"),
+            PipelineStage(id="b", model="local/qwen3.5:9b", goal="B"),
+        ],
+    )
+    assert harness.create_pipeline_session(same, "g").model == "local/qwen3.5:9b"
+
+    mixed = Pipeline(
+        name="mixed",
+        stages=[
+            PipelineStage(id="a", model="local/qwen3.5:9b", goal="A"),
+            PipelineStage(id="b", goal="B"),
+            PipelineStage(id="c", model="local/qwen3.5:9b", goal="C"),
+        ],
+    )
+    rec = harness.create_pipeline_session(mixed, "g")
+    assert rec.model == "local/qwen3.5:9b,ollama/qwen3.5:9b"
+    assert harness.store.get_session(rec.id).model == rec.model  # type: ignore[union-attr]
+
+
+async def test_pipeline_stage_without_model_runs_on_harness_model(tmp_path: Path) -> None:
+    """A model-less stage still runs on the harness model when the row lists several."""
+    provider = FakeScriptedProvider(
+        [ModelResponse(content="", action=ActionCall(cmd="done", stdin="ok"))] * 2
+    )
+    register_provider("pipe-rowa", lambda name: provider)
+    register_provider("pipe-rowdef", lambda name: provider)
+    pipeline = Pipeline(
+        name="row-model",
+        stages=[
+            PipelineStage(id="a", model="pipe-rowa/m", goal="A"),
+            PipelineStage(id="b", goal="B"),
+        ],
+    )
+    harness = Harness(db_path=tmp_path / "tether.db", model="pipe-rowdef/m")
+    root = await harness.run_pipeline(pipeline, "g")
+    assert root.status == "COMPLETED"
+    assert root.model == "pipe-rowa/m,pipe-rowdef/m"
+    stages = harness.store.list_sessions(parent_id=root.id)
+    assert sorted(s.model for s in stages) == ["pipe-rowa/m", "pipe-rowdef/m"]
