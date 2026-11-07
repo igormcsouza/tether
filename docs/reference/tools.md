@@ -16,6 +16,8 @@
 
 ## `tether.tools.edit`
 
+With `edit` enabled and `bash` not, a plain shell file write or read runs as `edit`: `echo ok > f`, `printf 'a\nb' > f` and `cat > f << 'EOF' ... EOF` as `edit write f`, `cat f` as `edit view f`. Other shell commands answer `unknown command` with a pointer to `edit`.
+
 ::: tether.tools.edit
     options:
       show_root_heading: false

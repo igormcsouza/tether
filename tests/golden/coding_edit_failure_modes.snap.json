@@ -24,7 +24,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill).",
+    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill). Files: `edit view <path>`, `edit write <path>` with the text in stdin.",
     "role": "user"
    }
   ],
@@ -42,7 +42,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill).",
+    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill). Files: `edit view <path>`, `edit write <path>` with the text in stdin.",
     "role": "user"
    },
    {
@@ -68,7 +68,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill).",
+    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill). Files: `edit view <path>`, `edit write <path>` with the text in stdin.",
     "role": "user"
    },
    {
@@ -102,7 +102,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill).",
+    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill). Files: `edit view <path>`, `edit write <path>` with the text in stdin.",
     "role": "user"
    },
    {
@@ -144,7 +144,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill).",
+    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill). Files: `edit view <path>`, `edit write <path>` with the text in stdin.",
     "role": "user"
    },
    {
@@ -194,7 +194,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill).",
+    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill). Files: `edit view <path>`, `edit write <path>` with the text in stdin.",
     "role": "user"
    },
    {
@@ -252,7 +252,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill).",
+    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill). Files: `edit view <path>`, `edit write <path>` with the text in stdin.",
     "role": "user"
    },
    {
@@ -318,7 +318,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill).",
+    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill). Files: `edit view <path>`, `edit write <path>` with the text in stdin.",
     "role": "user"
    },
    {
@@ -392,7 +392,7 @@
     "role": "assistant"
    },
    {
-    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill).",
+    "content": "Observation:\n[obs_1] Error: unknown command `sed`. Enabled tools: done, edit. Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill). Files: `edit view <path>`, `edit write <path>` with the text in stdin.",
     "role": "user"
    },
    {
@@ -476,7 +476,7 @@
  "files": {
   "calc.py": "def total(xs):\n    t = 0\n    for x in xs:\n        t += x\n    return t\n\n\ndef mean(xs):\n    return total(xs) / len(xs)  # fixed\n"
  },
- "peak_tokens": 655,
+ "peak_tokens": 673,
  "result": "Fixed off-by-one in total().",
  "status": "COMPLETED",
  "step_count": 10

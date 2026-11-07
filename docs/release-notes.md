@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- With `edit` enabled and `bash` not, a plain shell file write or read now runs as `edit`: `echo ok > hello.txt`, `printf 'a\nb' > f`, `cat > f << 'EOF' ... EOF` become `edit write`, and `cat f` becomes `edit view f`. Any other shell command still answers `unknown command`, now with a pointer to `edit view|write`. In the v0.2.17 release check (`--tools edit`, "Create hello.txt containing ok"), qwen3.5:9b tried `echo`, `printf`, `cat` and `ls` 10 times before writing the file at step 12 of 15. Appends (`>>`) and pipes are not translated.
+
 ## v0.2.17 (2026-11-07)
 
 When tests fail, tether now works around them on its own time: it re-runs them after each edit, traces the smallest failing test, starts fresh when an approach keeps failing, and keeps a version that nearly passes instead of throwing it away. The north star (74% on Polyglot-Python with qwen3.5:9b) moves to v0.4.0. No full Polyglot run was made for this release; the numbers below are from targeted labs.
