@@ -1,6 +1,8 @@
 # Release Notes
 
-## Unreleased
+## v0.2.16 (2026-11-07)
+
+The default context is now 32k tokens, which on an 8 GB GPU keeps qwen3.5:9b fully on the GPU and passed 7 of 18 runs that hit the time cap at 8k, against 2. `tether run` shows that it is alive (and `--verbose` prints one line per step), an answer written as plain text is no longer lost, and a file written with a bare shell command is no longer reported as unchanged. No full Polyglot run was made for this release; the numbers below are from targeted labs.
 
 ### Added
 
