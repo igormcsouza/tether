@@ -80,6 +80,40 @@ async def test_deep_recursion_is_counted_not_listed(tmp_path: Path) -> None:
     assert trace.count("depth(node=") == TRACE_DEPTH and "deeper or later calls not shown" in trace
 
 
+async def test_protocol_methods_are_listed_and_noise_is_not(tmp_path: Path) -> None:
+    """paasio failed in `__iter__`; `__init__`/`__eq__` calls only add noise."""
+    (tmp_path / "it.py").write_text(
+        "class Lines:\n    def __init__(self):\n        self.n = 2\n"
+        "    def __iter__(self):\n        return iter(range(self.n))\n"
+    )
+    (tmp_path / "it_test.py").write_text(
+        "import unittest\nfrom it import Lines\n\n\nclass T(unittest.TestCase):\n"
+        "    def test_it(self):\n        self.assertEqual(list(Lines()), [0, 1, 2])\n"
+    )
+    trace = await runtime_trace(_sandbox(tmp_path), "it_test.T.test_it")
+    assert "__iter__(self=Lines(n=2))" in trace and "__init__" not in trace
+
+
+async def test_a_near_pass_after_a_change_is_traced_once(tmp_path: Path) -> None:
+    """paasio got to 1 failing test of 25, then spent 8 steps guessing; the set was new."""
+    (tmp_path / "tree.py").write_text(SOLUTION)
+    (tmp_path / "tree_test.py").write_text(SUITE)
+    cmds = [f"cat > tree.py << 'EOF'\n{SOLUTION}EOF", TEST, TEST, "ls"]
+    provider = FakeScriptedProvider(
+        [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
+    )
+    h = Harness(
+        db_path=tmp_path / "t.db",
+        tools=["bash"],
+        provider=provider,
+        max_steps=len(cmds),
+        sandbox=_sandbox(tmp_path),
+    )
+    await h.run("goal")
+    last = "\n".join(str(m.get("content") or "") for m in provider.recorded_calls[3])
+    assert last.count("[runtime trace of test_depth") == 1  # first run after the change, once
+
+
 async def test_runtime_trace_is_empty_when_nothing_ran(tmp_path: Path) -> None:
     assert await runtime_trace(_sandbox(tmp_path), "missing_test.T.test_q") == ""
 

@@ -48,7 +48,7 @@ from tether.tools import (
     make_mem_tool,
     make_web_tool,
 )
-from tether.trace import failing_test_id, runtime_trace, smallest_failing
+from tether.trace import NEAR_PASS, failing_test_id, runtime_trace, smallest_failing
 from tether.unchanged import small_change_note, snapshot, unchanged_note, whole_file_targets
 
 
@@ -1422,10 +1422,12 @@ class Harness:
                 if _TEST_CMD.search(cmd) and (outcome := run_outcome(dispatch.output)):
                     if last_run:
                         out += regression_note(last_run, outcome)
-                    # #173: the same tests fail after a change: show what the code did at runtime
+                    # #173: after a change the same tests fail again, or only a few still fail:
+                    # show what the code did at runtime
                     same = last_run is not None and outcome[1] and outcome[1] == last_run[1]
+                    near = 0 < len(outcome[1]) <= NEAR_PASS
                     test_id = failing_test_id(dispatch.output)
-                    if same and edited_since_run and outcome[1] not in traced and test_id:
+                    if (same or near) and edited_since_run and outcome[1] not in traced and test_id:
                         traced.add(outcome[1])
                         root = Path(sandbox.workspace_root)
                         smallest = smallest_failing(test_id, outcome[1], root)

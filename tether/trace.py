@@ -19,6 +19,14 @@ from tether.sandbox import SandboxPolicy
 TRACE_LIMIT = 1500  # max chars of the trace, header included
 TRACE_LINES = 30  # max call/return lines
 TRACE_DEPTH = 2  # calls deeper than this (recursive helpers) are counted, not listed
+NEAR_PASS = 3  # a run failing at most this many tests after a change is traced too
+# Special methods that are construction, comparison or display, not behaviour (`__iter__`,
+# `__next__`, `__enter__`, `__exit__` and the like are listed)
+_NOISE = {
+    "__init__", "__new__", "__del__", "__repr__", "__str__", "__format__", "__hash__", "__dict__",
+    "__eq__", "__ne__", "__lt__", "__le__", "__gt__", "__ge__", "__bool__", "__len__",
+    "__getattr__", "__getattribute__", "__setattr__", "__delattr__", "__init_subclass__",
+}  # fmt: skip
 
 _UNITTEST = re.compile(r"^(?:FAIL|ERROR): (\w+) \(([\w.]+)\)", re.M)
 _PYTEST = re.compile(r"^FAILED ([\w/.-]+)\.py::(\w+)(?:::(\w+))?", re.M)
@@ -54,10 +62,11 @@ def show(v):
         return "?"
 def ours(code):
     name = os.path.basename(code.co_filename)
-    if code.co_name.startswith(("__", "<")) or code.co_filename.startswith("<"):
+    if code.co_name in NOISE or code.co_name.startswith("<") or code.co_filename.startswith("<"):
         return False
     path = os.path.abspath(code.co_filename)
     return path.startswith(root) and not (name.startswith("test") or "_test" in name)
+NOISE = {sorted(_NOISE)!r}
 lines, depth, skipped = [], [0], [0]
 def tracer(frame, event, arg):
     code = frame.f_code
