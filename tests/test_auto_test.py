@@ -7,6 +7,8 @@ worked before typing the next one. Running the last test command after each edit
 
 from __future__ import annotations
 
+import os
+import time
 from pathlib import Path
 
 from tests.conftest import FakeScriptedProvider
@@ -51,6 +53,31 @@ async def test_each_edit_after_a_test_run_runs_the_tests(tmp_path: Path) -> None
     # the next version is written, not refused, and its run passes
     assert (tmp_path / "m.py").read_text().strip() == "def f():\n    return 3"
     assert "Tests pass after your last change" in _seen(provider, 3)
+
+
+async def test_a_near_pass_points_once_to_a_small_edit(tmp_path: Path) -> None:
+    """paasio at 22/25 spent its last 100 s of 600 on two 103-line rewrites."""
+    (tmp_path / "m_checks.py").write_text(
+        SUITE + "".join(f"    def test_{n}(self):\n        pass\n" for n in "ab")
+    )
+    cmds = [_write(100), TEST, _write(10), "ls"]
+    provider = FakeScriptedProvider(
+        [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
+    )
+    (tmp_path / "m.py").write_text("def f():\n    return 0\n")
+    past = time.time() - 100
+    os.utime(tmp_path / "m.py", (past, past))
+    h = Harness(
+        db_path=tmp_path / "t.db",
+        tools=["bash"],
+        provider=provider,
+        max_steps=len(cmds),
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+    )
+    await h.run("goal")
+    seen = _seen(provider, 3)
+    assert "1 of 3 tests still fail" in seen and "`edit replace m.py`" in seen
+    assert seen.count("tests still fail") == 1
 
 
 async def test_no_test_run_yet_means_no_auto_test(tmp_path: Path) -> None:

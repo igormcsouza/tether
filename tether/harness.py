@@ -933,6 +933,7 @@ class Harness:
         edited_since_run = False  # a change since the last test run
         traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
         last_test: str | None = None  # last test command, re-run by the harness after each edit
+        near_hinted = False  # pointed once to a small edit when only a few tests fail
         asked_tests = False  # asked once to state what the tests expect before the first rewrite
         reasoning_due: str | None = None  # the file whose rewrite waits on that answer
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
@@ -1534,6 +1535,15 @@ class Harness:
                         root = Path(sandbox.workspace_root)
                         smallest = smallest_failing(test_id, outcome[1], root)
                         out += await runtime_trace(sandbox, smallest)
+                    if near and outcome[0] > 2 * n_failed and not near_hinted:
+                        # #173: paasio at 22/25 spent its last 100 s on 103-line rewrites
+                        near_hinted = True
+                        target = f"`edit replace {min(originals)}`" if originals else "a small edit"
+                        out += (
+                            f"\n[NUDGE] {n_failed} of {outcome[0]} tests still fail. Fix the code "
+                            f"they call with {target}; a whole-file rewrite is slow and can break "
+                            "what passes."
+                        )
                     last_run = outcome
                     edited_since_run = False
                     if outcome[0] > 2 * n_failed and (best is None or n_failed < best[0]):
