@@ -922,6 +922,8 @@ class Harness:
         read_counts: Counter[str] = Counter()
         restarts = 0
         originals: dict[str, bytes] = {}  # existing files as they were before the model wrote them
+        # the run that failed fewest tests while passing most, and those files as they were then
+        best: tuple[frozenset[str], dict[str, bytes]] | None = None
         quiet_run = 0
         steps_hinted = False
         last_reply = ""  # the model's last plain-text answer, never confirmed with `done`
@@ -934,10 +936,10 @@ class Harness:
                 + last_reply[:KEPT_REPLY_CHARS]
             )
 
-        def reset_originals() -> list[str]:
-            """Put the files the model changed back as they were; the names of those reset."""
+        def reset_originals(files: dict[str, bytes]) -> list[str]:
+            """Put the files the model changed back as in `files`; the names of those reset."""
             reset = []
-            for rel, data in originals.items():
+            for rel, data in files.items():
                 path = Path(sandbox.workspace_root) / rel
                 with suppress(OSError):
                     if path.read_bytes() != data:
@@ -960,8 +962,15 @@ class Harness:
             )
             # #173: the same check kept failing: set the attempt aside and start fresh from the
             # files as they were (Olausson et al., ICLR 2024: for weaker models a new sample beats
-            # repairing a wrong one). Files the model created are left as they are.
-            fresh = sorted(reset_originals()) if check and not handback else []
+            # repairing a wrong one). Files the model created are left as they are. A version that
+            # already passed most tests with at most NEAR_PASS failing is kept instead: the files
+            # go back to it, not to the start.
+            near = best if check and not handback and best and len(best[0]) <= NEAR_PASS else None
+            if near:
+                reset_originals(near[1])
+            fresh = (
+                sorted(reset_originals(originals)) if check and not handback and not near else []
+            )
             text = restart_message(
                 step=step,
                 check_cmd=check,
@@ -970,7 +979,8 @@ class Harness:
                 tried=tried,
                 handback=handback,
                 fresh=fresh,
-                failing=sorted(last_run[1])[:5] if last_run else None,
+                failing=sorted(near[0] if near else last_run[1])[:5] if last_run else None,
+                best=bool(near),
             )
             if handback:
                 text += reply_note()
@@ -1500,6 +1510,15 @@ class Harness:
                         out += await runtime_trace(sandbox, smallest)
                     last_run = outcome
                     edited_since_run = False
+                    n_failed = len(outcome[1])
+                    if outcome[0] > 2 * n_failed and (best is None or n_failed < len(best[0])):
+                        root = Path(sandbox.workspace_root)
+                        files = {
+                            rel: (root / rel).read_bytes()
+                            for rel in originals
+                            if (root / rel).is_file()
+                        }
+                        best = (outcome[1], files)
                 if before and not dispatch.is_error:
                     root = Path(sandbox.workspace_root)
                     out += unchanged_note(before, root) or small_change_note(

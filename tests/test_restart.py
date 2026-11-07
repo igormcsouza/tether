@@ -158,6 +158,38 @@ async def test_a_failing_check_restart_starts_fresh_from_the_original_files(
     assert "# TRY" not in body  # nothing of the failed attempt for the model to copy
 
 
+async def test_a_restart_after_a_near_pass_goes_back_to_that_version(tmp_path: Path) -> None:
+    """paasio: the first write passed 24 of 25, 3 failed fixes later the restart reset the stub."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "a.py").write_text("X = 0  # STUB\n", encoding="utf-8")
+    past = time.time() - 100
+    os.utime(ws / "a.py", (past, past))
+    tests = "".join(
+        f"    def test_{n}(self):\n        self.assertEqual(a.{n.upper()}, 1)\n" for n in "uvwx"
+    )
+    (ws / "test_t.py").write_text(
+        f"import unittest\nimport a\n\n\nclass T(unittest.TestCase):\n{tests}", encoding="utf-8"
+    )
+    run = ("bash -c 'python3 -m unittest test_t 2>&1'", None)
+    best = "U = V = W = 1  # BEST\n"
+    tries = [best, "U = V = W = 1\nX = 2  # WORSE\n", "U = V = 1  # WORST\n"]
+    cmds = [c for body in tries for c in (("edit write a.py", body), run)]
+    provider = FakeScriptedProvider(_script(cmds))
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        tools=["edit", "bash"],
+        sandbox=SandboxPolicy(workspace_root=ws, use_kernel_sandbox=False),
+        provider=provider,
+        max_steps=20,
+    )
+    session = await harness.run("make the tests pass")
+    assert (ws / "a.py").read_text(encoding="utf-8") == best
+    body = next(t for t in harness.store.get_turns(session.id) if t.event_type == "restart").content
+    assert "back to your best version" in body and "test_x" in body and "# BEST" in body
+    assert "# WORST" not in body and "different approach" not in body
+
+
 async def test_a_check_that_keeps_failing_without_edits_does_not_restart(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
