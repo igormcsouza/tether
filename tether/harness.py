@@ -12,6 +12,7 @@ import time
 import traceback
 from collections import Counter
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -898,6 +899,7 @@ class Harness:
         stale: set[str] = set()
         read_counts: Counter[str] = Counter()
         restarts = 0
+        originals: dict[str, bytes] = {}  # existing files as they were before the model wrote them
         quiet_run = 0
         steps_hinted = False
         last_reply = ""  # the model's last plain-text answer, never confirmed with `done`
@@ -910,23 +912,43 @@ class Harness:
                 + last_reply[:KEPT_REPLY_CHARS]
             )
 
+        def reset_originals() -> list[str]:
+            """Put the files the model changed back as they were; the names of those reset."""
+            reset = []
+            for rel, data in originals.items():
+                path = Path(sandbox.workspace_root) / rel
+                with suppress(OSError):
+                    if path.read_bytes() != data:
+                        path.write_bytes(data)
+                        reset.append(rel)
+            return reset
+
         def get_unstuck(step: int, check: str | None, out: str | None) -> SessionRecord | None:
             """Stuck, however it showed (the same check failing after edits, or stalls the
             wrap-up did not end): restart from a described state, and once restarts are used
             up hand the task back to the caller (WAITING_INPUT) instead of burning steps."""
             nonlocal restarts, last_action_sig, read_file, read_run, loop_run, stalls
-            files = modified_files(sandbox.workspace_root, rec.created_at)
-            tried = describe_attempts(
-                list(files), changes, read_counts, check, fail_runs.get(check or "", 0)
-            )
             handback = restarts if restarts >= MAX_RESTARTS else 0
+            tried = describe_attempts(
+                list(modified_files(sandbox.workspace_root, rec.created_at)),
+                changes,
+                read_counts,
+                check,
+                fail_runs.get(check or "", 0),
+            )
+            # #173: the same check kept failing: set the attempt aside and start fresh from the
+            # files as they were (Olausson et al., ICLR 2024: for weaker models a new sample beats
+            # repairing a wrong one). Files the model created are left as they are.
+            fresh = sorted(reset_originals()) if check and not handback else []
             text = restart_message(
                 step=step,
                 check_cmd=check,
                 failing_output=out,
-                files=files,
+                files=modified_files(sandbox.workspace_root, rec.created_at),
                 tried=tried,
                 handback=handback,
+                fresh=fresh,
+                failing=sorted(last_run[1])[:5] if last_run else None,
             )
             if handback:
                 text += reply_note()
@@ -1194,6 +1216,11 @@ class Harness:
                     continue
 
                 before = {} if is_quiet(cmd) else snapshot(cmd, Path(sandbox.workspace_root))
+                for rel, data in before.items():  # untouched since the session started
+                    with suppress(OSError):
+                        path = Path(sandbox.workspace_root) / rel
+                        if path.stat().st_mtime < rec.created_at:
+                            originals.setdefault(os.path.normpath(rel), data)
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)

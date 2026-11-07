@@ -126,6 +126,38 @@ async def test_third_failing_check_after_edits_restarts_with_a_fresh_history(
     assert "MARKER_FIRST" in before
 
 
+async def test_a_failing_check_restart_starts_fresh_from_the_original_files(
+    tmp_path: Path,
+) -> None:
+    """Olausson et al. (ICLR 2024): for weak models a fresh attempt beats repairing a wrong one."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "a.py").write_text("X = 0  # STUB\n", encoding="utf-8")
+    (ws / "test_t.py").write_text(
+        "import unittest\nimport a\n\n\nclass T(unittest.TestCase):\n"
+        "    def test_x(self):\n        self.assertEqual(a.X, 2)\n",
+        encoding="utf-8",
+    )
+    run = ("bash -c 'python3 -m unittest test_t 2>&1'", None)
+    cmds = [c for i in range(3) for c in (("edit write a.py", f"X = {i + 3}  # TRY\n"), run)]
+    provider = FakeScriptedProvider(_script(cmds))
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        tools=["edit", "bash"],
+        sandbox=SandboxPolicy(workspace_root=ws, use_kernel_sandbox=False),
+        provider=provider,
+        max_steps=20,
+    )
+    session = await harness.run("make the test pass")
+    assert (ws / "a.py").read_text(
+        encoding="utf-8"
+    ) == "X = 0  # STUB\n"  # the attempt is set aside
+    body = next(t for t in harness.store.get_turns(session.id) if t.event_type == "restart").content
+    assert body.startswith("[RESTART at step 6 with a fresh start.") and "a.py" in body
+    assert "# STUB" in body and "test_x" in body and "different approach" in body
+    assert "# TRY" not in body  # nothing of the failed attempt for the model to copy
+
+
 async def test_a_check_that_keeps_failing_without_edits_does_not_restart(tmp_path: Path) -> None:
     ws = tmp_path / "ws"
     ws.mkdir()
