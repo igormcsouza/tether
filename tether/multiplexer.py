@@ -286,6 +286,14 @@ class Multiplexer:
             # shlex already stripped quotes; hand the shell the original text (#37).
             args = clean_cmd.split(None, 1)[1:]
 
+        if name == "edit" and args[:1] == ["write"] and len(args) > 2 and stdin is None:
+            # `edit write f ok`: the words after the path are the content, spacing as typed.
+            parts = clean_cmd.split(None, 3)
+            if len(parts) == 4 and _unquote(parts[2]) == args[1]:
+                text = parts[3]
+                stdin = _unquote(text) if len(args) == 3 and text[:1] in "'\"" else text
+                stdin, args = str(unescape_literal_newlines(stdin)) + "\n", args[:2]
+
         if name == "done" or (name == "edit" and args[:1] in (["write"], ["replace"])):
             stdin = unescape_literal_newlines(stdin)
 
