@@ -183,6 +183,7 @@ async def test_a_near_pass_goes_back_to_that_version_in_place(tmp_path: Path) ->
         max_steps=20,
     )
     session = await harness.run("make the tests pass")
+    assert session.status == "COMPLETED"  # the session goes on after the restore
     assert (ws / "a.py").read_text(encoding="utf-8") == best
     turns = harness.store.get_turns(session.id)
     assert not [t for t in turns if t.event_type == "restart"]

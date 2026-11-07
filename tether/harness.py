@@ -1633,7 +1633,7 @@ class Harness:
 
                 # Restart: continue from a fresh history that describes the state instead of
                 # replaying the failed attempts.
-                if red and fail_runs[check] >= RESTART_AFTER_FAILS:
+                if red and fail_runs.get(check, 0) >= RESTART_AFTER_FAILS:
                     if (handed := get_unstuck(step, check, tout)) is not None:
                         return handed
 
