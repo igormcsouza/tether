@@ -96,7 +96,6 @@ async def test_protocol_methods_are_listed_and_noise_is_not(tmp_path: Path) -> N
 
 async def test_a_near_pass_after_a_change_is_traced_once(tmp_path: Path) -> None:
     """paasio got to 1 failing test of 25, then spent 8 steps guessing; the set was new."""
-    (tmp_path / "tree.py").write_text(SOLUTION)
     (tmp_path / "tree_test.py").write_text(SUITE)
     cmds = [f"cat > tree.py << 'EOF'\n{SOLUTION}EOF", TEST, TEST, "ls"]
     provider = FakeScriptedProvider(

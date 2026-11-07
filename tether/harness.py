@@ -222,6 +222,24 @@ _LOOKUPS = [
 ]
 
 
+def suite_for(rel: str, root: Path, since: float) -> str | None:
+    """The test file next to `rel` (`x_test.py` or `test_x.py`) when `rel` existed at `since`."""
+    path = root / rel
+    stem = path.stem
+    if stem.startswith("test_") or stem.endswith("_test"):
+        return None
+    try:
+        if path.stat().st_mtime >= since:
+            return None
+    except OSError:
+        return None
+    # ponytail: Python test names only; other languages are written at once
+    for name in (f"{stem}_test.py", f"test_{stem}.py"):
+        if (path.parent / name).is_file():
+            return os.path.normpath(str(Path(rel).parent / name))
+    return None
+
+
 def is_quiet(cmd: str) -> bool:
     """True if every statement of `cmd` is read-only or a verification (`for f in x; do cat`)."""
     stmts = []
@@ -895,6 +913,8 @@ class Harness:
         traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
         last_test: str | None = None  # last test command, named when a blind rewrite is refused
         untested: set[str] = set()  # files rewritten whole since the last test run
+        asked_tests = False  # asked once to state what the tests expect before the first rewrite
+        reasoning_due: str | None = None  # the file whose rewrite waits on that answer
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
         # Restart state: failing check runs per command (counted once per edit in between)
         fail_runs: dict[str, int] = {}
@@ -1043,6 +1063,25 @@ class Harness:
                 )
 
                 # 3. If the model emitted plain text without calling `act`, nudge it (Rule 3)
+                if resp.action is None and reasoning_due and (resp.content or "").strip():
+                    # #173: the plain-words answer to [BEFORE WRITING] is the expected reply
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="assistant",
+                        content=resp.content,
+                        prompt_tokens=prompt_tokens,
+                        completion_tokens=completion_tokens,
+                        duration_ms=llm_duration_ms,
+                    )
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="user",
+                        content=f"Now write `{reasoning_due}` so it gives exactly those results.",
+                    )
+                    reasoning_due = None
+                    continue
                 if resp.action is None:
                     prose = (resp.content or "").strip()
                     if len(prose) >= PROSE_ANSWER_CHARS:
@@ -1073,6 +1112,7 @@ class Harness:
                     )
                     continue
 
+                reasoning_due = None
                 cmd = normalize_cmd(resp.action.cmd)
                 stdin = resp.action.stdin
                 action_sig = (cmd.strip(), stdin)
@@ -1231,6 +1271,32 @@ class Harness:
                             f"[BLOCKED] `{blind[0]}` was already rewritten since the last test "
                             f"run, so this version was not written. Run `{last_test}` first, then "
                             "change the file from what the tests show."
+                        ),
+                    )
+                    continue
+
+                # #173: before the first rewrite of a starting file, state what its tests expect
+                # (AlphaCodium, Ridnik et al. 2024: test reasoning before code); asked once
+                root = Path(sandbox.workspace_root)
+                suite = (
+                    None
+                    if asked_tests or not rewrites
+                    else suite_for(rewrites[0], root, rec.created_at)
+                )
+                if suite:
+                    asked_tests, reasoning_due = True, rewrites[0]
+                    last_action_sig = None  # sending the same write again is not a loop
+                    action_history.pop()
+                    self.store.update_turn_telemetry(assistant_turn_id, event_type="nudge")
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=(
+                            f"[BEFORE WRITING] `{reasoning_due}` was not written yet. First reply "
+                            f"in plain words, with no command: for the 3 tests in `{suite}` that "
+                            "look hardest, what each one calls, the exact result it expects, and "
+                            f"how your design gives it. Then write `{reasoning_due}`."
                         ),
                     )
                     continue

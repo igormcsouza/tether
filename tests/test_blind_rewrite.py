@@ -13,7 +13,7 @@ from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse
 from tether.sandbox import SandboxPolicy
 
-TEST = "python3 -m unittest -q m_test"
+TEST = "python3 -m unittest -q m_checks"
 SUITE = "import unittest\nfrom m import f\n\n\nclass T(unittest.TestCase):\n"
 SUITE += "    def test_f(self):\n        self.assertEqual(f(), 3)\n"
 
@@ -23,7 +23,7 @@ def _write(value: int, path: str = "m.py") -> str:
 
 
 async def _run(tmp_path: Path, cmds: list[str]) -> tuple[Harness, FakeScriptedProvider]:
-    (tmp_path / "m_test.py").write_text(SUITE)
+    (tmp_path / "m_checks.py").write_text(SUITE)
     (tmp_path / "m.py").write_text("def f():\n    return 0\n")
     provider = FakeScriptedProvider(
         [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
