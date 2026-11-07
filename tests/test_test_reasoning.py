@@ -14,7 +14,7 @@ from pathlib import Path
 
 from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse
-from tether.harness import suite_for
+from tether.harness import suite_for, suite_read
 from tether.sandbox import SandboxPolicy
 
 SUITE = "import unittest\nfrom m import f\n\n\nclass T(unittest.TestCase):\n"
@@ -69,6 +69,19 @@ async def test_the_question_is_asked_once_even_if_ignored(tmp_path: Path) -> Non
     h = await _run(tmp_path, [_act(WRITE), _act(WRITE), _act("ls")])
     assert "return 3" in (tmp_path / "m.py").read_text()
     assert _seen(h, 2).count("[BEFORE WRITING]") == 1
+
+
+async def test_reading_the_tests_asks_for_them_and_nothing_is_held(tmp_path: Path) -> None:
+    """paasio: holding the first write threw away 28 s of typed code; ask at the read instead."""
+    script = [_act("cat m_test.py"), ModelResponse(content=REASONING, action=None), _act(WRITE)]
+    h = await _run(tmp_path, [*script, _act("ls")])
+    asked = _seen(h, 1)
+    assert "[BEFORE WRITING] Before you write `m.py`" in asked and "m_test.py" in asked
+    assert REASONING in _seen(h, 2) and "not delivered" not in _seen(h, 2)
+    assert "return 3" in (tmp_path / "m.py").read_text()  # the first write applies
+    assert _seen(h, 3).count("[BEFORE WRITING]") == 1
+    assert suite_read("pytest m_test.py", tmp_path, time.time()) == ("m.py", "m_test.py")
+    assert suite_read("cat m.py", tmp_path, time.time()) is None
 
 
 async def test_a_new_file_or_no_tests_is_written_at_once(tmp_path: Path) -> None:

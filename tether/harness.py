@@ -251,6 +251,16 @@ def suite_for(rel: str, root: Path, since: float) -> str | None:
     return None
 
 
+def suite_read(cmd: str, root: Path, since: float) -> tuple[str, str] | None:
+    """(starting file, its test file) when `cmd` names the test file of a starting file."""
+    for word in re.findall(r"[\w./-]+\.py\b", cmd):
+        test = Path(word)
+        src = str(test.with_name(test.stem.removeprefix("test_").removesuffix("_test") + ".py"))
+        if src != word and suite_for(src, root, since) == os.path.normpath(word):
+            return os.path.normpath(src), os.path.normpath(word)
+    return None
+
+
 def is_quiet(cmd: str) -> bool:
     """True if every statement of `cmd` is read-only or a verification (`for f in x; do cat`)."""
     stmts = []
@@ -922,8 +932,7 @@ class Harness:
         last_run: tuple[int, frozenset[str]] | None = None  # outcome of the last test run
         edited_since_run = False  # a change since the last test run
         traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
-        last_test: str | None = None  # last test command, named when a blind rewrite is refused
-        untested: set[str] = set()  # files rewritten whole since the last test run
+        last_test: str | None = None  # last test command, re-run by the harness after each edit
         asked_tests = False  # asked once to state what the tests expect before the first rewrite
         reasoning_due: str | None = None  # the file whose rewrite waits on that answer
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
@@ -1278,23 +1287,7 @@ class Harness:
                     )
                     continue
 
-                # #173: a whole-file rewrite of a file already rewritten since the last test run is
-                # refused until the tests run
                 rewrites = [os.path.normpath(p) for p in whole_file_targets(cmd)]
-                blind = [p for p in rewrites if p in untested]
-                if last_test and blind:
-                    self.store.update_turn_telemetry(assistant_turn_id, event_type="nudge")
-                    self.store.add_turn(
-                        session_id=session_id,
-                        step=step,
-                        role="tool",
-                        content=(
-                            f"[BLOCKED] `{blind[0]}` was already rewritten since the last test "
-                            f"run, so this version was not written. Run `{last_test}` first, then "
-                            "change the file from what the tests show."
-                        ),
-                    )
-                    continue
 
                 # #173: before the first rewrite of a starting file, state what its tests expect
                 # (AlphaCodium, Ridnik et al. 2024: test reasoning before code); asked once
@@ -1497,24 +1490,45 @@ class Harness:
                     stale.update(fail_runs)
                     edited_since_run = True
 
+                out = dispatch.output
+                tcmd, tout = cmd, dispatch.output  # the test run this step, if any
                 if _TEST_CMD.search(cmd) and is_quiet(cmd):
                     last_test = cmd.strip()
-                    untested.clear()
-                elif not dispatch.is_error:
-                    untested.update(rewrites)
-
-                out = dispatch.output
-                if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
-                    out += failing_test_source(out, Path(sandbox.workspace_root))
-                if _TEST_CMD.search(cmd) and (outcome := run_outcome(dispatch.output)):
+                elif last_test and before and not dispatch.is_error:
+                    # #173 (Aider's auto-test): run the tests after each edit, so a weak model
+                    # never types a second version blind (each rewrite costs it 30-100 s)
+                    tcmd, tout = last_test, (await mux.execute(last_test)).output
+                    out += f"\n[auto-test] `{last_test}` after your edit:\n{tout}"
+                if (
+                    _TEST_CMD.search(tcmd)
+                    and _TESTS_RED.search(tout)
+                    and not tests_green(tcmd, tout)
+                ):
+                    out += failing_test_source(tout, Path(sandbox.workspace_root))
+                elif (
+                    is_quiet(cmd)
+                    and not asked_tests
+                    and not _TEST_CMD.search(cmd)
+                    and (pair := suite_read(cmd, Path(sandbox.workspace_root), rec.created_at))
+                ):
+                    # #173: test reasoning (AlphaCodium) asked with the test file, so no
+                    # typed version is held back for it
+                    asked_tests, reasoning_due = True, pair[0]
+                    out += (
+                        f"\n[BEFORE WRITING] Before you write `{pair[0]}`, reply in plain words, "
+                        f"with no command: for the 3 tests in `{pair[1]}` that look hardest, what "
+                        "each one calls, the exact result it expects, and how your design gives "
+                        f"it. Then write `{pair[0]}`."
+                    )
+                if _TEST_CMD.search(tcmd) and (outcome := run_outcome(tout)):
                     if last_run:
                         out += regression_note(last_run, outcome)
                     # #173: after a change the same tests fail again, or only a few still fail:
                     # show what the code did at runtime
                     same = last_run is not None and outcome[1] and outcome[1] == last_run[1]
-                    n_failed = failing_count(dispatch.output, outcome[1])
+                    n_failed = failing_count(tout, outcome[1])
                     near = 0 < n_failed <= NEAR_PASS
-                    test_id = failing_test_id(dispatch.output)
+                    test_id = failing_test_id(tout)
                     if (same or near) and edited_since_run and outcome[1] not in traced and test_id:
                         traced.add(outcome[1])
                         root = Path(sandbox.workspace_root)
@@ -1535,8 +1549,8 @@ class Harness:
                     out += unchanged_note(before, root) or small_change_note(
                         cmd, before, root, small_hinted
                     )
-                if changed and not dispatch.is_error and tests_green(cmd, out):
-                    green_cmd = cmd
+                if changed and not dispatch.is_error and tests_green(tcmd, tout):
+                    green_cmd = tcmd
                     if not green_nudged:
                         out += (
                             "\n[NUDGE] Tests pass after your last change. If the task is complete "
@@ -1589,13 +1603,17 @@ class Harness:
 
                 # Restart: the same check failed again after another edit. Continue from a fresh
                 # history that describes the state instead of replaying the failed attempts.
-                check = cmd.strip()
-                if _TEST_CMD.search(cmd) and _TESTS_RED.search(out) and not tests_green(cmd, out):
+                check = tcmd.strip()
+                if (
+                    _TEST_CMD.search(tcmd)
+                    and _TESTS_RED.search(tout)
+                    and not tests_green(tcmd, tout)
+                ):
                     if check not in fail_runs or check in stale:
                         fail_runs[check] = fail_runs.get(check, 0) + 1
                         stale.discard(check)
                     if fail_runs[check] >= RESTART_AFTER_FAILS:
-                        if (handed := get_unstuck(step, check, out)) is not None:
+                        if (handed := get_unstuck(step, check, tout)) is not None:
                             return handed
 
             # Max steps reached without explicit `done`

@@ -91,17 +91,13 @@ async def test_third_failing_check_after_edits_restarts_with_a_fresh_history(
         encoding="utf-8",
     )
     run = ("bash -c 'python3 -m unittest test_t 2>&1'", None)
-    cmds = [
+    cmds = [  # after the first run the harness re-runs the tests after each edit
         ("edit write a.py", "X = 1  # MARKER_FIRST\n"),
         run,
         ("edit write a.py", "X = 3\n"),
-        run,
         ("edit write a.py", "X = 4  # LATEST\n"),
-        run,
         ("edit write a.py", "X = 5\n"),
-        run,
         ("edit write a.py", "X = 6\n"),
-        run,
     ]
     provider = FakeScriptedProvider(_script(cmds))
     harness = Harness(
@@ -120,10 +116,10 @@ async def test_third_failing_check_after_edits_restarts_with_a_fresh_history(
     assert "a.py changed 3 times" in body
     assert "MARKER_FIRST" not in body
     # the call after the restart sees the restart message and none of the earlier steps
-    after = "\n".join(str(m.get("content")) for m in provider.recorded_calls[6])
-    assert "[RESTART at step 6" in after and "MARKER_FIRST" not in after
+    after = "\n".join(str(m.get("content")) for m in provider.recorded_calls[4])
+    assert "[RESTART at step 4" in after and "MARKER_FIRST" not in after
     # before it, the full history was still replayed
-    before = "\n".join(str(m.get("content")) for m in provider.recorded_calls[5])
+    before = "\n".join(str(m.get("content")) for m in provider.recorded_calls[3])
     assert "MARKER_FIRST" in before
 
 
@@ -154,7 +150,7 @@ async def test_a_failing_check_restart_starts_fresh_from_the_original_files(
         encoding="utf-8"
     ) == "X = 0  # STUB\n"  # the attempt is set aside
     body = next(t for t in harness.store.get_turns(session.id) if t.event_type == "restart").content
-    assert body.startswith("[RESTART at step 6 with a fresh start.") and "a.py" in body
+    assert body.startswith("[RESTART at step 5 with a fresh start.") and "a.py" in body
     assert "# STUB" in body and "test_x" in body and "different approach" in body
     assert "# TRY" not in body  # nothing of the failed attempt for the model to copy
 
@@ -239,7 +235,7 @@ async def test_a_check_that_still_fails_after_every_restart_is_handed_back(tmp_p
     )
     session = await harness.run("make the test pass")
     assert session.status == "WAITING_INPUT"
-    assert (session.result or "").startswith("[STUCK at step 18 after 2 restarts")
-    assert "X = 18" in (session.result or "") and "AssertionError" in (session.result or "")
+    assert (session.result or "").startswith("[STUCK at step 13 after 2 restarts")
+    assert "X = 16" in (session.result or "") and "AssertionError" in (session.result or "")
     turns = harness.store.get_turns(session.id)
     assert [t.event_type for t in turns].count("restart") == 2
