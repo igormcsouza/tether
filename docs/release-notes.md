@@ -5,6 +5,7 @@
 ### Fixed
 
 - `edit write hello.txt ok`, with the content typed after the path and no `stdin`, now writes `ok` instead of answering ``Error: `edit write` requires file content in `stdin` ``. qwen3.5:9b lost two steps this way creating a one-line file in the v0.2.16 smoke run. The text is taken as typed (spacing kept, one pair of surrounding quotes removed, literal `\n` unescaped); `stdin`, when given, still wins (#173).
+- In `tether list`, a pipeline's own row now shows the model its stages run on instead of the harness default (`ollama/qwen3.5:9b` even when every stage set `model: local/qwen3.5:9b`). When stages use different models, the row lists them in stage order, joined with `,`. A stage with no `model:` still runs on the pipeline's default model.
 
 ## v0.2.16 (2026-11-07)
 

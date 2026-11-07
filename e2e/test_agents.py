@@ -84,3 +84,15 @@ def test_pipeline_runs_stages_in_order_with_an_upstream_digest(tether: Tether, c
     second = next(b for b in chaos.requests if "STAGE-TWO" in str(b["messages"][1]))
     assert "kiwi" in str(second["messages"]), "stage 2 must see a digest of stage 1"
     assert [t["function"]["name"] for t in second["tools"]] == ["act"]
+
+
+def test_pipeline_row_shows_its_stages_model(tether: Tether, chaos) -> None:
+    (tether.ws / "one.yaml").write_text(
+        "name: one\nstages:\n  - id: only\n"
+        "    model: e2e/scripted\n    goal: 'ROW-MODEL {{goal}}'\n"
+    )
+    chaos.route("ROW-MODEL", ("done", "ok"))
+    p = tether.cli("pipeline", "--json", "one.yaml", "note")
+    assert p.returncode == 0, p.stderr
+    root = next(s for s in _sessions(tether) if not s["parent_id"])
+    assert root["model"] == "e2e/scripted", root["model"]

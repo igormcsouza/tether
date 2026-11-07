@@ -490,9 +490,17 @@ class Harness:
         root_sandbox = self.sandbox.attenuate(resolved.sandbox)
         sbox_dict = root_sandbox.to_dict()
         sbox_dict["pipeline"] = resolved.to_dict()
+        # The row's model may list several; keep the default for model-less stages.
+        sbox_dict["pipeline_model"] = self.model
+        models: list[str] = []
+        for stage in resolved.stages:
+            skill_obj = self.skill_loader.load(stage.skill) if stage.skill else None
+            stage_model = stage.model or (skill_obj and skill_obj.model) or self.model
+            if stage_model not in models:
+                models.append(stage_model)
         return self.store.create_session(
             goal=goal,
-            model=self.model,
+            model=",".join(models),
             skill=resolved.name,
             tools=self._enabled_tool_names,
             sandbox_config=sbox_dict,
@@ -700,7 +708,7 @@ class Harness:
             stage_model = (
                 stage.model
                 or (skill_obj.model if skill_obj and skill_obj.model else None)
-                or rec.model
+                or str(rec.sandbox_config.get("pipeline_model") or rec.model)
             )
             stage_tools = (
                 list(stage.tools)
