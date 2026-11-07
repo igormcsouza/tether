@@ -175,6 +175,7 @@ def failing_test_source(out: str, root: Path) -> str:
 _UNITTEST_RAN = re.compile(r"Ran (\d+) tests?")
 _UNITTEST_FAIL = re.compile(r"^(?:FAIL|ERROR): (\w+) \(", re.M)
 _PYTEST_COUNT = re.compile(r"(\d+) (?:passed|failed|errors?)\b")
+_UNITTEST_SUMMARY = re.compile(r"^FAILED \(([^)]*)\)", re.M)
 _PYTEST_FAIL = re.compile(r"^(?:FAILED|ERROR) \S*::(\w+)", re.M)
 
 
@@ -186,6 +187,16 @@ def run_outcome(out: str) -> tuple[int, frozenset[str]] | None:
     if not counts:
         return None
     return sum(map(int, counts)), frozenset(_PYTEST_FAIL.findall(out))
+
+
+def failing_count(out: str, names: frozenset[str]) -> int:
+    """Failing tests by the summary line (`FAILED (failures=1, errors=2)`, `3 failed`), so a run cut
+    by `head` that names only a few still counts them all; at least `len(names)`."""
+    if summary := _UNITTEST_SUMMARY.search(out):
+        counts = re.findall(r"(?:failures|errors)=(\d+)", summary.group(1))
+    else:
+        counts = re.findall(r"(\d+) (?:failed|errors?)\b", out)
+    return max(len(names), sum(map(int, counts)))
 
 
 def regression_note(before: tuple[int, frozenset[str]], after: tuple[int, frozenset[str]]) -> str:
@@ -923,7 +934,7 @@ class Harness:
         restarts = 0
         originals: dict[str, bytes] = {}  # existing files as they were before the model wrote them
         # the run that failed fewest tests while passing most, and those files as they were then
-        best: tuple[frozenset[str], dict[str, bytes]] | None = None
+        best: tuple[int, frozenset[str], dict[str, bytes]] | None = None
         quiet_run = 0
         steps_hinted = False
         last_reply = ""  # the model's last plain-text answer, never confirmed with `done`
@@ -965,9 +976,9 @@ class Harness:
             # repairing a wrong one). Files the model created are left as they are. A version that
             # already passed most tests with at most NEAR_PASS failing is kept instead: the files
             # go back to it, not to the start.
-            near = best if check and not handback and best and len(best[0]) <= NEAR_PASS else None
+            near = best if check and not handback and best and best[0] <= NEAR_PASS else None
             if near:
-                reset_originals(near[1])
+                reset_originals(near[2])
             fresh = (
                 sorted(reset_originals(originals)) if check and not handback and not near else []
             )
@@ -979,7 +990,7 @@ class Harness:
                 tried=tried,
                 handback=handback,
                 fresh=fresh,
-                failing=sorted(near[0] if near else last_run[1])[:5] if last_run else None,
+                failing=sorted(near[1] if near else last_run[1])[:5] if last_run else None,
                 best=bool(near),
             )
             if handback:
@@ -1501,7 +1512,8 @@ class Harness:
                     # #173: after a change the same tests fail again, or only a few still fail:
                     # show what the code did at runtime
                     same = last_run is not None and outcome[1] and outcome[1] == last_run[1]
-                    near = 0 < len(outcome[1]) <= NEAR_PASS
+                    n_failed = failing_count(dispatch.output, outcome[1])
+                    near = 0 < n_failed <= NEAR_PASS
                     test_id = failing_test_id(dispatch.output)
                     if (same or near) and edited_since_run and outcome[1] not in traced and test_id:
                         traced.add(outcome[1])
@@ -1510,15 +1522,14 @@ class Harness:
                         out += await runtime_trace(sandbox, smallest)
                     last_run = outcome
                     edited_since_run = False
-                    n_failed = len(outcome[1])
-                    if outcome[0] > 2 * n_failed and (best is None or n_failed < len(best[0])):
+                    if outcome[0] > 2 * n_failed and (best is None or n_failed < best[0]):
                         root = Path(sandbox.workspace_root)
                         files = {
                             rel: (root / rel).read_bytes()
                             for rel in originals
                             if (root / rel).is_file()
                         }
-                        best = (outcome[1], files)
+                        best = (n_failed, outcome[1], files)
                 if before and not dispatch.is_error:
                     root = Path(sandbox.workspace_root)
                     out += unchanged_note(before, root) or small_change_note(

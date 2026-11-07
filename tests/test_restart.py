@@ -16,6 +16,7 @@ from tether.context import (
     modified_files,
     restart_message,
 )
+from tether.harness import failing_count
 from tether.sandbox import SandboxPolicy
 from tether.store import TurnRecord
 
@@ -188,6 +189,14 @@ async def test_a_restart_after_a_near_pass_goes_back_to_that_version(tmp_path: P
     body = next(t for t in harness.store.get_turns(session.id) if t.event_type == "restart").content
     assert "back to your best version" in body and "test_x" in body and "# BEST" in body
     assert "# WORST" not in body and "different approach" not in body
+
+
+def test_failing_count_reads_the_summary_when_names_are_cut() -> None:
+    """paasio run cut by `| head -50` named 3 of 12 errors; the best version was misjudged."""
+    names = frozenset({"test_a", "test_b"})
+    assert failing_count("EEEE.\n...\nRan 5 tests\n\nFAILED (failures=1, errors=3)\n", names) == 4
+    assert failing_count("FAILED x.py::test_a\n= 2 failed, 1 error, 4 passed =", names) == 3
+    assert failing_count("Ran 5 tests\nOK\n", names) == 2
 
 
 async def test_a_check_that_keeps_failing_without_edits_does_not_restart(tmp_path: Path) -> None:
