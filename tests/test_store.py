@@ -111,11 +111,14 @@ def test_project_memory_and_episodic_rag(tmp_path: Path) -> None:
 
 def test_telemetry_migration_and_stats_aggregation(tmp_path: Path) -> None:
     """Verify legacy DB migration, canonical_tool_command, and get_stats / format_stats_report."""
-    assert canonical_tool_command(None) == "unknown"
-    assert canonical_tool_command("   ") == "unknown"
-    assert canonical_tool_command('""') == "unknown"
+    assert canonical_tool_command(None) == "(no command)"
+    assert canonical_tool_command("   ") == "(no command)"
+    assert canonical_tool_command('""') == "(no command)"
     assert canonical_tool_command("$ tether edit replace a.py --lines 1:2") == "edit replace"
     assert canonical_tool_command("`bash pytest -q`") == "bash"
+    # #79: a leading `cd <dir> &&` is not the command
+    assert canonical_tool_command("cd /testbed && python3 -m unittest") == "python3"
+    assert canonical_tool_command("bash cd src; cd .. && edit view a.py") == "edit view"
 
     legacy_db = tmp_path / "legacy.db"
     with sqlite3.connect(str(legacy_db)) as raw_conn:

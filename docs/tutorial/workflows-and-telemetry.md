@@ -72,7 +72,7 @@ Each stage needs a `goal`. Invalid manifests print `Error: invalid pipeline ...`
 tether stats [--model <m>] [--skill <s>] [--limit <n>]
 ```
 
-Prints per-model runs, pass rate, average steps, peak and total tokens, and friction counts (`nudge`, `loop_stall`, `cycle_stall`, `syntax_error`, `tool_error`, `gate_fail`, `gate_error`), followed by the commands that cause the most friction. Pipeline root sessions are excluded so tokens are not double-counted.
+Prints per-model runs, pass rate, average steps, peak and total tokens, and friction counts (`nudge`, `loop_stall`, `cycle_stall`, `syntax_error`, `tool_error`, `gate_fail`, `gate_error`), followed by the commands that cause the most friction (keyed by tool and verb, such as `edit replace`; a leading `cd <dir> &&` is skipped, so `cd src && pytest` counts as `pytest`, and a turn with no command is `(no command)`). Pipeline root sessions are excluded so tokens are not double-counted.
 
 ## Post-mortem rules (`tether retro`)
 
