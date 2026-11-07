@@ -2,9 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- A repair loop around failing tests, all from the harness's own time (0 static prompt tokens, no extra model call). Once the model has run the tests, they run again after each edit and the result is appended (`[auto-test]`), so no version is typed blind. When the model reads the tests of the file it is about to write, it is asked once to say in plain words what the hardest tests call and expect (`[BEFORE WRITING]`). When the same tests fail again after a change, or only a few still fail, a runtime trace of the smallest failing test shows the calls into your code with their arguments and results. When at most 3 tests still fail, one note points to `edit replace` instead of a whole-file rewrite. On `paasio` with qwen3.5:9b (600 s cap) the mean score went from 0.63 over 3 runs to 0.94 over 5 runs, with 1 of 5 passing; the other 4 ended at the time cap with 22 to 24 of 25 tests passing (#173).
+
 ### Changed
 
-- The north star is now 74% (50 of 68) on Polyglot-Python with qwen3.5:9b, instead of 80%. 74% is the share of exercises the model has already solved at least once from scratch (25 of 34), so the target is reliability: each of them passing every run. The 9 exercises it never solved are out of scope for this target (#173).
+- The north star is now 74% (50 of 68) on Polyglot-Python with qwen3.5:9b by v0.4.0, instead of 80% by v0.3.0. 74% is the share of exercises the model has already solved at least once from scratch (25 of 34), so the target is reliability: each of them passing every run. The 9 exercises it never solved are out of scope for this target (#173).
+- A restart after the same tests failed 3 times is now a fresh start: the files the model changed go back to how they started, and the restart message names the failing tests instead of quoting the failed code (Olausson et al., ICLR 2024). A version that already passes all but at most 3 tests is kept instead: when later edits do not beat it, its files come back in place with a `[RESTORED]` line and the history stays (#173).
+- The number of failing tests is read from the runner's summary line (`FAILED (failures=1, errors=3)`), so a test run cut by `| head` is no longer taken for a near pass (#173).
 
 ### Fixed
 
