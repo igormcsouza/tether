@@ -37,6 +37,7 @@ _KNOWN_SUBCOMMANDS = {
     "diff",
     "misses",
     "mcp",
+    "replay",
     "_worker",
 }
 
@@ -296,6 +297,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--workspace", type=str, default=None, help="Workspace root (default: current directory)"
     )
 
+    # `tether replay`
+    p_replay = sub.add_parser("replay", help="Re-run a session's goal and compare the runs")
+    p_replay.add_argument("session_id", help="Session ID to replay (runs in the current directory)")
+    p_replay.add_argument("--model", type=str, default=None, help="Model (default: original's)")
+    p_replay.add_argument(
+        "--max-steps", type=_positive_int, default=None, help="Step budget (default: original's)"
+    )
+    p_replay.add_argument("--db", type=str, default=None)
+    _add_json(p_replay)
+
     # Internal `_worker`
     p_worker = sub.add_parser("_worker")
     p_worker.add_argument("session_id")
@@ -317,6 +328,72 @@ def _finish(rec: SessionRecord, ns: argparse.Namespace) -> int:
     elif rec.result and not getattr(ns, "result_file", None):
         print(rec.result)
     return code
+
+
+def _positive_int(text: str) -> int:
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
+    return value
+
+
+def _compare_row(rec: SessionRecord) -> dict[str, object]:
+    return {
+        "id": rec.id,
+        "model": rec.model,
+        "status": rec.status,
+        "steps": rec.step_count,
+        "tokens": rec.total_prompt_tokens + rec.total_completion_tokens,
+        "wall_s": round(rec.updated_at - rec.created_at, 1),
+    }
+
+
+def _format_compare(orig: dict[str, object], rep: dict[str, object]) -> str:
+    lines = [f"replay of {orig['id']} -> {rep['id']}", f"{'':<16}{'original':<11}replay"]
+    for label, key in (
+        ("model", "model"),
+        ("status", "status"),
+        ("steps", "steps"),
+        ("tokens", "tokens"),
+        ("wall_s (approx)", "wall_s"),
+    ):
+        lines.append(f"{label:<16}{str(orig[key]):<11}{rep[key]}")
+    return "\n".join(lines)
+
+
+async def _replay(ns: argparse.Namespace) -> int:
+    """Re-run a session's goal in cwd with its saved setup and print a comparison."""
+    if ns.model is not None and not ns.model.strip():
+        print(
+            "Error: --model must not be empty. Omit it to use the original's model.",
+            file=sys.stderr,
+        )
+        return 1
+    orig = Harness(db_path=ns.db).store.get_session(ns.session_id)
+    if orig is None:
+        print(
+            f"Error: session {ns.session_id} not found. List ids with tether list.",
+            file=sys.stderr,
+        )
+        return 1
+    if orig.status in ("RUNNING", "WAITING_INPUT"):
+        print(
+            f"Error: session {orig.id} is still {orig.status}. "
+            f"Wait for it or run tether stop {orig.id}, then replay.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        harness = Harness.from_session(orig, db_path=ns.db, model=ns.model, max_steps=ns.max_steps)
+        rep = await harness.run(orig.goal, parent_id=orig.id)
+    except Exception as exc:
+        print(f"Error: replay failed: {exc}. Check --model and provider keys.", file=sys.stderr)
+        return 1
+    if ns.json:
+        print(json.dumps({"original": _compare_row(orig), "replay": _compare_row(rep)}))
+    else:
+        print(_format_compare(_compare_row(orig), _compare_row(rep)))
+    return 0
 
 
 def _cmd_diff(ns: argparse.Namespace) -> int:
@@ -364,6 +441,9 @@ async def _async_main(argv: list[str]) -> int:
         harness = Harness(db_path=ns.db)
         await harness.execute_session(ns.session_id)
         return 0
+
+    if cmd == "replay":
+        return await _replay(ns)
 
     if cmd == "run":
         goal = " ".join(ns.goal).strip()

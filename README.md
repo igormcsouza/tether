@@ -50,7 +50,7 @@ flowchart LR
     Loop <-->|"messages"| Model["LLM<br/>ollama · openai · anthropic"]
 ```
 
-A session is a row in SQLite, so it survives crashes, runs detached (`--headless`), takes new instructions while running (`tether send`), and can be read by another agent as compact JSON. A task ends only when the model calls `done`, after your `--verify` commands pass.
+A session is a row in SQLite, so it survives crashes, runs detached (`--headless`), takes new instructions while running (`tether send`), and can be read by another agent as compact JSON. A task ends only when the model calls `done`, after your `--verify` commands pass. To re-run a finished session's goal and compare the two runs, use `tether replay <session-id>`.
 
 ## Why this and not that
 
