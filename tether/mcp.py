@@ -51,6 +51,10 @@ TOOLS: list[dict[str, Any]] = [
                 "type": "object",
                 "description": 'Model request params, e.g. {"temperature": 0, "think": false}',
             },
+            "workspace": {
+                "type": "string",
+                "description": "absolute dir in the server workspace; default: server workspace",
+            },
             "wait": {"type": "boolean", "description": "default true"},
         },
         ["goal"],
@@ -106,6 +110,28 @@ class TetherMCP:
             raise ToolError(f"session `{sid}` not found")
         return rec
 
+    def _resolve_workspace(self, raw: Any) -> Path:
+        if raw is None or raw == "":
+            return self.workspace
+        if not isinstance(raw, str):
+            raise ToolError(
+                "workspace must be a string path (an existing absolute directory); "
+                "pass an absolute path or omit `workspace`."
+            )
+        p = Path(raw)
+        if not p.is_absolute() or not p.is_dir():
+            raise ToolError(
+                f"workspace `{raw}` must be an existing absolute directory; "
+                "pass an absolute path or omit `workspace`."
+            )
+        p = p.resolve()
+        if not p.is_relative_to(self.workspace):
+            raise ToolError(
+                f"workspace `{raw}` is outside the server workspace `{self.workspace}`; "
+                "use a path inside it or omit `workspace`."
+            )
+        return p
+
     async def call(self, name: str, a: dict[str, Any]) -> Any:
         if name == "tether_run":
             return await self._run(a)
@@ -144,10 +170,11 @@ class TetherMCP:
         raise ToolError(f"unknown tool `{name}`")
 
     async def _run(self, a: dict[str, Any]) -> Any:
-        # Sandbox is always rooted at the server's workspace; callers can only narrow it.
+        # Sandbox is rooted at the server's workspace or a narrower dir inside it (`workspace`).
+        root = self._resolve_workspace(a.get("workspace"))
         sandbox = SandboxPolicy(
             profile=a.get("sandbox") or "workspace-write",
-            workspace_root=self.workspace,
+            workspace_root=root,
             network=not a.get("no_network"),
         )
         try:
