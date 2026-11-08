@@ -45,11 +45,11 @@ The grid shows the first-attempt score of every task. Green passed, red did not:
 
 | Model | tether (current) | bare tool loop | opencode |
 |---|---|---|---|
-| `qwen3.5:9b` | 16 / 24, mean 0.82 | 15 / 24, mean 0.80 | 13 / 24, mean 0.62 |
+| `qwen3.5:9b` | 19 / 24, mean 0.87 (v0.2.18) | 15 / 24, mean 0.80 | 13 / 24, mean 0.62 |
 | `qwen3.5:4b` | 13 / 24, mean 0.70 | 16 / 24, mean 0.78 | not run |
 | `qwen2.5-coder:7b` | 1 / 24, mean 0.28 | 0 / 24, mean 0.10 | not run |
 
-On the 9B an earlier build of tether passed 15 of 24 (mean 0.81), shown as the second tether bar. Two runs of the same model differ by one task, which is the run-to-run spread to keep in mind: **a difference of one or two tasks is noise.**
+On the 9B, earlier builds of tether passed 16 of 24 (mean 0.82) and 15 of 24 (mean 0.81); the three tether bars are those runs and v0.2.18. v0.2.18 lost none of the tasks earlier builds passed, passed plan-5 and review-6 for the first time, and still stops on the tier 4 code tasks (pagination 4 of 6, the two-bug repair 2 of 3). Two runs of the same model differ by one task, which is the run-to-run spread to keep in mind: **a difference of one or two tasks is noise.**
 
 - **tether does not hold the 9B back.** It matches the bare loop, and the sandbox, the `--verify` gates and the session store come on top at no score cost. opencode, a full-featured agent, scored lower and took about six times as long on the same model.
 - **On the 4B the bare loop is ahead by three tasks.** That is at the edge of the noise and it is the one cell where tether looks worse. Treat it as an open question, not a verdict.

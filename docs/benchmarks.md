@@ -14,13 +14,15 @@ The **Polyglot-Python** set: the 34 Python exercises of Aider's [polyglot benchm
 
 ## Latest result
 
-`qwen3.5:9b` through Ollama (`num_ctx` 8192), all 34 exercises, 2 trials per exercise (68 runs):
+`qwen3.5:9b` through Ollama, default config, all 34 exercises, 2 trials per exercise (68 runs). `num_ctx` was 8192 up to v0.2.15 and 32768 (the default since v0.2.16) for v0.2.18:
 
-| | before v0.2.10 | v0.2.10 | v0.2.13 | v0.2.15 |
-|---|---|---|---|---|
-| Passes | 35 of 68 (51.5%) | 35 of 68 (51.5%) | 37 of 68 (54.4%) | 40 of 68 (58.8%) |
-| Mean score | 0.718 | 0.763 | 0.783 | 0.756 |
-| Runs killed by the wall cap | 11 | 14 | 13 | 12 |
+| | before v0.2.10 | v0.2.10 | v0.2.13 | v0.2.15 | v0.2.18 |
+|---|---|---|---|---|---|
+| Passes | 35 of 68 (51.5%) | 35 of 68 (51.5%) | 37 of 68 (54.4%) | 40 of 68 (58.8%) | 45 of 68 (66.2%) |
+| Mean score | 0.718 | 0.763 | 0.783 | 0.756 | 0.830 |
+| Runs killed by the wall cap | 11 | 14 | 13 | 12 | 17 |
+
+**v0.2.18** (the repair loop around failing tests, the 32k default context) passes 45 of 68, 5 more than v0.2.15, and is the first release whose gain clears the noise: the paired score delta is +0.074 with a 95% interval of +0.003 to +0.147, and 7 runs flipped to a pass against 2 the other way (sign test p = 0.18). The larger context and the harness changes arrived together, so the gain belongs to both. connect and hangman passed for the first time, poker in one trial; book-store lost its one pass. Runs take fewer steps (11.4 against 17.6) and fewer prompt tokens (64,500 against 75,400 per run, 110,000 against 141,000 tokens per pass), but longer (302 s against 260 s): of the 23 failures, 17 hit the 600 s wall cap and 6 were handed back. 25 of the 34 exercises passed at least once and 20 in both trials. Command: `uv run python bench/run.py --runners tether --models ollama/qwen3.5:9b --tasks polyglot --trials 2 --poly-verify --tether-bin <venv with tether-sdk==0.2.18>/bin/tether --out <dir>`.
 
 The change from v0.2.10 to v0.2.13 is inside the noise: the paired score delta is +0.020 with a 95% interval of -0.060 to +0.101, and 7 exercises flipped up against 5 down. The runs that still fail either use all 30 steps (18 of 31) or hit the 600 s wall cap (13 of 31), and 11 of the 34 exercises (bowling, connect, forth, hangman, poker, pov, react, scale-generator, sgf-parsing, transpose, wordy) did not pass in either trial. v0.2.15 (thinking capped per turn, a call cut by that cap asked again without thinking, short notes after a write or test run) passes 40 of 68, 3 more than v0.2.13, and the 68 runs take 295 minutes instead of 325. That is inside the noise as well: 7 runs flipped to a pass against 4 the other way (sign test p = 0.55) and the paired score delta is -0.026 (95% interval -0.093 to +0.041). Of the 28 failures, 16 were handed back stuck or out of steps and 12 hit the wall cap; the 11 exercises that passed in neither trial are the same as before, except that wordy now passes and rest-api does not. The [Coding Ladder](ladder/index.md) is the second yardstick: it shows where a model stops climbing instead of one pass rate. For Claude Haiku with and without tether, see the [Coding Ladder results](ladder/claude-haiku.md).
 

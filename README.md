@@ -24,15 +24,15 @@ Tether is built the other way round:
 
 ## How well does it work
 
-Tether answers to one number: how many real coding exercises a small local model finishes. On the Polyglot-Python set (Aider's 34 Python exercises, graded by each exercise's own tests), `qwen3.5:9b` through Ollama at an 8192-token context (v0.2.15; the default is now 32768), 2 trials each (68 runs):
+Tether answers to one number: how many real coding exercises a small local model finishes. On the Polyglot-Python set (Aider's 34 Python exercises, graded by each exercise's own tests), `qwen3.5:9b` through Ollama, default config, 2 trials each (68 runs). The context was 8192 tokens up to v0.2.15 and is 32768 (the default since v0.2.16) for v0.2.18:
 
-| | before v0.2.10 | v0.2.10 | v0.2.13 | v0.2.15 |
-|---|---|---|---|---|
-| Passes | 35 of 68 (51.5%) | 35 of 68 (51.5%) | 37 of 68 (54.4%) | 40 of 68 (58.8%) |
-| Mean score | 0.718 | 0.763 | 0.783 | 0.756 |
-| Runs killed by the wall cap | 11 | 14 | 13 | 12 |
+| | before v0.2.10 | v0.2.10 | v0.2.13 | v0.2.15 | v0.2.18 |
+|---|---|---|---|---|---|
+| Passes | 35 of 68 (51.5%) | 35 of 68 (51.5%) | 37 of 68 (54.4%) | 40 of 68 (58.8%) | 45 of 68 (66.2%) |
+| Mean score | 0.718 | 0.763 | 0.783 | 0.756 | 0.830 |
+| Runs killed by the wall cap | 11 | 14 | 13 | 12 | 17 |
 
-The target is 74% (50 of 68) by v0.4.0, so this is the number every change is ranked by. It is what qwen3.5:9b can already do: 25 of the 34 exercises have passed at least once from scratch, so the work is making each of them pass every run. For comparison, the best published harness for this model, [little-coder](https://github.com/itayinbarr/little-coder), reports 52.9% on the same 34 Python exercises (its own setup). v0.2.15 passes 3 more runs than v0.2.13, but that is inside the noise too (pass flips +7/-4, paired score delta -0.026, 95% interval -0.093 to +0.041). One run is noisy (about 0.1), so read the pass count and the failure breakdown, not one decimal. The second yardstick is the [Coding Ladder](https://igormcsouza.github.io/tether/ladder/): 24 tasks, 6 tiers of difficulty times write, bugfix, plan and review, which shows how far up a model climbs and what stops it. Method, how to reproduce both and fair-comparison rules: [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/).
+The target is 74% (50 of 68) by v0.4.0, so this is the number every change is ranked by. It is what qwen3.5:9b can already do: 25 of the 34 exercises have passed at least once from scratch, so the work is making each of them pass every run. For comparison, the best published harness for this model, [little-coder](https://github.com/itayinbarr/little-coder), reports 52.9% on the same 34 Python exercises (its own setup). v0.2.18 passes 5 more runs than v0.2.15, and this time the paired score delta clears the noise: +0.074, 95% interval +0.003 to +0.147 (pass flips +7/-2). It comes with the larger default context, so the gain belongs to both. connect and hangman passed for the first time; more runs now end at the wall cap (17, against 12) instead of running out of steps. One run is noisy (about 0.1), so read the pass count and the failure breakdown, not one decimal. The second yardstick is the [Coding Ladder](https://igormcsouza.github.io/tether/ladder/): 24 tasks, 6 tiers of difficulty times write, bugfix, plan and review, which shows how far up a model climbs and what stops it. Method, how to reproduce both and fair-comparison rules: [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/).
 
 ## How it works
 
