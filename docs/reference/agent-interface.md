@@ -45,7 +45,7 @@ Optional: `pip install "tether-sdk[mcp]"` (installs the official `mcp` SDK; core
 
 | Tool | Arguments |
 |------|-----------|
-| `tether_run` | `goal`, `model`, `skill`, `tools`, `verify[]`, `max_steps`, `context_tokens`, `fold_after`, `sandbox`, `no_network`, `output_schema`, `wait` (default true) |
+| `tether_run` | `goal`, `model`, `skill`, `tools`, `verify[]`, `max_steps`, `context_tokens`, `fold_after`, `sandbox`, `workspace`, `no_network`, `output_schema`, `wait` (default true) |
 | `tether_status` | `id` |
 | `tether_wait` | `ids[]`, `timeout` |
 | `tether_read` | `id`, `mode` = `full` \| `digest` \| `steps` |
@@ -55,3 +55,4 @@ Optional: `pip install "tether-sdk[mcp]"` (installs the official `mcp` SDK; core
 | `tether_query` | `id`, `query`, `top` |
 
 Security: sandboxes are always rooted at `--workspace` (default: the server's cwd). Callers can choose `read-only` or `no_network`, never widen.
+`workspace` (optional) must be an absolute existing directory inside the server workspace; anything else is rejected.

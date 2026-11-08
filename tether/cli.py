@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from tether import __version__, api
+from tether.diff import render_diff
 from tether.harness import Harness, PipelineResumeError
 from tether.progress import watch
 from tether.providers.base import parse_params
@@ -33,6 +34,7 @@ _KNOWN_SUBCOMMANDS = {
     "stats",
     "retro",
     "events",
+    "diff",
     "misses",
     "mcp",
     "_worker",
@@ -261,6 +263,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_retro.add_argument("--model", type=str, default=None, help="Model for the single LLM pass")
     p_retro.add_argument("--db", type=str, default=None)
 
+    # `tether diff`
+    p_diff = sub.add_parser("diff", help="Show what the session changed in its files")
+    p_diff.add_argument("session_id", help="Session ID")
+    p_diff.add_argument("--stat", action="store_true", help="Added/removed line counts per file")
+    p_diff.add_argument("--db", type=str, default=None)
+
     # `tether events`
     p_events = sub.add_parser("events", help="Print session turn events as JSONL")
     p_events.add_argument("session_id", help="Session ID")
@@ -302,6 +310,22 @@ def _finish(rec: SessionRecord, ns: argparse.Namespace) -> int:
         print(rec.result, file=sys.stderr)
     elif rec.result and not getattr(ns, "result_file", None):
         print(rec.result)
+    return code
+
+
+def _cmd_diff(ns: argparse.Namespace) -> int:
+    store = SQLiteStore(db_path=ns.db)
+    rec = store.get_session(ns.session_id)
+    if rec is None:
+        print(
+            f"Error: session `{ns.session_id}` not found. Check the id with `tether list`.",
+            file=sys.stderr,
+        )
+        return 1
+    text, code = render_diff(
+        store, ns.session_id, Path(rec.sandbox_config["workspace_root"]), ns.stat
+    )
+    print(text, end="", file=sys.stderr if code else sys.stdout)
     return code
 
 
@@ -435,6 +459,9 @@ async def _async_main(argv: list[str]) -> int:
 
         await serve(db_path=ns.db, workspace=Path(ns.workspace or Path.cwd()))
         return 0
+
+    if cmd == "diff":
+        return _cmd_diff(ns)
 
     store = SQLiteStore(db_path=getattr(ns, "db", None))
 
