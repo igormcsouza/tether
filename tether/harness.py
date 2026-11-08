@@ -1159,6 +1159,7 @@ class Harness:
                     step=step,
                     role="assistant",
                     content=resp.content,
+                    thinking=resp.thinking,
                     tool_cmd=cmd,
                     tool_stdin=stdin,
                     prompt_tokens=prompt_tokens,

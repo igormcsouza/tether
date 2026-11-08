@@ -35,6 +35,7 @@ THINK_BUDGET = 2560
 def _response(data: dict[str, Any]) -> ModelResponse:
     msg = data.get("message") or {}
     content = str(msg.get("content") or "").strip()
+    thinking = str(msg.get("thinking") or "").strip()
     prompt_tokens = int(data.get("prompt_eval_count") or 0)
     completion_tokens = int(data.get("eval_count") or 0)
 
@@ -53,6 +54,7 @@ def _response(data: dict[str, Any]) -> ModelResponse:
         action=action,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        thinking=thinking,
     )
 
 

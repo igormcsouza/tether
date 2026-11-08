@@ -101,6 +101,7 @@ tether read <session_id> [flags]
 |------|---------|
 | `--digest` | Show compact ~50-token digest card |
 | `--steps` | Show step-by-step work log |
+| `--thinking` | Show the stored model thinking per step (never sent back to the model) |
 | `--full` | Show the full final result (the default) |
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--json` | Machine-readable JSON output |

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `tether read <id> --thinking` prints the stored model thinking for each step. Thinking is kept for reading only and is never replayed to the model.
+
 ## v0.2.18 (2026-11-08)
 
 Small fixes from the v0.2.17 release check and the paasio labs: shell-style file writes work when only `edit` is enabled, `edit append` adds to a file instead of replacing it, a foreground run prints its session id at once, and a `cd` into a container path that does not exist no longer costs a step.
