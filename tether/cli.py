@@ -205,6 +205,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     read_mode.add_argument("--steps", action="store_true", help="Show step-by-step work log")
     read_mode.add_argument(
+        "--thinking", action="store_true", help="Show the stored model thinking per step"
+    )
+    read_mode.add_argument(
         "--full", action="store_true", help="Show the full final result (the default)"
     )
     p_read.add_argument("--db", type=str, default=None)
@@ -636,6 +639,17 @@ async def _async_main(argv: list[str]) -> int:
                     print(f"[step {t.step}] act({t.tool_cmd!r})")
                 else:
                     print(f"[step {t.step} {t.role}] {t.content[:200]}")
+            return 0
+        if ns.thinking:
+            thinking_turns = [t for t in store.get_turns(srec.id) if t.thinking]
+            if not thinking_turns:
+                print(
+                    f"no thinking recorded for session {srec.id}; "
+                    "use a thinking-capable model (e.g. a reasoning model) to record thinking"
+                )
+                return 0
+            for t in thinking_turns:
+                print(f"step {t.step}: {t.thinking}")
             return 0
         if ns.digest:
             print(store.get_session_digest(srec.id))

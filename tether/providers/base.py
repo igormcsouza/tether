@@ -36,6 +36,7 @@ class ModelResponse:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     hint: str = ""  # shown to the model instead of the generic reminder when it sent no usable call
+    thinking: str = ""  # reasoning text the model returned separately from content
     empty: bool = False
 
 

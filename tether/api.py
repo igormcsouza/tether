@@ -90,16 +90,17 @@ def events(store: SQLiteStore, session_id: str, after_turn: int = 0) -> list[dic
     for t in store.get_turns(session_id):
         if t.id <= after_turn:
             continue
-        out.append(
-            {
-                "turn": t.id,
-                "step": t.step,
-                "role": t.role,
-                "cmd": t.tool_cmd,
-                "event": t.event_type,
-                "text": (t.content or "")[:200],
-            }
-        )
+        ev: dict[str, Any] = {
+            "turn": t.id,
+            "step": t.step,
+            "role": t.role,
+            "cmd": t.tool_cmd,
+            "event": t.event_type,
+            "text": (t.content or "")[:200],
+        }
+        if t.thinking:
+            ev["thinking"] = t.thinking[:200]
+        out.append(ev)
     return out
 
 

@@ -63,6 +63,7 @@ class TurnRecord:
     completion_tokens: int = 0
     duration_ms: int = 0
     event_type: str = "ok"
+    thinking: str = ""
 
 
 @dataclass(slots=True)
@@ -291,6 +292,7 @@ class SQLiteStore:
                     completion_tokens INTEGER NOT NULL DEFAULT 0,
                     duration_ms INTEGER NOT NULL DEFAULT 0,
                     event_type TEXT NOT NULL DEFAULT 'ok',
+                    thinking TEXT NOT NULL DEFAULT '',
                     created_at REAL NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_turns_session ON turns(session_id, step);
@@ -357,6 +359,7 @@ class SQLiteStore:
                     "completion_tokens": "INTEGER NOT NULL DEFAULT 0",
                     "duration_ms": "INTEGER NOT NULL DEFAULT 0",
                     "event_type": "TEXT NOT NULL DEFAULT 'ok'",
+                    "thinking": "TEXT NOT NULL DEFAULT ''",
                 },
             )
 
@@ -455,6 +458,7 @@ class SQLiteStore:
             completion_tokens=int(row["completion_tokens"]),
             duration_ms=int(row["duration_ms"]),
             event_type=str(row["event_type"]),
+            thinking=str(row["thinking"] or ""),
         )
 
     def _reap_dead(self, rec: SessionRecord) -> SessionRecord:
@@ -590,15 +594,17 @@ class SQLiteStore:
         completion_tokens: int = 0,
         duration_ms: int = 0,
         event_type: str = "ok",
+        thinking: str = "",
     ) -> int:
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO turns (
                     session_id, step, role, content, tool_cmd, tool_stdin, obs_id,
-                    prompt_tokens, completion_tokens, duration_ms, event_type, created_at
+                    prompt_tokens, completion_tokens, duration_ms, event_type, thinking,
+                    created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -612,6 +618,7 @@ class SQLiteStore:
                     completion_tokens,
                     duration_ms,
                     event_type,
+                    thinking[:4000],
                     time.time(),
                 ),
             )

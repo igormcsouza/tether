@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+
+- `tether read <id> --thinking` prints the stored model thinking for each step. Thinking is kept for reading only and is never replayed to the model.
 ### Fixed
 
 - An empty model reply is retried. If the retry is empty too, the session stops instead of continuing with no output (#135).
