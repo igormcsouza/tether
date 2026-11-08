@@ -19,6 +19,7 @@ from tether import __version__, api
 from tether.harness import Harness
 from tether.sandbox import SandboxPolicy
 from tether.store import SQLiteStore
+from tether.worktree import WorktreeError
 
 _ID = {"type": "string", "description": "Session id (ses_...)"}
 
@@ -51,6 +52,8 @@ TOOLS: list[dict[str, Any]] = [
                 "type": "object",
                 "description": 'Model request params, e.g. {"temperature": 0, "think": false}',
             },
+            "worktree": {"type": "boolean", "description": "run in a git worktree; commit at stop"},
+            "worktree_from": {"type": "string", "description": "base ref for the worktree"},
             "wait": {"type": "boolean", "description": "default true"},
         },
         ["goal"],
@@ -163,12 +166,17 @@ class TetherMCP:
                 params=a.get("params"),
                 max_context_tokens=a.get("context_tokens"),
                 fold_observations_after=a.get("fold_after"),
+                worktree=bool(a.get("worktree")),
+                worktree_from=a.get("worktree_from"),
             )
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
-        if a.get("wait", True):
-            return api.session_dict(await harness.run(a["goal"]))
-        return {"v": api.SCHEMA_VERSION, "id": harness.spawn(a["goal"])}
+        try:
+            if a.get("wait", True):
+                return api.session_dict(await harness.run(a["goal"]))
+            return {"v": api.SCHEMA_VERSION, "id": harness.spawn(a["goal"])}
+        except WorktreeError as exc:
+            raise ToolError(str(exc)) from exc
 
     async def _wait(self, ids: list[str], timeout: float) -> Any:
         done = ("COMPLETED", "FAILED", "WAITING_INPUT")

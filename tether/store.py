@@ -715,6 +715,13 @@ class SQLiteStore:
                 for r in rows
             }
 
+    def set_sandbox_config(self, session_id: str, cfg: dict[str, Any]) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE sessions SET sandbox_json = ? WHERE id = ?",
+                (json.dumps(cfg), session_id),
+            )
+
     def set_pin(self, session_id: str, key: str, value: str) -> None:
         with self._connect() as conn:
             conn.execute(

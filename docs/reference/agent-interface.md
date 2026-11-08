@@ -31,6 +31,8 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 
 In plain mode the failure reason goes to **stderr**; stdout only ever holds a deliverable. `wait` returns the highest code among its sessions.
 
+With `tether run --worktree`, the session JSON carries `worktree` (the worktree path), `branch` (`tether/<id>`) and `commit` (the full sha, or `null` when nothing changed) at the top level of the session JSON. The MCP run tool accepts a `worktree` argument to request the same isolation; it cannot pass a setup command.
+
 ## Other flags
 
 - `tether stop <id>`: terminate a running detached session (SIGTERM to its worker); the session ends `FAILED` as `Stopped by user.`

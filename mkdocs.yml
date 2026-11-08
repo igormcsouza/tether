@@ -97,6 +97,7 @@ nav:
       - Use tether from Claude Code, Codex or Cursor: guides/use-tether-from-your-agent.md
       - A pipeline where each stage has its own job: guides/a-pipeline-with-checks.md
       - Give the model a tool of your own: guides/add-your-own-tool.md
+      - Run a session on its own branch: guides/own-branch.md
       - tutorial/index.md
       - CLI and Headless Sessions: tutorial/cli-and-headless.md
       - Python SDK and Custom Tools: tutorial/sdk-and-custom-tools.md

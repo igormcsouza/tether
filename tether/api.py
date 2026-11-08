@@ -69,11 +69,25 @@ def session_dict(rec: SessionRecord, *, include_result: bool = True) -> dict[str
         "duration_ms": int(max(0.0, rec.updated_at - rec.created_at) * 1000),
         "failure": fail,
         "exit_code": exit_code(rec),
+        "worktree": rec.sandbox_config.get("worktree"),
+        "branch": rec.sandbox_config.get("branch"),
+        "commit": rec.sandbox_config.get("commit"),
     }
     if include_result:
         # A failure reason is not a deliverable: it lives under `failure` only.
         out["result"] = None if fail else rec.result
     return out
+
+
+def worktree_line(rec: SessionRecord) -> str | None:
+    """Text status line for a worktree session, or None when there is no worktree."""
+    cfg = rec.sandbox_config
+    if not cfg.get("worktree"):
+        return None
+    branch = cfg.get("branch") or f"tether/{rec.id}"
+    commit = cfg.get("commit")
+    state = f"({str(commit)[:7]})" if commit else "(no changes)"
+    return f"branch {branch} {state} at {cfg['worktree']}"
 
 
 def digest_dict(store: SQLiteStore, rec: SessionRecord) -> dict[str, Any]:
