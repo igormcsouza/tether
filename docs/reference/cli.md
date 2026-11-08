@@ -32,6 +32,7 @@ tether run "your goal here" [flags]
 | `--sandbox` | Deterministic sandbox profile |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--max-steps` | Maximum reasoning steps |
+| `--max-tokens` | Token budget (prompt + completion); pauses as WAITING_INPUT (exit 2) when reached |
 | `--context-tokens` | Context token budget (default 32768) |
 | `--fold-after` | Fold observations older than N turns (default 2), once the history fills half the context; raise it for long tasks |
 | `--db` | SQLite DB path (default .tether/tether.db) |
