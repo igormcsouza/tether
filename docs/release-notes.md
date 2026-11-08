@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `--max-tokens N` (CLI), `Harness(max_tokens=)` and the MCP `tether_run` argument `max_tokens` set a token budget (prompt + completion). When the budget is reached the session pauses as WAITING_INPUT (exit 2) and `send` adds the same amount again as a grant. Sessions without a budget are unchanged.
+
 ## v0.2.18 (2026-11-08)
 
 Small fixes from the v0.2.17 release check and the paasio labs: shell-style file writes work when only `edit` is enabled, `edit append` adds to a file instead of replacing it, a foreground run prints its session id at once, and a `cd` into a container path that does not exist no longer costs a step.
