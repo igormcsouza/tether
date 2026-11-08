@@ -16,6 +16,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from tether.context import (
     ACT_TOOL_SCHEMA,
     DEFAULT_CONTEXT_TOKENS,
@@ -315,6 +317,13 @@ def spawn_detached_worker(db_path: Path, session_id: str) -> int:
     return proc.pid
 
 
+class PipelineResumeError(ValueError):
+    """A pipeline session cannot be resumed; the CLI reports it as a usage error."""
+
+
+_STAGE_TURN_RE = re.compile(r"^stage (.+) \(([^()]+)\)$")
+
+
 def _tokens_used(rec: SessionRecord) -> int:
     return rec.total_prompt_tokens + rec.total_completion_tokens
 
@@ -549,6 +558,8 @@ class Harness:
         root_sandbox = self.sandbox.attenuate(resolved.sandbox)
         sbox_dict = root_sandbox.to_dict()
         sbox_dict["pipeline"] = resolved.to_dict()
+        if isinstance(pipeline, Path):
+            sbox_dict["pipeline_source"] = str(pipeline.resolve())
         # The row's model may list several; keep the default for model-less stages.
         sbox_dict["pipeline_model"] = self.model
         models: list[str] = []
@@ -590,6 +601,49 @@ class Harness:
         """Execute a deterministic multi-stage pipeline with isolated stage sessions."""
         rec = self.create_pipeline_session(pipeline, goal, parent_id=parent_id)
         return await self.execute_session(rec.id)
+
+    async def resume_pipeline(self, session_id: str) -> SessionRecord:
+        """Re-run a failed or waiting pipeline from its first stage that is not COMPLETED."""
+        rec = self.store.get_session(session_id)
+        if rec is None:
+            raise PipelineResumeError(
+                f"pipeline session `{session_id}` not found. "
+                "Use the id printed by `tether pipeline --headless`."
+            )
+        raw_pipe = rec.sandbox_config.get("pipeline")
+        if not isinstance(raw_pipe, dict):
+            raise PipelineResumeError(f"session `{session_id}` is not a pipeline.")
+        if rec.status == "RUNNING":
+            raise PipelineResumeError(
+                f"pipeline `{session_id}` is RUNNING (pid {rec.pid}). "
+                "Wait for it to finish, then resume."
+            )
+        if rec.status == "COMPLETED":
+            return rec
+        try:
+            pipeline = Pipeline.from_dict(raw_pipe)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PipelineResumeError(
+                f"cannot resume pipeline `{session_id}`: stored pipeline is invalid: {exc}"
+            ) from exc
+        source = rec.sandbox_config.get("pipeline_source")
+        reason = ""
+        if not source:
+            reason = "no stored manifest path (the run predates --resume)"
+        else:
+            try:
+                Pipeline.load(str(source))
+            except FileNotFoundError:
+                reason = f"manifest `{source}` not found"
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                reason = f"manifest `{source}` is invalid: {exc}"
+        if reason:
+            raise PipelineResumeError(
+                f"cannot resume pipeline `{session_id}`: {reason}. "
+                "Re-run with `tether pipeline <file> <goal>`."
+            )
+        prefix = self._completed_prefix(rec, pipeline)
+        return await self._execute_pipeline_session(rec, prior=prefix)
 
     def create_session(self, goal: str, *, parent_id: str | None = None) -> SessionRecord:
         """Create a persisted session row in SQLite without executing it yet."""
@@ -743,7 +797,29 @@ class Harness:
                 return vcmd, code, compact_out, is_error
         return None
 
-    async def _execute_pipeline_session(self, rec: SessionRecord) -> SessionRecord:
+    def _completed_prefix(
+        self, rec: SessionRecord, pipeline: Pipeline
+    ) -> list[tuple[str, SessionRecord]]:
+        """Return the leading stages whose latest tool turn recorded a COMPLETED child session."""
+        done: dict[str, SessionRecord] = {}
+        for turn in self.store.get_turns(rec.id):
+            match = _STAGE_TURN_RE.match(turn.tool_cmd or "")
+            if match is None or turn.event_type != "completed":
+                continue
+            child = self.store.get_session(match.group(2))
+            if child is not None:
+                done[match.group(1)] = child
+        prefix: list[tuple[str, SessionRecord]] = []
+        for stage in pipeline.stages:
+            child = done.get(stage.id)
+            if child is None:
+                break
+            prefix.append((stage.id, child))
+        return prefix
+
+    async def _execute_pipeline_session(
+        self, rec: SessionRecord, prior: list[tuple[str, SessionRecord]] | None = None
+    ) -> SessionRecord:
         """Execute a deterministic multi-stage pipeline with isolated child sessions."""
         raw_pipe = rec.sandbox_config.get("pipeline")
         assert isinstance(raw_pipe, dict)
@@ -751,9 +827,10 @@ class Harness:
         root_sandbox = SandboxPolicy.from_dict(rec.sandbox_config)
 
         self.store.update_session(rec.id, status="RUNNING", pid=os.getpid())
-        completed_stages: list[tuple[str, SessionRecord]] = []
+        completed_stages = list(prior or [])
+        skipped = len(completed_stages)
 
-        for idx, stage in enumerate(pipeline.stages, start=1):
+        for idx, stage in enumerate(pipeline.stages[skipped:], start=skipped + 1):
             stage_sandbox = root_sandbox.attenuate(stage.sandbox)
             skill_obj: Skill | None = None
             if stage.skill:

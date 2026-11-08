@@ -73,6 +73,14 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 tether pipeline pipelines/research.yaml "Research topic: Rust async patterns" --json
 ```
 
+### Resume a failed pipeline
+
+```bash
+tether pipeline --resume <pipeline_session_id> [--json] [--result-file F]
+```
+
+Re-runs the first stage that is not `COMPLETED` (a failed or waiting one) and every stage after it; earlier completed stages are reused. The root sandbox and model come from the stored run, so `--model`, `--sandbox`, `--no-network`, `--max-steps`, `--context-tokens` and `--fold-after` are ignored. A bad flag combination, an unknown id, a `RUNNING` pipeline, or a missing or invalid manifest exits `1`; a `COMPLETED` pipeline prints a note and exits `0`. The stage list is read from the stored run, but the manifest must still exist and parse at its original path. Runs made before this change have no stored path and cannot be resumed.
+
 ## tether status
 
 Show the current state of a session (running, paused, completed, failed). Use this to check progress without reading the full event log.
