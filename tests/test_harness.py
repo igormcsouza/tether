@@ -331,8 +331,8 @@ async def test_verification_gate_circuit_breaker_and_skill_verify(tmp_path: Path
 
 @pytest.mark.parametrize(
     "gate",
-    ["sudo rm -rf /", "tether_no_such_cmd_xyz", "exit 127", "exit 124"],
-    ids=["sandbox_violation", "not_found", "127", "timeout"],
+    ["sudo rm -rf /", "exit 127", "exit 124"],
+    ids=["sandbox_violation", "127", "timeout"],
 )
 async def test_broken_gate_fails_immediately_as_gate_error(tmp_path: Path, gate: str) -> None:
     """A gate that errors (not fails) ends the session at once with gate_error and exit 3."""
@@ -359,6 +359,26 @@ async def test_broken_gate_fails_immediately_as_gate_error(tmp_path: Path, gate:
     turns = harness.store.get_turns(session.id)
     assert [t.event_type for t in turns if t.role == "assistant"] == ["gate_error"]
     assert "misconfigured, not your work" in turns[-1].content
+
+
+async def test_missing_gate_program_fails_at_precheck(tmp_path: Path) -> None:
+    """A gate whose program does not exist fails before the first model call (#82)."""
+    from tether.sandbox import SandboxPolicy
+
+    provider = FakeScriptedProvider(
+        [ModelResponse(content="", action=ActionCall(cmd="done", stdin="x"))] * 3
+    )
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        verify=["tether_no_such_cmd_xyz"],
+        max_verify_failures=3,
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+        provider=provider,
+    )
+    session = await harness.run("Missing program")
+    assert session.status == "FAILED"
+    assert session.step_count == 0
+    assert "Verification gate misconfigured" in session.result
 
 
 async def test_normal_nonzero_gate_still_retries_as_gate_fail(tmp_path: Path) -> None:

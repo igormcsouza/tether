@@ -32,12 +32,16 @@ tether run "your goal here" [flags]
 | `--sandbox` | Deterministic sandbox profile |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--max-steps` | Maximum reasoning steps |
+| `--max-tokens` | Token budget (prompt + completion); pauses as WAITING_INPUT (exit 2) when reached |
 | `--context-tokens` | Context token budget (default 32768) |
 | `--fold-after` | Fold observations older than N turns (default 2), once the history fills half the context; raise it for long tasks |
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--param` | Model request parameter, repeatable (e.g., `--param temperature=0 --param think=false`) |
 | `--output-schema` | JSON Schema file; the `done` deliverable must validate or `done` is rejected |
 | `--result-file` | Write the deliverable here, not to stdout |
+| `--worktree` | Run in a git worktree on branch `tether/<id>`; the run commits its changes there when it stops |
+| `--worktree-from` | Base ref for `--worktree` (default HEAD) |
+| `--setup` | Shell command run in the worktree before the model starts; runs outside the sandbox, not offered over MCP |
 | `--verbose`, `-v` | Print one line per step to stderr, e.g. `[step 3] edit view foo.py (2.1s, 812 tok)` |
 | `--json` | Machine-readable JSON output |
 
@@ -72,6 +76,14 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 tether pipeline pipelines/research.yaml "Research topic: Rust async patterns" --json
 ```
 
+### Resume a failed pipeline
+
+```bash
+tether pipeline --resume <pipeline_session_id> [--json] [--result-file F]
+```
+
+Re-runs the first stage that is not `COMPLETED` (a failed or waiting one) and every stage after it; earlier completed stages are reused. The root sandbox and model come from the stored run, so `--model`, `--sandbox`, `--no-network`, `--max-steps`, `--context-tokens` and `--fold-after` are ignored. A bad flag combination, an unknown id, a `RUNNING` pipeline, or a missing or invalid manifest exits `1`; a `COMPLETED` pipeline prints a note and exits `0`. The stage list is read from the stored run, but the manifest must still exist and parse at its original path. Runs made before this change have no stored path and cannot be resumed.
+
 ## tether status
 
 Show the current state of a session (running, paused, completed, failed). Use this to check progress without reading the full event log.
@@ -101,6 +113,7 @@ tether read <session_id> [flags]
 |------|---------|
 | `--digest` | Show compact ~50-token digest card |
 | `--steps` | Show step-by-step work log |
+| `--thinking` | Show the stored model thinking per step (never sent back to the model) |
 | `--full` | Show the full final result (the default) |
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--json` | Machine-readable JSON output |
@@ -252,6 +265,23 @@ tether events <session_id> [flags]
 tether events ses_abc123 --follow
 ```
 
+## tether diff
+
+Show what a session changed in its files, against the first bytes the session saw. New files show as added from empty. Current contents are read from disk.
+
+```bash
+tether diff <session_id> [flags]
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--stat` | Added/removed line counts per file |
+| `--db` | SQLite DB path (default .tether/tether.db) |
+
+```bash
+tether diff ses_abc123 --stat
+```
+
 ## tether misses
 
 Show tool calls that failed or returned errors across sessions. Use this to debug recurring tool failures.
@@ -289,6 +319,23 @@ tether export ses_abc123 --out session.md
 
 
 
+## tether doctor
+
+Check Ollama is reachable, the model is pulled, bwrap is installed, providers.yaml is valid, and the session DB opens. Shows what to fix if anything is broken.
+
+```bash
+tether doctor [flags]
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--model` | Model to check (default ollama/qwen3.5:9b) |
+| `--db` | SQLite DB path (default .tether/tether.db) |
+
+```bash
+tether doctor --model ollama/qwen3.5:9b
+```
+
 ## tether mcp
 
 Start an MCP (Model Context Protocol) server that exposes tether sessions as tools. Use this to let other agents or IDEs invoke tether runs.
@@ -305,3 +352,31 @@ tether mcp [flags]
 ```bash
 tether mcp --workspace /path/to/project
 ```
+## tether replay
+
+Re-run a session's goal with its saved setup and compare the two runs.
+
+```
+tether replay SESSION_ID [--model M] [--max-steps N] [--db PATH] [--json]
+```
+
+- The replay runs in the current directory with the original's tools, skill, sandbox profile and network, output_schema and params. There is no workspace copy, so `cd` to the right place first.
+- Verify gates are not stored, so a replay runs without them.
+- The replay is recorded as a child of the original (`parent_id`), so `tether list` shows it under the original.
+- `--model` and `--max-steps` override the original's values. `--max-steps` must be at least 1.
+- `--db` points at the database file, as for the other subcommands.
+- Exit `0` once the comparison prints, even if the replay FAILED (the status row shows it). Exit `1` if the session is unknown, still RUNNING or WAITING_INPUT, or the harness raises.
+
+Text output:
+
+```
+replay of ses_abc12345 -> ses_def67890
+                original   replay
+model           fake/a     fake/a
+status          COMPLETED  COMPLETED
+steps           1          1
+tokens          120        118
+wall_s (approx) 0.4        0.3
+```
+
+`--json` prints `{"original": {...}, "replay": {...}}`, where each row has `id`, `model`, `status`, `steps`, `tokens` and `wall_s`.
