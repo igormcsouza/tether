@@ -270,6 +270,24 @@ tether misses [session_id] [flags]
 ```bash
 tether misses --limit 20 --json
 ```
+## tether export
+
+Print a session as a Markdown transcript: goal, steps with commands and outputs, result.
+
+```bash
+tether export <session_id> [flags]
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--db` | SQLite DB path (default .tether/tether.db) |
+| `--out` | Write to this file instead of stdout |
+
+```bash
+tether export ses_abc123 --out session.md
+```
+
+
 
 ## tether mcp
 

@@ -35,6 +35,7 @@ _KNOWN_SUBCOMMANDS = {
     "events",
     "misses",
     "mcp",
+    "export",
     "_worker",
 }
 
@@ -268,6 +269,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_mcp.add_argument("--db", type=str, default=None)
     p_mcp.add_argument(
         "--workspace", type=str, default=None, help="Workspace root (default: current directory)"
+    )
+
+    # `tether export`
+    p_export = sub.add_parser("export", help="Print a session as a Markdown transcript")
+    p_export.add_argument("session_id")
+    p_export.add_argument("--db", type=str, default=None, help="SQLite DB path")
+    p_export.add_argument(
+        "--out", type=str, default=None, help="Write to this file instead of stdout"
     )
 
     # Internal `_worker`
@@ -560,6 +569,21 @@ async def _async_main(argv: list[str]) -> int:
             print(json.dumps(api.session_dict(srec)))
         else:
             print(f"[{srec.id} {srec.status}]")
+        return 0
+
+    if cmd == "export":
+        from tether.export import to_markdown
+
+        try:
+            text = to_markdown(store, ns.session_id)
+        except KeyError:
+            print(f"Error: session `{ns.session_id}` not found.", file=sys.stderr)
+            return 1
+        if ns.out:
+            Path(ns.out).write_text(text, encoding="utf-8")
+            print(ns.out)
+        else:
+            print(text)
         return 0
 
     if cmd == "list":
