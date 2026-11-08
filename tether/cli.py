@@ -344,7 +344,14 @@ async def _async_main(argv: list[str]) -> int:
         parser.print_help()
         return 0
 
-    ns = parser.parse_args(effective_argv)
+    if effective_argv[:1] == ["pipeline"]:
+        # Intermixed parsing lets flags such as --resume/--db sit between the optional
+        # positionals (pipeline_file, goal) on every supported Python version.
+        sub_action = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        ns = sub_action.choices["pipeline"].parse_intermixed_args(effective_argv[1:])
+        ns.subcommand = "pipeline"
+    else:
+        ns = parser.parse_args(effective_argv)
     cmd = ns.subcommand
 
     if cmd == "_worker":
