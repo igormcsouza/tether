@@ -39,6 +39,9 @@ tether run "your goal here" [flags]
 | `--param` | Model request parameter, repeatable (e.g., `--param temperature=0 --param think=false`) |
 | `--output-schema` | JSON Schema file; the `done` deliverable must validate or `done` is rejected |
 | `--result-file` | Write the deliverable here, not to stdout |
+| `--worktree` | Run in a git worktree on branch `tether/<id>`; the run commits its changes there when it stops |
+| `--worktree-from` | Base ref for `--worktree` (default HEAD) |
+| `--setup` | Shell command run in the worktree before the model starts; runs outside the sandbox, not offered over MCP |
 | `--verbose`, `-v` | Print one line per step to stderr, e.g. `[step 3] edit view foo.py (2.1s, 812 tok)` |
 | `--json` | Machine-readable JSON output |
 

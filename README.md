@@ -71,6 +71,7 @@ The research behind it: Maia et al. (2026) on probabilistic core and determinist
 uv tool install tether-sdk            # or: pip install tether-sdk
 ollama pull qwen3.5:9b                # any model works; see the providers page
 tether run --model ollama/qwen3.5:9b --tools bash,edit "create hello.txt containing hi"
+tether run --worktree --setup "uv sync" --verify "uv run pytest -q" "fix the failing test"
 ```
 
 An empty Ollama reply is resent once, unchanged; if three empty replies come in a row, the session stops and suggests `think=false`. See the [providers page](https://igormcsouza.github.io/tether/reference/providers/).

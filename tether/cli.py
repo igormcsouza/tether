@@ -20,6 +20,7 @@ from tether.progress import watch
 from tether.providers.base import parse_params
 from tether.sandbox import SandboxPolicy
 from tether.store import SessionRecord, SQLiteStore
+from tether.worktree import WorktreeError
 
 _KNOWN_SUBCOMMANDS = {
     "run",
@@ -124,6 +125,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument(
         "-v", "--verbose", action="store_true", help="Print one line per step to stderr"
     )
+    p_run.add_argument(
+        "--worktree", action="store_true", help="Run in a git worktree on tether/<id>"
+    )
+    p_run.add_argument("--worktree-from", help="Base ref for --worktree (default HEAD)")
+    p_run.add_argument("--setup", help="Shell command run in the worktree before the model starts")
     _add_json(p_run)
     p_run.add_argument("goal", nargs="+", help="Task goal or instruction")
 
@@ -450,6 +456,9 @@ async def _async_main(argv: list[str]) -> int:
 
     if cmd == "run":
         goal = " ".join(ns.goal).strip()
+        if not ns.worktree and (ns.setup or ns.worktree_from):
+            print("Error: --setup and --worktree-from need --worktree", file=sys.stderr)
+            return api.EXIT_USAGE
         sandbox = SandboxPolicy(
             profile=ns.sandbox, workspace_root=Path.cwd(), network=not ns.no_network
         )
@@ -468,15 +477,26 @@ async def _async_main(argv: list[str]) -> int:
                 params=parse_params(ns.param),
                 max_context_tokens=ns.context_tokens,
                 fold_observations_after=ns.fold_after,
+                worktree=ns.worktree,
+                worktree_from=ns.worktree_from,
+                setup=ns.setup,
             )
         except (OSError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
         if ns.headless:
-            sid = harness.spawn(goal)
+            try:
+                sid = harness.spawn(goal)
+            except WorktreeError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return api.EXIT_USAGE
             print(json.dumps({"v": api.SCHEMA_VERSION, "id": sid}) if ns.json else sid)
             return 0
-        rec = harness.create_session(goal)
+        try:
+            rec = harness.create_session(goal)
+        except WorktreeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         # #90: a caller that kills a foreground run on its own timeout still has the id
         print(f"session {rec.id}", file=sys.stderr, flush=True)
         watcher = asyncio.create_task(
@@ -617,6 +637,9 @@ async def _async_main(argv: list[str]) -> int:
             f"{srec.id:<14} {srec.status:<13} {srec.model:<22} "
             f"{srec.step_count}/{srec.max_steps:<4} {srec.peak_tokens:<9} {last_cmd}"
         )
+        wt_line = api.worktree_line(srec)
+        if wt_line:
+            print(wt_line)
         return 0
 
     if cmd == "read":
@@ -767,11 +790,12 @@ async def _async_main(argv: list[str]) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     code = asyncio.run(_async_main(args))
     if argv is None:
         raise SystemExit(code)
+    return code
 
 
 if __name__ == "__main__":  # pragma: no cover

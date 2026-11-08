@@ -10,6 +10,7 @@ import subprocess
 import sys
 import time
 import traceback
+import uuid
 from collections import Counter
 from collections.abc import Callable
 from contextlib import suppress
@@ -58,6 +59,7 @@ from tether.unchanged import (
     unchanged_note,
     whole_file_targets,
 )
+from tether.worktree import commit_all, create_worktree, repo_root, run_setup
 
 
 def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
@@ -359,6 +361,9 @@ class Harness:
         worker_spawner: Callable[[str], int | None] | None = None,
         output_schema: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        worktree: bool = False,
+        worktree_from: str | None = None,
+        setup: str | None = None,
     ) -> None:
         if max_tokens is not None and max_tokens <= 0:
             raise ValueError(f"--max-tokens must be a positive integer (got {max_tokens}).")
@@ -366,6 +371,9 @@ class Harness:
         self.store = SQLiteStore(db_path=db_path)
         self.sandbox = sandbox or SandboxPolicy()
         self.max_steps = max_steps
+        self.worktree = worktree
+        self.worktree_from = worktree_from
+        self.setup = setup
         self.max_tokens = max_tokens
         self.max_verify_failures = max_verify_failures
         declared: dict[str, Any] = {}
@@ -652,7 +660,14 @@ class Harness:
             sbox_dict["output_schema"] = self.output_schema
         if self.params:
             sbox_dict["params"] = self.params
-        return self.store.create_session(
+        session_id: str | None = None
+        if self.worktree:
+            session_id = f"ses_{uuid.uuid4().hex[:8]}"
+            path, branch = create_worktree(repo_root(Path.cwd()), session_id, self.worktree_from)
+            sbox_dict.update(
+                worktree=str(path), branch=branch, commit=None, workspace_root=str(path)
+            )
+        rec = self.store.create_session(
             goal=goal,
             model=self.model,
             skill=self.skill_name,
@@ -660,9 +675,18 @@ class Harness:
             sandbox_config=sbox_dict,
             parent_id=parent_id,
             max_steps=self.max_steps,
+            session_id=session_id,
             max_tokens=self.max_tokens,
             token_grant=self.max_tokens,
         )
+        if self.worktree and self.setup:
+            error = run_setup(path, self.setup)
+            if error:
+                sbox_dict["setup_failed"] = True
+                self.store.set_sandbox_config(rec.id, sbox_dict)
+                self.store.update_session(rec.id, status="FAILED", result=error)
+                return self.store.get_session(rec.id) or rec
+        return rec
 
     @classmethod
     def from_session(
@@ -964,6 +988,30 @@ class Harness:
         return done_root
 
     async def execute_session(self, session_id: str) -> SessionRecord:
+        """Run a session. Worktree sessions are committed whenever they stop."""
+        rec = self.store.get_session(session_id)
+        if rec is not None and rec.sandbox_config.get("setup_failed"):
+            return rec
+        out = await self._execute_session_body(session_id)
+        if "worktree" not in out.sandbox_config or out.status not in (
+            "COMPLETED",
+            "FAILED",
+            "WAITING_INPUT",
+        ):
+            return out
+        cfg = dict(out.sandbox_config)
+        try:
+            cfg["commit"] = commit_all(Path(str(cfg["worktree"])), session_id, out.goal)
+        except Exception as exc:
+            cfg["commit"] = None
+            self.store.set_sandbox_config(session_id, cfg)
+            note = f"Commit failed: {exc}"
+            self.store.update_session(session_id, result=f"{out.result or ''}\n\n{note}".strip())
+            return self.store.get_session(session_id) or out
+        self.store.set_sandbox_config(session_id, cfg)
+        return self.store.get_session(session_id) or out
+
+    async def _execute_session_body(self, session_id: str) -> SessionRecord:
         """Execute the bounded agent loop for a persisted session in SQLite."""
         rec = self.store.get_session(session_id)
         if not rec:

@@ -110,6 +110,7 @@ tether/
 ├── decorator.py         # `@tool` introspection: converts Python type hints + docstrings to CLI specs
 ├── context.py           # State Plane: ContextAssembler, EphemeralFolder, token estimator
 ├── trace.py             # Runtime trace of the smallest failing test (calls, arguments, results)
+├── worktree.py          # Git worktrees for `tether run --worktree` (create, setup, commit; only harness code runs git)
 ├── skills.py            # Skill loader: Markdown + YAML frontmatter + optional sibling `tools.py` (its tools must be listed in `tools:`)
 ├── providers/
 │   ├── base.py          # Abstract async ModelProvider protocol (`generate(messages, tools)`)
