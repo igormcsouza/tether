@@ -30,6 +30,7 @@ from tether.context import (
     restart_message,
 )
 from tether.decorator import ToolSpec, build_tool_spec
+from tether.gates import precheck as gates_precheck
 from tether.multiplexer import Multiplexer, normalize_cmd
 from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
 from tether.providers import ModelProvider, resolve_provider
@@ -865,6 +866,24 @@ class Harness:
         ]:
             if sv not in verify_commands:
                 verify_commands.append(sv)
+
+        precheck_result = gates_precheck(verify_commands, sandbox)
+        if precheck_result is not None:
+            self.store.add_turn(
+                session_id=session_id,
+                step=rec.step_count,
+                role="tool",
+                content=precheck_result,
+                event_type="gate_error",
+            )
+            self.store.update_session(
+                session_id,
+                status="FAILED",
+                result=f"Verification gate misconfigured: {precheck_result}",
+            )
+            failed = self.store.get_session(session_id)
+            assert failed is not None
+            return failed
 
         output_schema = rec.sandbox_config.get("output_schema") or None
 
