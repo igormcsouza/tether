@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## v0.2.18 (2026-11-08)
+
+Small fixes from the v0.2.17 release check and the paasio labs: shell-style file writes work when only `edit` is enabled, `edit append` adds to a file instead of replacing it, a foreground run prints its session id at once, and a `cd` into a container path that does not exist no longer costs a step.
+
 ### Added
 
 - `edit append <path>` adds `stdin` to the end of a file (created if missing, with a newline added when the file does not end with one). Small models assumed `edit write` appends: gemma4:e4b wrote a plan module by module and kept only the last one. The `edit` help now says `write replaces the file` and stays within 59 tokens; with `bash` off, `echo t >> f` runs as `edit append f` (#34).
