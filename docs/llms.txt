@@ -32,7 +32,7 @@
 - [Glossary](https://igormcsouza.github.io/tether/glossary/): the terms used across the docs.
 
 ## Reference
-- [CLI](https://igormcsouza.github.io/tether/reference/cli/): every subcommand, flag and exit code.
+- [CLI](https://igormcsouza.github.io/tether/reference/cli/): every subcommand, flag and exit code, including `doctor`, `diff`, `export`, `replay`, `--max-tokens`, `--worktree` and `pipeline --resume`.
 - [Model providers](https://igormcsouza.github.io/tether/reference/providers/): built-in prefixes, providers.yaml, Python providers.
 - [Agent interface](https://igormcsouza.github.io/tether/reference/agent-interface/): JSON shape, exit codes, MCP tools.
 - [Harness and CLI (API)](https://igormcsouza.github.io/tether/reference/harness/)

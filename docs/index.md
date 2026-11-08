@@ -19,6 +19,8 @@ Most agent frameworks drown small models in 3,000–8,000 tokens of nested JSON 
 |---|---|
 | Have a small local model fix a failing test | [Fix a failing test](guides/fix-a-failing-test.md) |
 | Delegate work from Claude Code, Codex or Cursor | [Use tether from your agent](guides/use-tether-from-your-agent.md) |
+| Check my setup before the first run | `tether doctor` in the [CLI reference](reference/cli.md) |
+| Let a session work on its own branch | [Run a session on its own branch](guides/own-branch.md) |
 | Run a multi-stage job with checks | [A pipeline where each stage has its own job](guides/a-pipeline-with-checks.md) |
 | Give the model my own function | [Give the model a tool of your own](guides/add-your-own-tool.md) |
 | Look up a command or flag | [CLI reference](reference/cli.md) |
