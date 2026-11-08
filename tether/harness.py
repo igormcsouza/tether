@@ -49,7 +49,13 @@ from tether.tools import (
     make_web_tool,
 )
 from tether.trace import NEAR_PASS, failing_test_id, runtime_trace, smallest_failing
-from tether.unchanged import small_change_note, snapshot, unchanged_note, whole_file_targets
+from tether.unchanged import (
+    missing_targets,
+    small_change_note,
+    snapshot,
+    unchanged_note,
+    whole_file_targets,
+)
 
 
 def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
@@ -1314,7 +1320,13 @@ class Harness:
                     with suppress(OSError):
                         path = Path(sandbox.workspace_root) / rel
                         if path.stat().st_mtime < rec.created_at:
-                            originals.setdefault(os.path.normpath(rel), data)
+                            key = os.path.normpath(rel)
+                            if key not in originals:
+                                originals[key] = data
+                                self.store.record_snapshot(session_id, key, data)
+                # a file the command creates has no bytes yet: its snapshot is NULL
+                for rel in missing_targets(cmd, Path(sandbox.workspace_root)):
+                    self.store.record_snapshot(session_id, os.path.normpath(rel), None)
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)

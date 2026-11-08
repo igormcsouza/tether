@@ -319,6 +319,13 @@ class SQLiteStore:
                     created_at REAL NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_inbox_session ON inbox(session_id, consumed);
+                CREATE TABLE IF NOT EXISTS file_snapshots (
+                    session_id TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    content BLOB,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (session_id, path)
+                );
 
                 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                     session_id UNINDEXED,
@@ -535,6 +542,24 @@ class SQLiteStore:
             )
         if result is not None:
             self.index_text(session_id, "result", "final", result)
+
+    def record_snapshot(self, session_id: str, path: str, content: bytes | None) -> bool:
+        # first bytes seen for this path in this session win; None means the file did not exist
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO file_snapshots (session_id, path, content, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (session_id, path, content, time.time()),
+            )
+        return cur.rowcount == 1
+
+    def list_snapshots(self, session_id: str) -> list[tuple[str, bytes | None]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT path, content FROM file_snapshots WHERE session_id = ? ORDER BY rowid",
+                (session_id,),
+            ).fetchall()
+        return [(str(row["path"]), row["content"]) for row in rows]
 
     def add_turn(
         self,

@@ -252,6 +252,23 @@ tether events <session_id> [flags]
 tether events ses_abc123 --follow
 ```
 
+## tether diff
+
+Show what a session changed in its files, against the first bytes the session saw. New files show as added from empty. Current contents are read from disk.
+
+```bash
+tether diff <session_id> [flags]
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--stat` | Added/removed line counts per file |
+| `--db` | SQLite DB path (default .tether/tether.db) |
+
+```bash
+tether diff ses_abc123 --stat
+```
+
 ## tether misses
 
 Show tool calls that failed or returned errors across sessions. Use this to debug recurring tool failures.
