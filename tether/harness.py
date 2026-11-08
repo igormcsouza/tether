@@ -17,6 +17,8 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from tether.context import (
     ACT_TOOL_SCHEMA,
     DEFAULT_CONTEXT_TOKENS,
@@ -50,7 +52,13 @@ from tether.tools import (
     make_web_tool,
 )
 from tether.trace import NEAR_PASS, failing_test_id, runtime_trace, smallest_failing
-from tether.unchanged import small_change_note, snapshot, unchanged_note, whole_file_targets
+from tether.unchanged import (
+    missing_targets,
+    small_change_note,
+    snapshot,
+    unchanged_note,
+    whole_file_targets,
+)
 from tether.worktree import commit_all, create_worktree, repo_root, run_setup
 
 
@@ -311,6 +319,21 @@ def spawn_detached_worker(db_path: Path, session_id: str) -> int:
     return proc.pid
 
 
+class PipelineResumeError(ValueError):
+    """A pipeline session cannot be resumed; the CLI reports it as a usage error."""
+
+
+_STAGE_TURN_RE = re.compile(r"^stage (.+) \(([^()]+)\)$")
+
+
+def _tokens_used(rec: SessionRecord) -> int:
+    return rec.total_prompt_tokens + rec.total_completion_tokens
+
+
+def _token_budget_text(used: int, budget: int, steps: int) -> str:
+    return f"[TOKEN BUDGET] used {used} of {budget} tokens after {steps} steps"
+
+
 class Harness:
     """General-purpose LLM-Native Micro-Harness.
 
@@ -330,6 +353,7 @@ class Harness:
         sandbox: SandboxPolicy | None = None,
         db_path: str | Path | None = None,
         max_steps: int = 15,
+        max_tokens: int | None = None,
         max_context_tokens: int | None = None,
         fold_observations_after: int | None = None,
         provider: ModelProvider | None = None,
@@ -341,6 +365,8 @@ class Harness:
         worktree_from: str | None = None,
         setup: str | None = None,
     ) -> None:
+        if max_tokens is not None and max_tokens <= 0:
+            raise ValueError(f"--max-tokens must be a positive integer (got {max_tokens}).")
         self.model = model or os.environ.get("TETHER_MODEL") or "ollama/qwen3.5:9b"
         self.store = SQLiteStore(db_path=db_path)
         self.sandbox = sandbox or SandboxPolicy()
@@ -348,6 +374,7 @@ class Harness:
         self.worktree = worktree
         self.worktree_from = worktree_from
         self.setup = setup
+        self.max_tokens = max_tokens
         self.max_verify_failures = max_verify_failures
         declared: dict[str, Any] = {}
         try:
@@ -539,6 +566,8 @@ class Harness:
         root_sandbox = self.sandbox.attenuate(resolved.sandbox)
         sbox_dict = root_sandbox.to_dict()
         sbox_dict["pipeline"] = resolved.to_dict()
+        if isinstance(pipeline, Path):
+            sbox_dict["pipeline_source"] = str(pipeline.resolve())
         # The row's model may list several; keep the default for model-less stages.
         sbox_dict["pipeline_model"] = self.model
         models: list[str] = []
@@ -581,6 +610,49 @@ class Harness:
         rec = self.create_pipeline_session(pipeline, goal, parent_id=parent_id)
         return await self.execute_session(rec.id)
 
+    async def resume_pipeline(self, session_id: str) -> SessionRecord:
+        """Re-run a failed or waiting pipeline from its first stage that is not COMPLETED."""
+        rec = self.store.get_session(session_id)
+        if rec is None:
+            raise PipelineResumeError(
+                f"pipeline session `{session_id}` not found. "
+                "Use the id printed by `tether pipeline --headless`."
+            )
+        raw_pipe = rec.sandbox_config.get("pipeline")
+        if not isinstance(raw_pipe, dict):
+            raise PipelineResumeError(f"session `{session_id}` is not a pipeline.")
+        if rec.status == "RUNNING":
+            raise PipelineResumeError(
+                f"pipeline `{session_id}` is RUNNING (pid {rec.pid}). "
+                "Wait for it to finish, then resume."
+            )
+        if rec.status == "COMPLETED":
+            return rec
+        try:
+            pipeline = Pipeline.from_dict(raw_pipe)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PipelineResumeError(
+                f"cannot resume pipeline `{session_id}`: stored pipeline is invalid: {exc}"
+            ) from exc
+        source = rec.sandbox_config.get("pipeline_source")
+        reason = ""
+        if not source:
+            reason = "no stored manifest path (the run predates --resume)"
+        else:
+            try:
+                Pipeline.load(str(source))
+            except FileNotFoundError:
+                reason = f"manifest `{source}` not found"
+            except (OSError, ValueError, yaml.YAMLError) as exc:
+                reason = f"manifest `{source}` is invalid: {exc}"
+        if reason:
+            raise PipelineResumeError(
+                f"cannot resume pipeline `{session_id}`: {reason}. "
+                "Re-run with `tether pipeline <file> <goal>`."
+            )
+        prefix = self._completed_prefix(rec, pipeline)
+        return await self._execute_pipeline_session(rec, prior=prefix)
+
     def create_session(self, goal: str, *, parent_id: str | None = None) -> SessionRecord:
         """Create a persisted session row in SQLite without executing it yet."""
         sbox_dict = self.sandbox.to_dict()
@@ -604,6 +676,8 @@ class Harness:
             parent_id=parent_id,
             max_steps=self.max_steps,
             session_id=session_id,
+            max_tokens=self.max_tokens,
+            token_grant=self.max_tokens,
         )
         if self.worktree and self.setup:
             error = run_setup(path, self.setup)
@@ -613,6 +687,35 @@ class Harness:
                 self.store.update_session(rec.id, status="FAILED", result=error)
                 return self.store.get_session(rec.id) or rec
         return rec
+
+    @classmethod
+    def from_session(
+        cls,
+        rec: SessionRecord,
+        *,
+        db_path: str | Path | None = None,
+        model: str | None = None,
+        max_steps: int | None = None,
+    ) -> Harness:
+        """Rebuild a harness from a stored session (used by `tether replay`).
+
+        Runs in the current directory (the stored workspace_root is not reused).
+        Verify gates are not stored, so they are not restored.
+        """
+        cfg = dict(rec.sandbox_config)
+        output_schema = cfg.pop("output_schema", None)
+        params = cfg.pop("params", None)
+        cfg.pop("workspace_root", None)
+        return cls(
+            model=model or rec.model,
+            tools=list(rec.tools),
+            skill=rec.skill,
+            sandbox=SandboxPolicy.from_dict(cfg),
+            db_path=db_path,
+            max_steps=rec.max_steps if max_steps is None else max_steps,
+            output_schema=output_schema,
+            params=params,
+        )
 
     def spawn(self, goal: str, *, parent_id: str | None = None) -> str:
         """Create a session and launch it as a detached headless worker, returning session_id."""
@@ -647,6 +750,9 @@ class Harness:
         # For a paused session (e.g. WAITING_INPUT at 5/40), keep remaining budget.
         new_max = max(rec.max_steps, rec.step_count + self.max_steps)
         self.store.update_session(session_id, max_steps=new_max)
+        if rec.token_grant:
+            cap = max(rec.max_tokens or 0, _tokens_used(rec)) + rec.token_grant
+            self.store.update_session(session_id, max_tokens=cap)
 
         if headless:
             self.store.update_session(session_id, status="PENDING")
@@ -744,7 +850,29 @@ class Harness:
                 return vcmd, code, compact_out, is_error
         return None
 
-    async def _execute_pipeline_session(self, rec: SessionRecord) -> SessionRecord:
+    def _completed_prefix(
+        self, rec: SessionRecord, pipeline: Pipeline
+    ) -> list[tuple[str, SessionRecord]]:
+        """Return the leading stages whose latest tool turn recorded a COMPLETED child session."""
+        done: dict[str, SessionRecord] = {}
+        for turn in self.store.get_turns(rec.id):
+            match = _STAGE_TURN_RE.match(turn.tool_cmd or "")
+            if match is None or turn.event_type != "completed":
+                continue
+            child = self.store.get_session(match.group(2))
+            if child is not None:
+                done[match.group(1)] = child
+        prefix: list[tuple[str, SessionRecord]] = []
+        for stage in pipeline.stages:
+            child = done.get(stage.id)
+            if child is None:
+                break
+            prefix.append((stage.id, child))
+        return prefix
+
+    async def _execute_pipeline_session(
+        self, rec: SessionRecord, prior: list[tuple[str, SessionRecord]] | None = None
+    ) -> SessionRecord:
         """Execute a deterministic multi-stage pipeline with isolated child sessions."""
         raw_pipe = rec.sandbox_config.get("pipeline")
         assert isinstance(raw_pipe, dict)
@@ -752,9 +880,10 @@ class Harness:
         root_sandbox = SandboxPolicy.from_dict(rec.sandbox_config)
 
         self.store.update_session(rec.id, status="RUNNING", pid=os.getpid())
-        completed_stages: list[tuple[str, SessionRecord]] = []
+        completed_stages = list(prior or [])
+        skipped = len(completed_stages)
 
-        for idx, stage in enumerate(pipeline.stages, start=1):
+        for idx, stage in enumerate(pipeline.stages[skipped:], start=skipped + 1):
             stage_sandbox = root_sandbox.attenuate(stage.sandbox)
             skill_obj: Skill | None = None
             if stage.skill:
@@ -977,6 +1106,7 @@ class Harness:
         green_cmd: str | None = None  # last passing test run, cleared by any later change
         green_nudged = False
         small_hinted: set[str] = set()  # files already pointed to `edit replace`
+        empty_streak = 0  # consecutive empty model replies (#135)
         last_run: tuple[int, frozenset[str]] | None = None  # outcome of the last test run
         edited_since_run = False  # a change since the last test run
         traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
@@ -1080,6 +1210,26 @@ class Harness:
                         content=f"[Follow-up instruction]: {imsg}",
                     )
 
+                # 1b. Token budget: pause before the next model call once the budget is spent.
+                # The call that crossed the budget has already run and been recorded.
+                fresh = self.store.get_session(session_id)
+                assert fresh is not None
+                used = _tokens_used(fresh)
+                if fresh.max_tokens and used >= fresh.max_tokens:
+                    text = _token_budget_text(used, fresh.max_tokens, step - 1) + reply_note()
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=f"[WAITING_INPUT] {text}",
+                    )
+                    self.store.update_session(
+                        session_id, status="WAITING_INPUT", result=text, step_count=step - 1
+                    )
+                    paused = self.store.get_session(session_id)
+                    assert paused is not None
+                    return paused
+
                 # 2. Assemble context with ephemeral observation folding
                 turns = after_restart(self.store.get_turns(session_id))
                 observations = self.store.list_observations(session_id)
@@ -1133,9 +1283,13 @@ class Harness:
                     add_prompt_tokens=prompt_tokens,
                     add_completion_tokens=completion_tokens,
                 )
-
                 # 3. If the model emitted plain text without calling `act`, nudge it (Rule 3)
-                if resp.action is None and reasoning_due and (resp.content or "").strip():
+                if (
+                    resp.action is None
+                    and reasoning_due
+                    and (resp.content or "").strip()
+                    and not resp.empty
+                ):
                     # #173: the plain-words answer to [BEFORE WRITING] is the expected reply
                     self.store.add_turn(
                         session_id=session_id,
@@ -1152,12 +1306,34 @@ class Harness:
                         role="user",
                         content=f"Now write `{reasoning_due}` so it gives exactly those results.",
                     )
+                    empty_streak = 0
                     reasoning_due = None
                     continue
                 if resp.action is None:
                     prose = (resp.content or "").strip()
                     if len(prose) >= PROSE_ANSWER_CHARS:
                         last_reply = prose
+                    empty_streak = empty_streak + 1 if resp.empty else 0
+                    if empty_streak >= 3:
+                        self.store.add_turn(
+                            session_id=session_id,
+                            step=step,
+                            role="assistant",
+                            content=resp.content,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            duration_ms=llm_duration_ms,
+                        )
+                        stop_text = (
+                            f"stopped: 3 empty replies in a row from {provider.model_name}. "
+                            "Try --param think=false or another model."
+                        )
+                        self.store.update_session(
+                            session_id, status="WAITING_INPUT", result=stop_text, step_count=step
+                        )
+                        done_rec = self.store.get_session(session_id)
+                        assert done_rec is not None
+                        return done_rec
                     self.store.add_turn(
                         session_id=session_id,
                         step=step,
@@ -1184,6 +1360,7 @@ class Harness:
                     )
                     continue
 
+                empty_streak = 0
                 reasoning_due = None
                 cmd = normalize_cmd(resp.action.cmd)
                 stdin = resp.action.stdin
@@ -1207,6 +1384,7 @@ class Harness:
                     step=step,
                     role="assistant",
                     content=resp.content,
+                    thinking=resp.thinking,
                     tool_cmd=cmd,
                     tool_stdin=stdin,
                     prompt_tokens=prompt_tokens,
@@ -1362,7 +1540,13 @@ class Harness:
                     with suppress(OSError):
                         path = Path(sandbox.workspace_root) / rel
                         if path.stat().st_mtime < rec.created_at:
-                            originals.setdefault(os.path.normpath(rel), data)
+                            key = os.path.normpath(rel)
+                            if key not in originals:
+                                originals[key] = data
+                                self.store.record_snapshot(session_id, key, data)
+                # a file the command creates has no bytes yet: its snapshot is NULL
+                for rel in missing_targets(cmd, Path(sandbox.workspace_root)):
+                    self.store.record_snapshot(session_id, os.path.normpath(rel), None)
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)

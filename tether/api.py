@@ -76,6 +76,8 @@ def session_dict(rec: SessionRecord, *, include_result: bool = True) -> dict[str
     if include_result:
         # A failure reason is not a deliverable: it lives under `failure` only.
         out["result"] = None if fail else rec.result
+    if rec.max_tokens is not None:
+        out["max_tokens"] = rec.max_tokens
     return out
 
 
@@ -102,16 +104,17 @@ def events(store: SQLiteStore, session_id: str, after_turn: int = 0) -> list[dic
     for t in store.get_turns(session_id):
         if t.id <= after_turn:
             continue
-        out.append(
-            {
-                "turn": t.id,
-                "step": t.step,
-                "role": t.role,
-                "cmd": t.tool_cmd,
-                "event": t.event_type,
-                "text": (t.content or "")[:200],
-            }
-        )
+        ev: dict[str, Any] = {
+            "turn": t.id,
+            "step": t.step,
+            "role": t.role,
+            "cmd": t.tool_cmd,
+            "event": t.event_type,
+            "text": (t.content or "")[:200],
+        }
+        if t.thinking:
+            ev["thinking"] = t.thinking[:200]
+        out.append(ev)
     return out
 
 
