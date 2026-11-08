@@ -36,6 +36,7 @@ class ModelResponse:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     hint: str = ""  # shown to the model instead of the generic reminder when it sent no usable call
+    empty: bool = False
 
 
 ProviderResponse = ModelResponse
