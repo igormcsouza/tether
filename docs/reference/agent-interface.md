@@ -45,7 +45,7 @@ Optional: `pip install "tether-sdk[mcp]"` (installs the official `mcp` SDK; core
 
 | Tool | Arguments |
 |------|-----------|
-| `tether_run` | `goal`, `model`, `skill`, `tools`, `verify[]`, `max_steps`, `context_tokens`, `fold_after`, `sandbox`, `workspace`, `no_network`, `output_schema`, `wait` (default true) |
+| `tether_run` | `goal`, `model`, `skill`, `tools`, `verify[]`, `max_steps`, `max_tokens`, `context_tokens`, `fold_after`, `sandbox`, `workspace`, `no_network`, `output_schema`, `wait` (default true) |
 | `tether_status` | `id` |
 | `tether_wait` | `ids[]`, `timeout` |
 | `tether_read` | `id`, `mode` = `full` \| `digest` \| `steps` |

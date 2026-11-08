@@ -324,6 +324,14 @@ class PipelineResumeError(ValueError):
 _STAGE_TURN_RE = re.compile(r"^stage (.+) \(([^()]+)\)$")
 
 
+def _tokens_used(rec: SessionRecord) -> int:
+    return rec.total_prompt_tokens + rec.total_completion_tokens
+
+
+def _token_budget_text(used: int, budget: int, steps: int) -> str:
+    return f"[TOKEN BUDGET] used {used} of {budget} tokens after {steps} steps"
+
+
 class Harness:
     """General-purpose LLM-Native Micro-Harness.
 
@@ -343,6 +351,7 @@ class Harness:
         sandbox: SandboxPolicy | None = None,
         db_path: str | Path | None = None,
         max_steps: int = 15,
+        max_tokens: int | None = None,
         max_context_tokens: int | None = None,
         fold_observations_after: int | None = None,
         provider: ModelProvider | None = None,
@@ -351,10 +360,13 @@ class Harness:
         output_schema: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> None:
+        if max_tokens is not None and max_tokens <= 0:
+            raise ValueError(f"--max-tokens must be a positive integer (got {max_tokens}).")
         self.model = model or os.environ.get("TETHER_MODEL") or "ollama/qwen3.5:9b"
         self.store = SQLiteStore(db_path=db_path)
         self.sandbox = sandbox or SandboxPolicy()
         self.max_steps = max_steps
+        self.max_tokens = max_tokens
         self.max_verify_failures = max_verify_failures
         declared: dict[str, Any] = {}
         try:
@@ -648,6 +660,8 @@ class Harness:
             sandbox_config=sbox_dict,
             parent_id=parent_id,
             max_steps=self.max_steps,
+            max_tokens=self.max_tokens,
+            token_grant=self.max_tokens,
         )
 
     def spawn(self, goal: str, *, parent_id: str | None = None) -> str:
@@ -683,6 +697,9 @@ class Harness:
         # For a paused session (e.g. WAITING_INPUT at 5/40), keep remaining budget.
         new_max = max(rec.max_steps, rec.step_count + self.max_steps)
         self.store.update_session(session_id, max_steps=new_max)
+        if rec.token_grant:
+            cap = max(rec.max_tokens or 0, _tokens_used(rec)) + rec.token_grant
+            self.store.update_session(session_id, max_tokens=cap)
 
         if headless:
             self.store.update_session(session_id, status="PENDING")
@@ -1115,6 +1132,26 @@ class Harness:
                         content=f"[Follow-up instruction]: {imsg}",
                     )
 
+                # 1b. Token budget: pause before the next model call once the budget is spent.
+                # The call that crossed the budget has already run and been recorded.
+                fresh = self.store.get_session(session_id)
+                assert fresh is not None
+                used = _tokens_used(fresh)
+                if fresh.max_tokens and used >= fresh.max_tokens:
+                    text = _token_budget_text(used, fresh.max_tokens, step - 1) + reply_note()
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=f"[WAITING_INPUT] {text}",
+                    )
+                    self.store.update_session(
+                        session_id, status="WAITING_INPUT", result=text, step_count=step - 1
+                    )
+                    paused = self.store.get_session(session_id)
+                    assert paused is not None
+                    return paused
+
                 # 2. Assemble context with ephemeral observation folding
                 turns = after_restart(self.store.get_turns(session_id))
                 observations = self.store.list_observations(session_id)
@@ -1168,7 +1205,6 @@ class Harness:
                     add_prompt_tokens=prompt_tokens,
                     add_completion_tokens=completion_tokens,
                 )
-
                 # 3. If the model emitted plain text without calling `act`, nudge it (Rule 3)
                 if resp.action is None and reasoning_due and (resp.content or "").strip():
                     # #173: the plain-words answer to [BEFORE WRITING] is the expected reply

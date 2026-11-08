@@ -73,6 +73,8 @@ def session_dict(rec: SessionRecord, *, include_result: bool = True) -> dict[str
     if include_result:
         # A failure reason is not a deliverable: it lives under `failure` only.
         out["result"] = None if fail else rec.result
+    if rec.max_tokens is not None:
+        out["max_tokens"] = rec.max_tokens
     return out
 
 

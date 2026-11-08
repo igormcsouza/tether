@@ -87,6 +87,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument("--max-steps", type=int, default=15, help="Max reasoning steps")
     p_run.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Token budget (prompt + completion); pauses as WAITING_INPUT when reached",
+    )
+    p_run.add_argument(
         "--context-tokens", type=int, default=None, help="Context token budget (default 32768)"
     )
     p_run.add_argument(
@@ -374,6 +380,7 @@ async def _async_main(argv: list[str]) -> int:
                 sandbox=sandbox,
                 db_path=ns.db,
                 max_steps=ns.max_steps,
+                max_tokens=ns.max_tokens,
                 output_schema=schema,
                 params=parse_params(ns.param),
                 max_context_tokens=ns.context_tokens,
