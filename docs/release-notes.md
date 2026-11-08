@@ -4,6 +4,7 @@
 
 ### Added
 
+- `tether doctor` checks your setup (Ollama reachable, model pulled, bwrap, providers.yaml, session DB) and says what to fix; exit 1 when a check fails.
 - `tether run --worktree` runs the session in its own git worktree on branch `tether/<id>` and commits the result there when it stops. `--worktree-from <ref>` sets the base ref and `--setup <cmd>` runs a shell command in the worktree before the model starts (outside the sandbox, not offered over MCP). See [Run a session on its own branch](guides/own-branch.md).
 - `tether read <id> --thinking` prints the stored model thinking for each step. Thinking is kept for reading only and is never replayed to the model.
 ### Fixed
