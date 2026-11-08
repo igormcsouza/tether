@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `tether diff <session_id>` shows what a session changed in its files, against the first bytes the session saw (`--stat` for line counts). Snapshots are recorded by the harness write-tracking loop in a new `file_snapshots` table; files created by the session show as added from empty.
+
 ## v0.2.18 (2026-11-08)
 
 Small fixes from the v0.2.17 release check and the paasio labs: shell-style file writes work when only `edit` is enabled, `edit append` adds to a file instead of replacing it, a foreground run prints its session id at once, and a `cd` into a container path that does not exist no longer costs a step.
