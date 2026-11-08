@@ -14,7 +14,7 @@ from pathlib import Path
 import yaml
 
 from tether import __version__, api
-from tether.harness import Harness
+from tether.harness import Harness, PipelineResumeError
 from tether.progress import watch
 from tether.providers.base import parse_params
 from tether.sandbox import SandboxPolicy
@@ -123,7 +123,19 @@ def build_parser() -> argparse.ArgumentParser:
         "pipeline",
         help="Execute a declarative multi-stage YAML workflow inline or headless",
     )
-    p_pipe.add_argument("pipeline_file", help="Path to declarative pipeline YAML manifest")
+    p_pipe.add_argument(
+        "pipeline_file",
+        nargs="?",
+        help="Path to declarative pipeline YAML manifest (omit with --resume)",
+    )
+    p_pipe.add_argument(
+        "--resume",
+        metavar="SESSION_ID",
+        default=None,
+        help="Resume a failed or waiting pipeline from its first unfinished stage; --model, "
+        "--sandbox, --no-network, --max-steps, --context-tokens and --fold-after are ignored "
+        "(the stored root sandbox and model are used)",
+    )
     p_pipe.add_argument(
         "--headless", action="store_true", help="Run detached in background and print session ID"
     )
@@ -164,7 +176,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--result-file", type=str, default=None, help="Write the deliverable here, not to stdout"
     )
     _add_json(p_pipe)
-    p_pipe.add_argument("goal", nargs="+", help="Root task goal or instruction")
+    p_pipe.add_argument("goal", nargs="*", help="Root task goal or instruction")
 
     # `tether status`
     p_status = sub.add_parser("status", help="Show live session status and token metrics")
@@ -364,6 +376,18 @@ async def _async_main(argv: list[str]) -> int:
         return _finish(rec, ns)
 
     if cmd == "pipeline":
+        if ns.resume and (ns.pipeline_file or ns.goal or ns.headless):
+            print(
+                "Error: --resume takes only a session id (no file, goal or --headless)",
+                file=sys.stderr,
+            )
+            return api.EXIT_USAGE
+        if not ns.resume and not (ns.pipeline_file and ns.goal):
+            print(
+                "Error: usage: tether pipeline <pipeline.yaml> <goal> | --resume <session_id>",
+                file=sys.stderr,
+            )
+            return api.EXIT_USAGE
         goal = " ".join(ns.goal).strip()
         sandbox = SandboxPolicy(
             profile=ns.sandbox, workspace_root=Path.cwd(), network=not ns.no_network
@@ -377,11 +401,22 @@ async def _async_main(argv: list[str]) -> int:
             fold_observations_after=ns.fold_after,
         )
         try:
-            if ns.headless:
+            if ns.resume:
+                current = harness.store.get_session(ns.resume)
+                if current is not None and current.status == "COMPLETED":
+                    print(f"Pipeline `{ns.resume}` is already COMPLETED; nothing to resume.")
+                    return 0
+                print(f"Resuming pipeline `{ns.resume}`.", file=sys.stderr)
+                rec = await harness.resume_pipeline(ns.resume)
+            elif ns.headless:
                 sid = harness.spawn_pipeline(Path(ns.pipeline_file), goal)
                 print(json.dumps({"v": api.SCHEMA_VERSION, "id": sid}) if ns.json else sid)
                 return 0
-            rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
+            else:
+                rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
+        except PipelineResumeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         except (OSError, ValueError, yaml.YAMLError) as exc:
             print(f"Error: invalid pipeline `{ns.pipeline_file}`: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
