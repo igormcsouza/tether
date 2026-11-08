@@ -69,6 +69,18 @@ def snapshot(cmd: str, root: Path) -> dict[str, bytes]:
     return {rel: data for rel in _targets(cmd) if (data := _current(rel, root)) is not None}
 
 
+def missing_targets(cmd: str, root: Path) -> list[str]:
+    # write targets of cmd that do not exist yet and resolve inside root (new files)
+    out: list[str] = []
+    for rel in _targets(cmd):
+        with suppress(OSError, RuntimeError, ValueError):
+            base = root.resolve()
+            path = (base / rel).resolve()
+            if not path.exists() and path.is_relative_to(base):
+                out.append(rel)
+    return out
+
+
 def unchanged_note(before: dict[str, bytes], root: Path) -> str:
     """Return a one-line note if the files in `before` still hold the same code, else "".
 

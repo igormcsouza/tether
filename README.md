@@ -50,7 +50,7 @@ flowchart LR
     Loop <-->|"messages"| Model["LLM<br/>ollama · openai · anthropic"]
 ```
 
-A session is a row in SQLite, so it survives crashes, runs detached (`--headless`), takes new instructions while running (`tether send`), and can be read by another agent as compact JSON. A task ends only when the model calls `done`, after your `--verify` commands pass.
+A session is a row in SQLite, so it survives crashes, runs detached (`--headless`), takes new instructions while running (`tether send`), and can be read by another agent as compact JSON. A task ends only when the model calls `done`, after your `--verify` commands pass. To re-run a finished session's goal and compare the two runs, use `tether replay <session-id>`.
 
 ## Why this and not that
 
@@ -74,6 +74,7 @@ tether run --model ollama/qwen3.5:9b --tools bash,edit "create hello.txt contain
 ```
 
 An empty Ollama reply is resent once, unchanged; if three empty replies come in a row, the session stops and suggests `think=false`. See the [providers page](https://igormcsouza.github.io/tether/reference/providers/).
+Resume a failed pipeline from its first unfinished stage with `tether pipeline --resume <pipeline_session_id>`.
 
 Everything else (headless sessions, skills, pipelines, MCP, the CLI reference, writing your own tool or provider) is in the docs: **[igormcsouza.github.io/tether](https://igormcsouza.github.io/tether/)**. Start with the guides: [fix a failing test](https://igormcsouza.github.io/tether/guides/fix-a-failing-test/), [use it from Claude Code or Codex](https://igormcsouza.github.io/tether/guides/use-tether-from-your-agent/).
 

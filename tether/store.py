@@ -44,6 +44,8 @@ class SessionRecord:
     updated_at: float
     total_prompt_tokens: int = 0
     total_completion_tokens: int = 0
+    max_tokens: int | None = None
+    token_grant: int | None = None
 
 
 @dataclass(slots=True)
@@ -319,6 +321,13 @@ class SQLiteStore:
                     created_at REAL NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_inbox_session ON inbox(session_id, consumed);
+                CREATE TABLE IF NOT EXISTS file_snapshots (
+                    session_id TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    content BLOB,
+                    created_at REAL NOT NULL,
+                    PRIMARY KEY (session_id, path)
+                );
 
                 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
                     session_id UNINDEXED,
@@ -336,6 +345,8 @@ class SQLiteStore:
                 {
                     "total_prompt_tokens": "INTEGER NOT NULL DEFAULT 0",
                     "total_completion_tokens": "INTEGER NOT NULL DEFAULT 0",
+                    "max_tokens": "INTEGER",
+                    "token_grant": "INTEGER",
                 },
             )
             self._ensure_columns(
@@ -370,6 +381,8 @@ class SQLiteStore:
         parent_id: str | None = None,
         max_steps: int = 15,
         session_id: str | None = None,
+        max_tokens: int | None = None,
+        token_grant: int | None = None,
     ) -> SessionRecord:
         sid = session_id or f"ses_{uuid.uuid4().hex[:8]}"
         now = time.time()
@@ -380,8 +393,9 @@ class SQLiteStore:
                 """
                 INSERT INTO sessions (
                     id, parent_id, status, model, skill, tools_json, sandbox_json,
-                    goal, result, step_count, max_steps, peak_tokens, pid, created_at, updated_at
-                ) VALUES (?, ?, 'PENDING', ?, ?, ?, ?, ?, NULL, 0, ?, 0, NULL, ?, ?)
+                    goal, result, step_count, max_steps, peak_tokens, pid, created_at, updated_at,
+                    max_tokens, token_grant
+                ) VALUES (?, ?, 'PENDING', ?, ?, ?, ?, ?, NULL, 0, ?, 0, NULL, ?, ?, ?, ?)
                 """,
                 (
                     sid,
@@ -394,6 +408,8 @@ class SQLiteStore:
                     max_steps,
                     now,
                     now,
+                    max_tokens,
+                    token_grant,
                 ),
             )
         rec = self.get_session(sid)
@@ -419,6 +435,8 @@ class SQLiteStore:
             updated_at=float(row["updated_at"]),
             total_prompt_tokens=int(row["total_prompt_tokens"]),
             total_completion_tokens=int(row["total_completion_tokens"]),
+            max_tokens=int(row["max_tokens"]) if row["max_tokens"] is not None else None,
+            token_grant=int(row["token_grant"]) if row["token_grant"] is not None else None,
         )
 
     @staticmethod
@@ -493,6 +511,7 @@ class SQLiteStore:
         pid: int | None = None,
         tools: list[str] | None = None,
         max_steps: int | None = None,
+        max_tokens: int | None = None,
     ) -> None:
         updates: list[str] = ["updated_at = ?"]
         params: list[Any] = [time.time()]
@@ -526,6 +545,9 @@ class SQLiteStore:
         if max_steps is not None:
             updates.append("max_steps = ?")
             params.append(max_steps)
+        if max_tokens is not None:
+            updates.append("max_tokens = ?")
+            params.append(max_tokens)
 
         params.append(session_id)
         with self._connect() as conn:
@@ -535,6 +557,24 @@ class SQLiteStore:
             )
         if result is not None:
             self.index_text(session_id, "result", "final", result)
+
+    def record_snapshot(self, session_id: str, path: str, content: bytes | None) -> bool:
+        # first bytes seen for this path in this session win; None means the file did not exist
+        with self._connect() as conn:
+            cur = conn.execute(
+                "INSERT OR IGNORE INTO file_snapshots (session_id, path, content, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (session_id, path, content, time.time()),
+            )
+        return cur.rowcount == 1
+
+    def list_snapshots(self, session_id: str) -> list[tuple[str, bytes | None]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT path, content FROM file_snapshots WHERE session_id = ? ORDER BY rowid",
+                (session_id,),
+            ).fetchall()
+        return [(str(row["path"]), row["content"]) for row in rows]
 
     def add_turn(
         self,

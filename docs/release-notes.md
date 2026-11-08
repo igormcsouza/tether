@@ -5,6 +5,13 @@
 ### Fixed
 
 - An empty model reply is retried. If the retry is empty too, the session stops instead of continuing with no output (#135).
+### Added
+
+- `tether replay SESSION_ID` re-runs a session's goal in the current directory with its saved tools, skill, sandbox, output_schema and params, and prints the original and replay side by side (`--model`, `--max-steps`, `--json`). Verify gates are not stored, so a replay runs without them.
+- `tether pipeline --resume <id>` re-runs a failed or waiting pipeline from its first unfinished stage and reuses the stages that completed (#35).
+- `--max-tokens N` (CLI), `Harness(max_tokens=)` and the MCP `tether_run` argument `max_tokens` set a token budget (prompt + completion). When the budget is reached the session pauses as WAITING_INPUT (exit 2) and `send` adds the same amount again as a grant. Sessions without a budget are unchanged.
+- `tether mcp`: `tether_run` accepts `workspace`, an absolute directory inside the server's workspace, so a caller working in a git worktree can root the run there; anything outside is refused (#242).
+- `tether diff <session_id>` shows what a session changed in its files, against the first bytes the session saw (`--stat` for line counts). Snapshots are recorded by the harness write-tracking loop in a new `file_snapshots` table; files created by the session show as added from empty.
 
 ## v0.2.18 (2026-11-08)
 
