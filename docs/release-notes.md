@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `tether replay SESSION_ID` re-runs a session's goal in the current directory with its saved tools, skill, sandbox, output_schema and params, and prints the original and replay side by side (`--model`, `--max-steps`, `--json`). Verify gates are not stored, so a replay runs without them.
+
 ## v0.2.18 (2026-11-08)
 
 Small fixes from the v0.2.17 release check and the paasio labs: shell-style file writes work when only `edit` is enabled, `edit append` adds to a file instead of replacing it, a foreground run prints its session id at once, and a `cd` into a container path that does not exist no longer costs a step.

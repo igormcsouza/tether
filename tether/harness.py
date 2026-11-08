@@ -590,6 +590,35 @@ class Harness:
             max_steps=self.max_steps,
         )
 
+    @classmethod
+    def from_session(
+        cls,
+        rec: SessionRecord,
+        *,
+        db_path: str | Path | None = None,
+        model: str | None = None,
+        max_steps: int | None = None,
+    ) -> Harness:
+        """Rebuild a harness from a stored session (used by `tether replay`).
+
+        Runs in the current directory (the stored workspace_root is not reused).
+        Verify gates are not stored, so they are not restored.
+        """
+        cfg = dict(rec.sandbox_config)
+        output_schema = cfg.pop("output_schema", None)
+        params = cfg.pop("params", None)
+        cfg.pop("workspace_root", None)
+        return cls(
+            model=model or rec.model,
+            tools=list(rec.tools),
+            skill=rec.skill,
+            sandbox=SandboxPolicy.from_dict(cfg),
+            db_path=db_path,
+            max_steps=rec.max_steps if max_steps is None else max_steps,
+            output_schema=output_schema,
+            params=params,
+        )
+
     def spawn(self, goal: str, *, parent_id: str | None = None) -> str:
         """Create a session and launch it as a detached headless worker, returning session_id."""
         rec = self.create_session(goal, parent_id=parent_id)
