@@ -19,6 +19,7 @@ from tether import __version__, api
 from tether.harness import Harness
 from tether.sandbox import SandboxPolicy
 from tether.store import SQLiteStore
+from tether.worktree import WorktreeError
 
 _ID = {"type": "string", "description": "Session id (ses_...)"}
 
@@ -42,6 +43,7 @@ TOOLS: list[dict[str, Any]] = [
             "tools": {"type": "string", "description": "comma list, e.g. web,bash"},
             "verify": {"type": "array", "items": {"type": "string"}},
             "max_steps": {"type": "integer"},
+            "max_tokens": {"type": "integer"},
             "context_tokens": {"type": "integer"},
             "fold_after": {"type": "integer"},
             "sandbox": {"type": "string", "enum": ["workspace-write", "read-only"]},
@@ -50,6 +52,12 @@ TOOLS: list[dict[str, Any]] = [
             "params": {
                 "type": "object",
                 "description": 'Model request params, e.g. {"temperature": 0, "think": false}',
+            },
+            "worktree": {"type": "boolean", "description": "run in a git worktree; commit at stop"},
+            "worktree_from": {"type": "string", "description": "base ref for the worktree"},
+            "workspace": {
+                "type": "string",
+                "description": "absolute dir in the server workspace; default: server workspace",
             },
             "wait": {"type": "boolean", "description": "default true"},
         },
@@ -106,6 +114,28 @@ class TetherMCP:
             raise ToolError(f"session `{sid}` not found")
         return rec
 
+    def _resolve_workspace(self, raw: Any) -> Path:
+        if raw is None or raw == "":
+            return self.workspace
+        if not isinstance(raw, str):
+            raise ToolError(
+                "workspace must be a string path (an existing absolute directory); "
+                "pass an absolute path or omit `workspace`."
+            )
+        p = Path(raw)
+        if not p.is_absolute() or not p.is_dir():
+            raise ToolError(
+                f"workspace `{raw}` must be an existing absolute directory; "
+                "pass an absolute path or omit `workspace`."
+            )
+        p = p.resolve()
+        if not p.is_relative_to(self.workspace):
+            raise ToolError(
+                f"workspace `{raw}` is outside the server workspace `{self.workspace}`; "
+                "use a path inside it or omit `workspace`."
+            )
+        return p
+
     async def call(self, name: str, a: dict[str, Any]) -> Any:
         if name == "tether_run":
             return await self._run(a)
@@ -144,10 +174,11 @@ class TetherMCP:
         raise ToolError(f"unknown tool `{name}`")
 
     async def _run(self, a: dict[str, Any]) -> Any:
-        # Sandbox is always rooted at the server's workspace; callers can only narrow it.
+        # Sandbox is rooted at the server's workspace or a narrower dir inside it (`workspace`).
+        root = self._resolve_workspace(a.get("workspace"))
         sandbox = SandboxPolicy(
             profile=a.get("sandbox") or "workspace-write",
-            workspace_root=self.workspace,
+            workspace_root=root,
             network=not a.get("no_network"),
         )
         try:
@@ -159,16 +190,22 @@ class TetherMCP:
                 sandbox=sandbox,
                 db_path=self.db_path,
                 max_steps=int(a.get("max_steps") or 15),
+                max_tokens=a.get("max_tokens"),
                 output_schema=a.get("output_schema"),
                 params=a.get("params"),
                 max_context_tokens=a.get("context_tokens"),
                 fold_observations_after=a.get("fold_after"),
+                worktree=bool(a.get("worktree")),
+                worktree_from=a.get("worktree_from"),
             )
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
-        if a.get("wait", True):
-            return api.session_dict(await harness.run(a["goal"]))
-        return {"v": api.SCHEMA_VERSION, "id": harness.spawn(a["goal"])}
+        try:
+            if a.get("wait", True):
+                return api.session_dict(await harness.run(a["goal"]))
+            return {"v": api.SCHEMA_VERSION, "id": harness.spawn(a["goal"])}
+        except WorktreeError as exc:
+            raise ToolError(str(exc)) from exc
 
     async def _wait(self, ids: list[str], timeout: float) -> Any:
         done = ("COMPLETED", "FAILED", "WAITING_INPUT")

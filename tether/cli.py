@@ -14,11 +14,13 @@ from pathlib import Path
 import yaml
 
 from tether import __version__, api
-from tether.harness import Harness
+from tether.diff import render_diff
+from tether.harness import Harness, PipelineResumeError
 from tether.progress import watch
 from tether.providers.base import parse_params
 from tether.sandbox import SandboxPolicy
 from tether.store import SessionRecord, SQLiteStore
+from tether.worktree import WorktreeError
 
 _KNOWN_SUBCOMMANDS = {
     "run",
@@ -33,9 +35,11 @@ _KNOWN_SUBCOMMANDS = {
     "stats",
     "retro",
     "events",
+    "diff",
     "misses",
     "mcp",
     "doctor",
+    "replay",
     "_worker",
 }
 
@@ -86,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument("--max-steps", type=int, default=15, help="Max reasoning steps")
     p_run.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Token budget (prompt + completion); pauses as WAITING_INPUT when reached",
+    )
+    p_run.add_argument(
         "--context-tokens", type=int, default=None, help="Context token budget (default 32768)"
     )
     p_run.add_argument(
@@ -116,6 +126,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument(
         "-v", "--verbose", action="store_true", help="Print one line per step to stderr"
     )
+    p_run.add_argument(
+        "--worktree", action="store_true", help="Run in a git worktree on tether/<id>"
+    )
+    p_run.add_argument("--worktree-from", help="Base ref for --worktree (default HEAD)")
+    p_run.add_argument("--setup", help="Shell command run in the worktree before the model starts")
     _add_json(p_run)
     p_run.add_argument("goal", nargs="+", help="Task goal or instruction")
 
@@ -124,7 +139,19 @@ def build_parser() -> argparse.ArgumentParser:
         "pipeline",
         help="Execute a declarative multi-stage YAML workflow inline or headless",
     )
-    p_pipe.add_argument("pipeline_file", help="Path to declarative pipeline YAML manifest")
+    p_pipe.add_argument(
+        "pipeline_file",
+        nargs="?",
+        help="Path to declarative pipeline YAML manifest (omit with --resume)",
+    )
+    p_pipe.add_argument(
+        "--resume",
+        metavar="SESSION_ID",
+        default=None,
+        help="Resume a failed or waiting pipeline from its first unfinished stage; --model, "
+        "--sandbox, --no-network, --max-steps, --context-tokens and --fold-after are ignored "
+        "(the stored root sandbox and model are used)",
+    )
     p_pipe.add_argument(
         "--headless", action="store_true", help="Run detached in background and print session ID"
     )
@@ -165,7 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--result-file", type=str, default=None, help="Write the deliverable here, not to stdout"
     )
     _add_json(p_pipe)
-    p_pipe.add_argument("goal", nargs="+", help="Root task goal or instruction")
+    p_pipe.add_argument("goal", nargs="*", help="Root task goal or instruction")
 
     # `tether status`
     p_status = sub.add_parser("status", help="Show live session status and token metrics")
@@ -184,6 +211,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--digest", action="store_true", help="Show compact ~50-token digest card"
     )
     read_mode.add_argument("--steps", action="store_true", help="Show step-by-step work log")
+    read_mode.add_argument(
+        "--thinking", action="store_true", help="Show the stored model thinking per step"
+    )
     read_mode.add_argument(
         "--full", action="store_true", help="Show the full final result (the default)"
     )
@@ -250,6 +280,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_retro.add_argument("--model", type=str, default=None, help="Model for the single LLM pass")
     p_retro.add_argument("--db", type=str, default=None)
 
+    # `tether diff`
+    p_diff = sub.add_parser("diff", help="Show what the session changed in its files")
+    p_diff.add_argument("session_id", help="Session ID")
+    p_diff.add_argument("--stat", action="store_true", help="Added/removed line counts per file")
+    p_diff.add_argument("--db", type=str, default=None)
+
     # `tether events`
     p_events = sub.add_parser("events", help="Print session turn events as JSONL")
     p_events.add_argument("session_id", help="Session ID")
@@ -275,6 +311,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor = sub.add_parser("doctor", help="Check the local setup and say what to fix")
     p_doctor.add_argument("--model", type=str, default="ollama/qwen3.5:9b")
     p_doctor.add_argument("--db", type=str, default=".tether/tether.db")
+    # `tether replay`
+    p_replay = sub.add_parser("replay", help="Re-run a session's goal and compare the runs")
+    p_replay.add_argument("session_id", help="Session ID to replay (runs in the current directory)")
+    p_replay.add_argument("--model", type=str, default=None, help="Model (default: original's)")
+    p_replay.add_argument(
+        "--max-steps", type=_positive_int, default=None, help="Step budget (default: original's)"
+    )
+    p_replay.add_argument("--db", type=str, default=None)
+    _add_json(p_replay)
 
     # Internal `_worker`
     p_worker = sub.add_parser("_worker")
@@ -299,6 +344,88 @@ def _finish(rec: SessionRecord, ns: argparse.Namespace) -> int:
     return code
 
 
+def _positive_int(text: str) -> int:
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1, got {value}")
+    return value
+
+
+def _compare_row(rec: SessionRecord) -> dict[str, object]:
+    return {
+        "id": rec.id,
+        "model": rec.model,
+        "status": rec.status,
+        "steps": rec.step_count,
+        "tokens": rec.total_prompt_tokens + rec.total_completion_tokens,
+        "wall_s": round(rec.updated_at - rec.created_at, 1),
+    }
+
+
+def _format_compare(orig: dict[str, object], rep: dict[str, object]) -> str:
+    lines = [f"replay of {orig['id']} -> {rep['id']}", f"{'':<16}{'original':<11}replay"]
+    for label, key in (
+        ("model", "model"),
+        ("status", "status"),
+        ("steps", "steps"),
+        ("tokens", "tokens"),
+        ("wall_s (approx)", "wall_s"),
+    ):
+        lines.append(f"{label:<16}{str(orig[key]):<11}{rep[key]}")
+    return "\n".join(lines)
+
+
+async def _replay(ns: argparse.Namespace) -> int:
+    """Re-run a session's goal in cwd with its saved setup and print a comparison."""
+    if ns.model is not None and not ns.model.strip():
+        print(
+            "Error: --model must not be empty. Omit it to use the original's model.",
+            file=sys.stderr,
+        )
+        return 1
+    orig = Harness(db_path=ns.db).store.get_session(ns.session_id)
+    if orig is None:
+        print(
+            f"Error: session {ns.session_id} not found. List ids with tether list.",
+            file=sys.stderr,
+        )
+        return 1
+    if orig.status in ("RUNNING", "WAITING_INPUT"):
+        print(
+            f"Error: session {orig.id} is still {orig.status}. "
+            f"Wait for it or run tether stop {orig.id}, then replay.",
+            file=sys.stderr,
+        )
+        return 1
+    try:
+        harness = Harness.from_session(orig, db_path=ns.db, model=ns.model, max_steps=ns.max_steps)
+        rep = await harness.run(orig.goal, parent_id=orig.id)
+    except Exception as exc:
+        print(f"Error: replay failed: {exc}. Check --model and provider keys.", file=sys.stderr)
+        return 1
+    if ns.json:
+        print(json.dumps({"original": _compare_row(orig), "replay": _compare_row(rep)}))
+    else:
+        print(_format_compare(_compare_row(orig), _compare_row(rep)))
+    return 0
+
+
+def _cmd_diff(ns: argparse.Namespace) -> int:
+    store = SQLiteStore(db_path=ns.db)
+    rec = store.get_session(ns.session_id)
+    if rec is None:
+        print(
+            f"Error: session `{ns.session_id}` not found. Check the id with `tether list`.",
+            file=sys.stderr,
+        )
+        return 1
+    text, code = render_diff(
+        store, ns.session_id, Path(rec.sandbox_config["workspace_root"]), ns.stat
+    )
+    print(text, end="", file=sys.stderr if code else sys.stdout)
+    return code
+
+
 async def _async_main(argv: list[str]) -> int:
     # Support shorthand `tether --headless "Goal"` by inserting `run` if needed
     effective_argv = list(argv)
@@ -314,7 +441,14 @@ async def _async_main(argv: list[str]) -> int:
         parser.print_help()
         return 0
 
-    ns = parser.parse_args(effective_argv)
+    if effective_argv[:1] == ["pipeline"]:
+        # Intermixed parsing lets flags such as --resume/--db sit between the optional
+        # positionals (pipeline_file, goal) on every supported Python version.
+        sub_action = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        ns = sub_action.choices["pipeline"].parse_intermixed_args(effective_argv[1:])
+        ns.subcommand = "pipeline"
+    else:
+        ns = parser.parse_args(effective_argv)
     cmd = ns.subcommand
 
     if cmd == "_worker":
@@ -322,8 +456,14 @@ async def _async_main(argv: list[str]) -> int:
         await harness.execute_session(ns.session_id)
         return 0
 
+    if cmd == "replay":
+        return await _replay(ns)
+
     if cmd == "run":
         goal = " ".join(ns.goal).strip()
+        if not ns.worktree and (ns.setup or ns.worktree_from):
+            print("Error: --setup and --worktree-from need --worktree", file=sys.stderr)
+            return api.EXIT_USAGE
         sandbox = SandboxPolicy(
             profile=ns.sandbox, workspace_root=Path.cwd(), network=not ns.no_network
         )
@@ -337,19 +477,31 @@ async def _async_main(argv: list[str]) -> int:
                 sandbox=sandbox,
                 db_path=ns.db,
                 max_steps=ns.max_steps,
+                max_tokens=ns.max_tokens,
                 output_schema=schema,
                 params=parse_params(ns.param),
                 max_context_tokens=ns.context_tokens,
                 fold_observations_after=ns.fold_after,
+                worktree=ns.worktree,
+                worktree_from=ns.worktree_from,
+                setup=ns.setup,
             )
         except (OSError, ValueError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
         if ns.headless:
-            sid = harness.spawn(goal)
+            try:
+                sid = harness.spawn(goal)
+            except WorktreeError as exc:
+                print(f"Error: {exc}", file=sys.stderr)
+                return api.EXIT_USAGE
             print(json.dumps({"v": api.SCHEMA_VERSION, "id": sid}) if ns.json else sid)
             return 0
-        rec = harness.create_session(goal)
+        try:
+            rec = harness.create_session(goal)
+        except WorktreeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         # #90: a caller that kills a foreground run on its own timeout still has the id
         print(f"session {rec.id}", file=sys.stderr, flush=True)
         watcher = asyncio.create_task(
@@ -370,6 +522,18 @@ async def _async_main(argv: list[str]) -> int:
         return _finish(rec, ns)
 
     if cmd == "pipeline":
+        if ns.resume and (ns.pipeline_file or ns.goal or ns.headless):
+            print(
+                "Error: --resume takes only a session id (no file, goal or --headless)",
+                file=sys.stderr,
+            )
+            return api.EXIT_USAGE
+        if not ns.resume and not (ns.pipeline_file and ns.goal):
+            print(
+                "Error: usage: tether pipeline <pipeline.yaml> <goal> | --resume <session_id>",
+                file=sys.stderr,
+            )
+            return api.EXIT_USAGE
         goal = " ".join(ns.goal).strip()
         sandbox = SandboxPolicy(
             profile=ns.sandbox, workspace_root=Path.cwd(), network=not ns.no_network
@@ -383,11 +547,22 @@ async def _async_main(argv: list[str]) -> int:
             fold_observations_after=ns.fold_after,
         )
         try:
-            if ns.headless:
+            if ns.resume:
+                current = harness.store.get_session(ns.resume)
+                if current is not None and current.status == "COMPLETED":
+                    print(f"Pipeline `{ns.resume}` is already COMPLETED; nothing to resume.")
+                    return 0
+                print(f"Resuming pipeline `{ns.resume}`.", file=sys.stderr)
+                rec = await harness.resume_pipeline(ns.resume)
+            elif ns.headless:
                 sid = harness.spawn_pipeline(Path(ns.pipeline_file), goal)
                 print(json.dumps({"v": api.SCHEMA_VERSION, "id": sid}) if ns.json else sid)
                 return 0
-            rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
+            else:
+                rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
+        except PipelineResumeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         except (OSError, ValueError, yaml.YAMLError) as exc:
             print(f"Error: invalid pipeline `{ns.pipeline_file}`: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
@@ -416,6 +591,9 @@ async def _async_main(argv: list[str]) -> int:
 
         await serve(db_path=ns.db, workspace=Path(ns.workspace or Path.cwd()))
         return 0
+
+    if cmd == "diff":
+        return _cmd_diff(ns)
 
     store = SQLiteStore(db_path=getattr(ns, "db", None))
 
@@ -474,6 +652,9 @@ async def _async_main(argv: list[str]) -> int:
             f"{srec.id:<14} {srec.status:<13} {srec.model:<22} "
             f"{srec.step_count}/{srec.max_steps:<4} {srec.peak_tokens:<9} {last_cmd}"
         )
+        wt_line = api.worktree_line(srec)
+        if wt_line:
+            print(wt_line)
         return 0
 
     if cmd == "read":
@@ -496,6 +677,17 @@ async def _async_main(argv: list[str]) -> int:
                     print(f"[step {t.step}] act({t.tool_cmd!r})")
                 else:
                     print(f"[step {t.step} {t.role}] {t.content[:200]}")
+            return 0
+        if ns.thinking:
+            thinking_turns = [t for t in store.get_turns(srec.id) if t.thinking]
+            if not thinking_turns:
+                print(
+                    f"no thinking recorded for session {srec.id}; "
+                    "use a thinking-capable model (e.g. a reasoning model) to record thinking"
+                )
+                return 0
+            for t in thinking_turns:
+                print(f"step {t.step}: {t.thinking}")
             return 0
         if ns.digest:
             print(store.get_session_digest(srec.id))
@@ -613,11 +805,12 @@ async def _async_main(argv: list[str]) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> None:
+def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
     code = asyncio.run(_async_main(args))
     if argv is None:
         raise SystemExit(code)
+    return code
 
 
 if __name__ == "__main__":  # pragma: no cover
