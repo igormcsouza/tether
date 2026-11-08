@@ -3,7 +3,9 @@
 ## Unreleased
 
 ### Added
-- tether mcp: tether_run accepts workspace (must be inside the server root) (#242)
+
+- `tether mcp`: `tether_run` accepts `workspace`, an absolute directory inside the server's workspace, so a caller working in a git worktree can root the run there; anything outside is refused (#242).
+- `tether diff <session_id>` shows what a session changed in its files, against the first bytes the session saw (`--stat` for line counts). Snapshots are recorded by the harness write-tracking loop in a new `file_snapshots` table; files created by the session show as added from empty.
 
 ## v0.2.18 (2026-11-08)
 
