@@ -14,7 +14,8 @@ from pathlib import Path
 import yaml
 
 from tether import __version__, api
-from tether.harness import Harness
+from tether.diff import render_diff
+from tether.harness import Harness, PipelineResumeError
 from tether.progress import watch
 from tether.providers.base import parse_params
 from tether.sandbox import SandboxPolicy
@@ -33,6 +34,7 @@ _KNOWN_SUBCOMMANDS = {
     "stats",
     "retro",
     "events",
+    "diff",
     "misses",
     "mcp",
     "replay",
@@ -86,6 +88,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument("--max-steps", type=int, default=15, help="Max reasoning steps")
     p_run.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Token budget (prompt + completion); pauses as WAITING_INPUT when reached",
+    )
+    p_run.add_argument(
         "--context-tokens", type=int, default=None, help="Context token budget (default 32768)"
     )
     p_run.add_argument(
@@ -124,7 +132,19 @@ def build_parser() -> argparse.ArgumentParser:
         "pipeline",
         help="Execute a declarative multi-stage YAML workflow inline or headless",
     )
-    p_pipe.add_argument("pipeline_file", help="Path to declarative pipeline YAML manifest")
+    p_pipe.add_argument(
+        "pipeline_file",
+        nargs="?",
+        help="Path to declarative pipeline YAML manifest (omit with --resume)",
+    )
+    p_pipe.add_argument(
+        "--resume",
+        metavar="SESSION_ID",
+        default=None,
+        help="Resume a failed or waiting pipeline from its first unfinished stage; --model, "
+        "--sandbox, --no-network, --max-steps, --context-tokens and --fold-after are ignored "
+        "(the stored root sandbox and model are used)",
+    )
     p_pipe.add_argument(
         "--headless", action="store_true", help="Run detached in background and print session ID"
     )
@@ -165,7 +185,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--result-file", type=str, default=None, help="Write the deliverable here, not to stdout"
     )
     _add_json(p_pipe)
-    p_pipe.add_argument("goal", nargs="+", help="Root task goal or instruction")
+    p_pipe.add_argument("goal", nargs="*", help="Root task goal or instruction")
 
     # `tether status`
     p_status = sub.add_parser("status", help="Show live session status and token metrics")
@@ -249,6 +269,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_retro.add_argument("--model", type=str, default=None, help="Model for the single LLM pass")
     p_retro.add_argument("--db", type=str, default=None)
+
+    # `tether diff`
+    p_diff = sub.add_parser("diff", help="Show what the session changed in its files")
+    p_diff.add_argument("session_id", help="Session ID")
+    p_diff.add_argument("--stat", action="store_true", help="Added/removed line counts per file")
+    p_diff.add_argument("--db", type=str, default=None)
 
     # `tether events`
     p_events = sub.add_parser("events", help="Print session turn events as JSONL")
@@ -370,6 +396,22 @@ async def _replay(ns: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_diff(ns: argparse.Namespace) -> int:
+    store = SQLiteStore(db_path=ns.db)
+    rec = store.get_session(ns.session_id)
+    if rec is None:
+        print(
+            f"Error: session `{ns.session_id}` not found. Check the id with `tether list`.",
+            file=sys.stderr,
+        )
+        return 1
+    text, code = render_diff(
+        store, ns.session_id, Path(rec.sandbox_config["workspace_root"]), ns.stat
+    )
+    print(text, end="", file=sys.stderr if code else sys.stdout)
+    return code
+
+
 async def _async_main(argv: list[str]) -> int:
     # Support shorthand `tether --headless "Goal"` by inserting `run` if needed
     effective_argv = list(argv)
@@ -385,7 +427,14 @@ async def _async_main(argv: list[str]) -> int:
         parser.print_help()
         return 0
 
-    ns = parser.parse_args(effective_argv)
+    if effective_argv[:1] == ["pipeline"]:
+        # Intermixed parsing lets flags such as --resume/--db sit between the optional
+        # positionals (pipeline_file, goal) on every supported Python version.
+        sub_action = next(a for a in parser._actions if isinstance(a, argparse._SubParsersAction))
+        ns = sub_action.choices["pipeline"].parse_intermixed_args(effective_argv[1:])
+        ns.subcommand = "pipeline"
+    else:
+        ns = parser.parse_args(effective_argv)
     cmd = ns.subcommand
 
     if cmd == "_worker":
@@ -411,6 +460,7 @@ async def _async_main(argv: list[str]) -> int:
                 sandbox=sandbox,
                 db_path=ns.db,
                 max_steps=ns.max_steps,
+                max_tokens=ns.max_tokens,
                 output_schema=schema,
                 params=parse_params(ns.param),
                 max_context_tokens=ns.context_tokens,
@@ -444,6 +494,18 @@ async def _async_main(argv: list[str]) -> int:
         return _finish(rec, ns)
 
     if cmd == "pipeline":
+        if ns.resume and (ns.pipeline_file or ns.goal or ns.headless):
+            print(
+                "Error: --resume takes only a session id (no file, goal or --headless)",
+                file=sys.stderr,
+            )
+            return api.EXIT_USAGE
+        if not ns.resume and not (ns.pipeline_file and ns.goal):
+            print(
+                "Error: usage: tether pipeline <pipeline.yaml> <goal> | --resume <session_id>",
+                file=sys.stderr,
+            )
+            return api.EXIT_USAGE
         goal = " ".join(ns.goal).strip()
         sandbox = SandboxPolicy(
             profile=ns.sandbox, workspace_root=Path.cwd(), network=not ns.no_network
@@ -457,11 +519,22 @@ async def _async_main(argv: list[str]) -> int:
             fold_observations_after=ns.fold_after,
         )
         try:
-            if ns.headless:
+            if ns.resume:
+                current = harness.store.get_session(ns.resume)
+                if current is not None and current.status == "COMPLETED":
+                    print(f"Pipeline `{ns.resume}` is already COMPLETED; nothing to resume.")
+                    return 0
+                print(f"Resuming pipeline `{ns.resume}`.", file=sys.stderr)
+                rec = await harness.resume_pipeline(ns.resume)
+            elif ns.headless:
                 sid = harness.spawn_pipeline(Path(ns.pipeline_file), goal)
                 print(json.dumps({"v": api.SCHEMA_VERSION, "id": sid}) if ns.json else sid)
                 return 0
-            rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
+            else:
+                rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
+        except PipelineResumeError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         except (OSError, ValueError, yaml.YAMLError) as exc:
             print(f"Error: invalid pipeline `{ns.pipeline_file}`: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
@@ -480,6 +553,9 @@ async def _async_main(argv: list[str]) -> int:
 
         await serve(db_path=ns.db, workspace=Path(ns.workspace or Path.cwd()))
         return 0
+
+    if cmd == "diff":
+        return _cmd_diff(ns)
 
     store = SQLiteStore(db_path=getattr(ns, "db", None))
 

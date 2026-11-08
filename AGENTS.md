@@ -157,6 +157,7 @@ tether/
   - `agent send <id> <message>` $\rightarrow$ queues a message into the child session's inbox (or resumes it if completed).
 - **Deterministic Multi-Stage Pipelines (`tether pipeline <pipeline.yaml> "<goal>"` & `Harness.run_pipeline`):**
   - Each stage runs in its own isolated `SessionRecord` (`parent_id = pipeline_session_id`) with heterogeneous model routing (`stage.model`), stage-level `verify` gates, and strict sandbox monotonicity (`root_sandbox.attenuate(stage.sandbox)`).
+  - Resume (`tether pipeline --resume <id>`) re-runs from the first stage not `COMPLETED` and reuses earlier completed stages; the manifest path is stored under the `pipeline_source` sandbox_config key.
   - Downstream stages receive a compact ~50-token digest of upstream stages plus automatic `agent query` / `agent read` access to upstream `chunks_fts` deliverables.
 
 #### C. Skills System (`skills.py`)

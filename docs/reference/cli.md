@@ -32,6 +32,7 @@ tether run "your goal here" [flags]
 | `--sandbox` | Deterministic sandbox profile |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--max-steps` | Maximum reasoning steps |
+| `--max-tokens` | Token budget (prompt + completion); pauses as WAITING_INPUT (exit 2) when reached |
 | `--context-tokens` | Context token budget (default 32768) |
 | `--fold-after` | Fold observations older than N turns (default 2), once the history fills half the context; raise it for long tasks |
 | `--db` | SQLite DB path (default .tether/tether.db) |
@@ -71,6 +72,14 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 ```bash
 tether pipeline pipelines/research.yaml "Research topic: Rust async patterns" --json
 ```
+
+### Resume a failed pipeline
+
+```bash
+tether pipeline --resume <pipeline_session_id> [--json] [--result-file F]
+```
+
+Re-runs the first stage that is not `COMPLETED` (a failed or waiting one) and every stage after it; earlier completed stages are reused. The root sandbox and model come from the stored run, so `--model`, `--sandbox`, `--no-network`, `--max-steps`, `--context-tokens` and `--fold-after` are ignored. A bad flag combination, an unknown id, a `RUNNING` pipeline, or a missing or invalid manifest exits `1`; a `COMPLETED` pipeline prints a note and exits `0`. The stage list is read from the stored run, but the manifest must still exist and parse at its original path. Runs made before this change have no stored path and cannot be resumed.
 
 ## tether status
 
@@ -250,6 +259,23 @@ tether events <session_id> [flags]
 
 ```bash
 tether events ses_abc123 --follow
+```
+
+## tether diff
+
+Show what a session changed in its files, against the first bytes the session saw. New files show as added from empty. Current contents are read from disk.
+
+```bash
+tether diff <session_id> [flags]
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--stat` | Added/removed line counts per file |
+| `--db` | SQLite DB path (default .tether/tether.db) |
+
+```bash
+tether diff ses_abc123 --stat
 ```
 
 ## tether misses
