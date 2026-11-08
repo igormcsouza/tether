@@ -53,7 +53,18 @@ def _response(data: dict[str, Any]) -> ModelResponse:
         action=action,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        empty=_is_empty(data),
     )
+
+
+def _is_empty(data: dict[str, Any]) -> bool:
+    msg = data.get("message") or {}
+    no_text = not str(msg.get("content") or "").strip()
+    return no_text and not msg.get("tool_calls") and not msg.get("thinking")
+
+
+def _empty_marker(model: str) -> str:
+    return f"[empty reply from ollama/{model}: no text and no tool call, twice]"
 
 
 class OllamaProvider:
@@ -188,11 +199,13 @@ class OllamaProvider:
                     f"ollama model `{self.model_name}`: the prompt does not fit num_ctx "
                     f"{self.num_ctx}; lower --context-tokens or raise the model's context window"
                 )
+        empty = False
         if rejected is None:
             resp.raise_for_status()
             data = resp.json()
             first = _response(data)
             cut = budgeted and data.get("done_reason") == "length" and first.action is None
+            empty = first.empty and data.get("done_reason") != "length"
         else:  # budget cut a call mid-way: Ollama cannot parse it (500), so no token counts
             first, cut = ModelResponse(content=""), True
         if cut:
@@ -212,5 +225,25 @@ class OllamaProvider:
                 action=second.action,
                 prompt_tokens=first.prompt_tokens + second.prompt_tokens,
                 completion_tokens=first.completion_tokens + second.completion_tokens,
+            )
+        if empty:
+            # no text and no tool call: the identical payload once more, never after a budget cut
+            resp = await self._chat(client, payload)
+            resp.raise_for_status()
+            second = _response(resp.json())
+            prompt_total = first.prompt_tokens + second.prompt_tokens
+            completion_total = first.completion_tokens + second.completion_tokens
+            if second.empty:
+                return ModelResponse(
+                    content=_empty_marker(self.model_name),
+                    empty=True,
+                    prompt_tokens=prompt_total,
+                    completion_tokens=completion_total,
+                )
+            return ModelResponse(
+                content=second.content,
+                action=second.action,
+                prompt_tokens=prompt_total,
+                completion_tokens=completion_total,
             )
         return first

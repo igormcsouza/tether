@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Fixed
+
+- An empty model reply is retried. If the retry is empty too, the session stops instead of continuing with no output (#135).
 ### Added
 
 - `tether replay SESSION_ID` re-runs a session's goal in the current directory with its saved tools, skill, sandbox, output_schema and params, and prints the original and replay side by side (`--model`, `--max-steps`, `--json`). Verify gates are not stored, so a replay runs without them.

@@ -1058,6 +1058,7 @@ class Harness:
         green_cmd: str | None = None  # last passing test run, cleared by any later change
         green_nudged = False
         small_hinted: set[str] = set()  # files already pointed to `edit replace`
+        empty_streak = 0  # consecutive empty model replies (#135)
         last_run: tuple[int, frozenset[str]] | None = None  # outcome of the last test run
         edited_since_run = False  # a change since the last test run
         traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
@@ -1235,7 +1236,12 @@ class Harness:
                     add_completion_tokens=completion_tokens,
                 )
                 # 3. If the model emitted plain text without calling `act`, nudge it (Rule 3)
-                if resp.action is None and reasoning_due and (resp.content or "").strip():
+                if (
+                    resp.action is None
+                    and reasoning_due
+                    and (resp.content or "").strip()
+                    and not resp.empty
+                ):
                     # #173: the plain-words answer to [BEFORE WRITING] is the expected reply
                     self.store.add_turn(
                         session_id=session_id,
@@ -1252,12 +1258,34 @@ class Harness:
                         role="user",
                         content=f"Now write `{reasoning_due}` so it gives exactly those results.",
                     )
+                    empty_streak = 0
                     reasoning_due = None
                     continue
                 if resp.action is None:
                     prose = (resp.content or "").strip()
                     if len(prose) >= PROSE_ANSWER_CHARS:
                         last_reply = prose
+                    empty_streak = empty_streak + 1 if resp.empty else 0
+                    if empty_streak >= 3:
+                        self.store.add_turn(
+                            session_id=session_id,
+                            step=step,
+                            role="assistant",
+                            content=resp.content,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                            duration_ms=llm_duration_ms,
+                        )
+                        stop_text = (
+                            f"stopped: 3 empty replies in a row from {provider.model_name}. "
+                            "Try --param think=false or another model."
+                        )
+                        self.store.update_session(
+                            session_id, status="WAITING_INPUT", result=stop_text, step_count=step
+                        )
+                        done_rec = self.store.get_session(session_id)
+                        assert done_rec is not None
+                        return done_rec
                     self.store.add_turn(
                         session_id=session_id,
                         step=step,
@@ -1284,6 +1312,7 @@ class Harness:
                     )
                     continue
 
+                empty_streak = 0
                 reasoning_due = None
                 cmd = normalize_cmd(resp.action.cmd)
                 stdin = resp.action.stdin
