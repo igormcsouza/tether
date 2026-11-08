@@ -271,6 +271,23 @@ tether misses [session_id] [flags]
 tether misses --limit 20 --json
 ```
 
+## tether doctor
+
+Check Ollama is reachable, the model is pulled, bwrap is installed, providers.yaml is valid, and the session DB opens. Shows what to fix if anything is broken.
+
+```bash
+tether doctor [flags]
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--model` | Model to check (default ollama/qwen3.5:9b) |
+| `--db` | SQLite DB path (default .tether/tether.db) |
+
+```bash
+tether doctor --model ollama/qwen3.5:9b
+```
+
 ## tether mcp
 
 Start an MCP (Model Context Protocol) server that exposes tether sessions as tools. Use this to let other agents or IDEs invoke tether runs.

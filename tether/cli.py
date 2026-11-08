@@ -35,6 +35,7 @@ _KNOWN_SUBCOMMANDS = {
     "events",
     "misses",
     "mcp",
+    "doctor",
     "_worker",
 }
 
@@ -270,6 +271,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--workspace", type=str, default=None, help="Workspace root (default: current directory)"
     )
 
+    # `tether doctor`
+    p_doctor = sub.add_parser("doctor", help="Check the local setup and say what to fix")
+    p_doctor.add_argument("--model", type=str, default="ollama/qwen3.5:9b")
+    p_doctor.add_argument("--db", type=str, default=".tether/tether.db")
+
     # Internal `_worker`
     p_worker = sub.add_parser("_worker")
     p_worker.add_argument("session_id")
@@ -386,6 +392,16 @@ async def _async_main(argv: list[str]) -> int:
             print(f"Error: invalid pipeline `{ns.pipeline_file}`: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
         return _finish(rec, ns)
+
+    if cmd == "doctor":
+        from tether.doctor import run_checks
+
+        host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        checks = run_checks(ns.model, host, Path(ns.db))
+        for check in checks:
+            status = "ok  " if check.ok else "FAIL"
+            print(f"{status} {check.name}  {check.detail}")
+        return 0 if all(check.ok for check in checks) else 1
 
     if cmd == "mcp":
         try:
