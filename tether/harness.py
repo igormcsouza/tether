@@ -306,11 +306,13 @@ def _quiet_statement(cmd: str) -> bool:
 
 
 def spawn_detached_worker(db_path: Path, session_id: str) -> int:
-    """Spawn a detached OS background worker (`python -m tether.cli _worker <session_id>`)."""
+    """Spawn a detached OS background worker (`python -P -m tether.cli _worker <session_id>`).
+    # -P: cwd must never shadow the installed tether (#273)
+    """
     env = dict(os.environ)
     env["TETHER_DB"] = str(db_path)
     proc = subprocess.Popen(
-        [sys.executable, "-m", "tether.cli", "_worker", session_id, "--db", str(db_path)],
+        [sys.executable, "-P", "-m", "tether.cli", "_worker", session_id, "--db", str(db_path)],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
