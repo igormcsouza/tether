@@ -703,11 +703,16 @@ class Harness:
         db_path: str | Path | None = None,
         model: str | None = None,
         max_steps: int | None = None,
+        worktree: bool = False,
+        worktree_from: str | None = None,
+        setup: str | None = None,
     ) -> Harness:
         """Rebuild a harness from a stored session (used by `tether replay`).
 
         Runs in the current directory (the stored workspace_root is not reused).
         Verify gates are not stored, so they are not restored.
+        With worktree=True the replay runs in its own git worktree (worktree_from sets
+        the base ref). setup is a shell command run in that worktree before the model starts.
         """
         cfg = dict(rec.sandbox_config)
         output_schema = cfg.pop("output_schema", None)
@@ -722,6 +727,9 @@ class Harness:
             max_steps=rec.max_steps if max_steps is None else max_steps,
             output_schema=output_schema,
             params=params,
+            worktree=worktree,
+            worktree_from=worktree_from,
+            setup=setup,
         )
 
     def spawn(self, goal: str, *, parent_id: str | None = None) -> str:
