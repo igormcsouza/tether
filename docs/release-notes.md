@@ -17,7 +17,7 @@
 - `tether diff <session_id>` shows what a session changed in its files, against the first bytes the session saw (`--stat` for line counts). Snapshots are recorded by the harness write-tracking loop in a new `file_snapshots` table; files created by the session show as added from empty.
 
 ### Fixed
-
+- Headless workers always import the installed tether, never a workspace's own tether/ package (#273).
 - An empty model reply is retried. If the retry is empty too, the session stops instead of continuing with no output (#135).
 
 ## v0.2.18 (2026-11-08)
