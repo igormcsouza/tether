@@ -21,6 +21,8 @@ def _apply_blocks(text: str, stdin: str) -> str | tuple[str, int]:
     for i, (old, new) in enumerate(blocks, 1):
         if "<<<<<<< SEARCH" in new:
             return f"SEARCH block {i} is missing its `>>>>>>> REPLACE` line; nothing changed."
+        if not old:
+            return f"SEARCH block {i} is empty; nothing changed. Put the exact old lines in it."
         n = text.count(old)
         if n != 1:
             how = "not found (exact text, incl. indentation)" if n == 0 else f"matches {n} times"
@@ -29,6 +31,30 @@ def _apply_blocks(text: str, stdin: str) -> str | tuple[str, int]:
             )
         text = text.replace(old, new, 1)
     return text, len(blocks)
+
+
+# Strict form: every block has its divider and closing line (#267). Markers are built
+# from "<" * 7 so this source holds no literal marker lines.
+_CLOSED_BLOCK_RE = re.compile(r"<{7} SEARCH\n(.*?)\n={7}\n(.*?)\n?>{7} REPLACE", re.DOTALL)
+
+
+def _has_only_closed_blocks(stdin: str) -> bool:
+    """True when stdin has at least one SEARCH marker and every one of them is closed."""
+    opened = stdin.count("<" * 7 + " SEARCH")
+    return opened > 0 and opened == len(_CLOSED_BLOCK_RE.findall(stdin))
+
+
+def _replace_with_blocks(sandbox: SandboxPolicy, path: str, stdin: str) -> str:
+    """Apply SEARCH/REPLACE blocks to `path`; shared by `edit replace` and `edit write`."""
+    target = sandbox.resolve_safe_path(path, write=True)
+    if not target.is_file():
+        return f"Error: file `{path}` not found."
+    old_text = target.read_text(encoding="utf-8", errors="replace")
+    res = _apply_blocks(old_text, stdin)
+    if isinstance(res, str):
+        return f"Error: {res}"
+    target.write_text(res[0], encoding="utf-8")
+    return f"Replaced {res[1]} block(s) in `{path}`." + _syntax_warning(path, old_text, res[0])
 
 
 def _syntax_warning(path: str, old: str | None, new: str) -> str:
@@ -234,6 +260,11 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
             old_text = (
                 target.read_text(encoding="utf-8", errors="replace") if target.is_file() else None
             )
+            if target.is_file() and _has_only_closed_blocks(stdin):
+                out = _replace_with_blocks(sandbox, args[1], stdin)
+                if out.startswith("Error: "):
+                    return out
+                return out + " (applied as replace: SEARCH/REPLACE blocks on an existing file)"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(stdin, encoding="utf-8")
             if old_text is None:
@@ -277,17 +308,7 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
 
         if sub == "replace":
             if len(args) >= 2 and "--lines" not in args and stdin and "<<<<<<< SEARCH" in stdin:
-                target = sandbox.resolve_safe_path(args[1], write=True)
-                if not target.is_file():
-                    return f"Error: file `{args[1]}` not found."
-                old_text = target.read_text(encoding="utf-8", errors="replace")
-                res = _apply_blocks(old_text, stdin)
-                if isinstance(res, str):
-                    return f"Error: {res}"
-                target.write_text(res[0], encoding="utf-8")
-                return f"Replaced {res[1]} block(s) in `{args[1]}`." + _syntax_warning(
-                    args[1], old_text, res[0]
-                )
+                return _replace_with_blocks(sandbox, args[1], stdin)
             if len(args) < 2 or "--lines" not in args:
                 return (
                     f"Error: `edit replace` requires `<path> --lines start:end` "
