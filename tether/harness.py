@@ -524,7 +524,7 @@ class Harness:
             elif name == "edit":
                 mux.register(make_edit_tool(sandbox))
             elif name == "web":
-                mux.register(make_web_tool())
+                mux.register(make_web_tool(web_allow=sandbox.web_allow))
             elif name == "mem":
                 mux.register(make_mem_tool(self.store, session_id))
             elif name == "skill":

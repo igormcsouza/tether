@@ -44,6 +44,15 @@ By default `bash` keeps network access. `tether run --no-network ...` (or `Sandb
 ### 6. `web fetch` SSRF guard
 `web fetch` resolves the host (and every redirect hop) and refuses non-public addresses: loopback, RFC1918, link-local, and cloud metadata (`169.254.169.254`). Set `TETHER_WEB_ALLOW_PRIVATE=1` to fetch local services on purpose.
 
+### 7. Web domain allowlist (`--web-allow`)
+By default the `web` tool can reach any public host. `tether run --web-allow python.org,*.github.com` (or `SandboxPolicy(web_allow=...)`) limits it to the listed domains.
+
+- A bare `d` such as `python.org` matches `python.org` and every subdomain of it (`docs.python.org`). `*.d` such as `*.python.org` matches subdomains of `d` only, not `d` itself.
+- IP literals (such as `http://93.184.216.34/`) are always refused, even if they look public.
+- Redirects are checked hop by hop. A redirect to a host outside the list is refused.
+- Search results are filtered to the list before the count limit is applied; hidden results are reported as a count.
+- Children can only narrow the list. Sub-agents and pipeline stages inherit it and can never widen it.
+
 ## Configuring `SandboxPolicy` in Python
 
 ```python
