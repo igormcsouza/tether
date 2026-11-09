@@ -14,9 +14,11 @@ def test_web_allow_refuses_off_list_hosts(tether: Tether, chaos) -> None:
     )
     r = tether.run("fetch off-list", "--tools", "web", "--web-allow", "python.org")
     outs = tether.tool_outputs(r["id"])[:2]
-    assert all("host not allowed" in o and "Instead:" in o and "python.org" in o for o in outs), (
-        outs
-    )
+    hosts = ["127.0.0.1", "evil.invalid"]
+    assert all(
+        "not allowed" in o and "Instead:" in o and "python.org" in o and h in o
+        for o, h in zip(outs, hosts, strict=True)
+    ), outs
 
 
 def test_bad_web_allow_is_a_usage_error(tether: Tether) -> None:
