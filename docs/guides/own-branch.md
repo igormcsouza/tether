@@ -14,6 +14,8 @@ By default a run edits the directory you started it in, so two runs in the same 
 
 Your own checkout is left alone until you decide to merge.
 
+To run dependency installation with the network and the model's own commands without it, see [Install with the network, work without it](../tutorial/security-and-sandbox.md#install-with-the-network-work-without-it).
+
 ## The flags
 
 | Flag | Meaning |

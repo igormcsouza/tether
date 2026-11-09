@@ -69,6 +69,29 @@ harness = Harness(
 
 The command guard (the non-`bwrap` fallback check on `bash` commands) treats tokens starting with `/` as absolute paths. Since v0.1.4 the program or pattern argument of `awk`, `sed`, `grep`, `rg` and `perl` (and `/regex{...}` tokens given to them) is not treated as a path, so `awk '/Módulo/ {n++}' plan.md` and `sed -n '/^## M/p' plan.md` work in `bash` and in `verify:` gates. File operands (`sed -n p /etc/hosts`, `awk -f /etc/passwd`) are still checked ([#31](https://github.com/igormcsouza/tether/issues/31)).
 
+## Install with the network, work without it
+
+Some tasks need packages from the internet before the model starts, but the model's own commands should not reach the network. Install with `--setup` while the network is on, then run the model with `--no-network`:
+
+```bash
+tether run --worktree --setup "uv sync" --no-network --verify "uv run pytest -q" "<goal>"
+```
+
+| Flag | What it does |
+|---|---|
+| `--worktree` | Runs the session in a git worktree on branch `tether/<id>`, so your checkout is not touched until you merge. |
+| `--setup "uv sync"` | Runs on the host, with the network on, before the model starts. It is trusted code and is not sandboxed. |
+| `--no-network` | Adds `--unshare-net` to the model's `bash`. It requires `bwrap`; without `bwrap` the run fails closed instead of running without isolation. |
+| `--verify "uv run pytest -q"` | A gate that must pass before the session can report `done`. |
+
+Output is not shown.
+
+Limits:
+
+- `--setup` is the only step that needs the network to install dependencies. A task where the model must download something while it works keeps the default (network on) and cannot use `--no-network`.
+- The `--verify` commands must work without the network once `--setup` has finished. They run inside the same bwrap sandbox as the model's `bash`, so with `--no-network` they have no network either.
+- `--no-network` covers the model's `bash` only. `web fetch` runs in the harness process and is not affected by it. To limit which domains `web fetch` may reach, use the `web` tool domain allowlist (see the `web` tool reference; it is planned as S5b).
+
 ## When a command is refused
 
 A refusal names the rule, what to do instead, and the flag that would permit it when one exists. Two real messages:
