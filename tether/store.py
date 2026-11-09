@@ -223,12 +223,19 @@ def _sanitize_fts_tokens(query: str) -> list[str]:
     return filtered or tokens
 
 
+def worker_log_path(db_path: Path, session_id: str) -> Path:
+    """Where a headless worker's stdout and stderr are kept (`<db dir>/workers/<id>.log`)."""
+    return db_path.resolve().parent / "workers" / f"{session_id}.log"
+
+
 class SQLiteStore:
     """ACID SQLite WAL state and FTS5 BM25 RAG store."""
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         resolved = db_path or os.environ.get("TETHER_DB") or ".tether/tether.db"
-        if str(resolved) == ":memory:":
+        # An in-memory store has no directory to hold worker logs (#271)
+        self._in_memory = str(resolved) == ":memory:"
+        if self._in_memory:
             resolved = Path(tempfile.mkdtemp(prefix="tether-memory-")) / "tether.db"
         self.db_path = Path(resolved).resolve()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -462,18 +469,22 @@ class SQLiteStore:
         )
 
     def _reap_dead(self, rec: SessionRecord) -> SessionRecord:
-        """If rec is RUNNING with a pid that no longer exists, mark it FAILED and re-read."""
-        if rec.status == "RUNNING" and rec.pid is not None:
+        """Mark a RUNNING or PENDING session whose worker pid is gone as FAILED, then re-read."""
+        if rec.status in ("RUNNING", "PENDING") and rec.pid is not None:
             try:
                 os.kill(rec.pid, 0)
             except PermissionError:  # alive, owned by another user
                 return rec
             except ProcessLookupError:
-                self.update_session(
-                    rec.id,
-                    status="FAILED",
-                    result=f"Worker died (pid {rec.pid}) before finishing",
-                )
+                if rec.status == "PENDING":
+                    # The worker never reached RUNNING: point at its log for the cause (#271)
+                    reason = f"Worker died (pid {rec.pid}) before starting"
+                    log = None if self._in_memory else worker_log_path(self.db_path, rec.id)
+                    if log is not None and log.exists():
+                        reason += f" (see {log})"
+                else:
+                    reason = f"Worker died (pid {rec.pid}) before finishing"
+                self.update_session(rec.id, status="FAILED", result=reason)
                 # Re-read the updated record
                 with self._connect() as conn:
                     row = conn.execute("SELECT * FROM sessions WHERE id = ?", (rec.id,)).fetchone()

@@ -135,6 +135,7 @@ async def test_harness_lifecycle_and_edge_cases(
     store.update_session(sid_spawned, status="RUNNING", pid=os.getpid())
     assert (await h.send(sid_spawned, "while running")).status == "RUNNING"
     store.update_session(sid_spawned, status="COMPLETED")
+    monkeypatch.setattr("tether.harness.spawn_detached_worker", lambda *a, **kw: os.getpid())
     assert (await h.send(sid_spawned, "resume headless", headless=True)).status == "PENDING"
 
     step_idx = 0

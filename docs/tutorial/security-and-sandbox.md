@@ -92,6 +92,15 @@ Limits:
 - The `--verify` commands must work without the network once `--setup` has finished. They run inside the same bwrap sandbox as the model's `bash`, so with `--no-network` they have no network either.
 - `--no-network` covers the model's `bash` only. `web fetch` runs in the harness process and is not affected by it. To limit which domains `web fetch` may reach, use the `web` tool domain allowlist (see the `web` tool reference; it is planned as S5b).
 
+## When a command is refused
+
+A refusal names the rule, what to do instead, and the flag that would permit it when one exists. Two real messages:
+
+```text
+Sandbox violation: `sudo` privilege escalation is blocked. Instead: run the command without elevated privileges.
+Sandbox violation: binary `python3` is not in the `read-only` allowlist. Instead: use an allowlisted binary such as `ls`, `cat`, `grep` or `rg`. Flag: --sandbox workspace-write.
+```
+
 ## Known limits
 - Network is on unless you pass `--no-network`; with it on, `curl` can reach localhost services and the internet.
 - There is no process-count limit inside `bwrap` (a fork bomb is only stopped by the timeout).

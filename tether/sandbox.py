@@ -20,6 +20,33 @@ class SandboxViolationError(PermissionError):
     """Raised when a tool call violates the deterministic SandboxPolicy."""
 
 
+def _clip(value: object, limit: int = 60) -> str:
+    # Interpolated paths and tokens are capped so no refusal message grows with its input.
+    text = str(value)
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _protected_hint(rel: str) -> str:
+    # The safe alternative depends on the kind of protected path that was hit.
+    parts = rel.split("/")
+    if any(part.startswith(".env") for part in parts):
+        return "use `.env.example`"
+    if rel.startswith(".git/"):
+        return "change git config outside the session"
+    if ".tether" in parts:
+        return "keep files outside `.tether/`"
+    return "keep keys outside the workspace"
+
+
+def _refusal(rule: str, instead: str, flag: str | None = None) -> SandboxViolationError:
+    # One format for every refusal: the rule, a safe alternative, and the flag that would permit
+    # it when one exists. Built only on refusal, so it costs no static prompt tokens.
+    msg = f"Sandbox violation: {rule}. Instead: {instead}."
+    if flag:
+        msg += f" Flag: {flag}."
+    return SandboxViolationError(msg)
+
+
 _SENSITIVE_FILENAMES = {
     ".env",
     ".git/config",
@@ -38,41 +65,70 @@ _ENV_ALLOW_EXACT = {
 }  # fmt: skip
 _ENV_ALLOW_PREFIX = ("LC_",)
 
-_BLOCKED_BASH_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"(?:^|[;&|()\s])sudo\b"), "`sudo` privilege escalation is blocked"),
-    (re.compile(r"(?:^|[;&|()\s])su\b"), "`su` user switching is blocked"),
+_BLOCKED_BASH_PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
+    (
+        re.compile(r"(?:^|[;&|()\s])sudo\b"),
+        "`sudo` privilege escalation is blocked",
+        "run the command without elevated privileges",
+    ),
+    (
+        re.compile(r"(?:^|[;&|()\s])su\b"),
+        "`su` user switching is blocked",
+        "run the command as the current user",
+    ),
     (
         re.compile(r"(?:^|[;&|()\s])(?:mkfs|fdisk|parted|mount|umount)\b"),
         "disk utilities are blocked",
+        "use `cp` or `ls` on workspace files; disk changes need the user",
     ),
-    (re.compile(r"(?:^|[;&|()\s])dd\s+if="), "`dd` raw block operations are blocked"),
-    (re.compile(r"rm\s+-[a-zA-Z]*r[a-zA-Z]*f?[a-zA-Z]*\s+/(?:\s|$|\*)"), "`rm -rf /` is blocked"),
-    (re.compile(r"chmod\s+(?:-R\s+)?777\b"), "`chmod 777` is blocked"),
-    (re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;"), "fork bombs are blocked"),
+    (
+        re.compile(r"(?:^|[;&|()\s])dd\s+if="),
+        "`dd` raw block operations are blocked",
+        "use `cp` or `head -c` on workspace files",
+    ),
+    (
+        re.compile(r"rm\s+-[a-zA-Z]*r[a-zA-Z]*f?[a-zA-Z]*\s+/(?:\s|$|\*)"),
+        "`rm -rf /` is blocked",
+        "target a path inside the workspace, e.g. `./build`",
+    ),
+    (
+        re.compile(r"chmod\s+(?:-R\s+)?777\b"),
+        "`chmod 777` is blocked",
+        "use `chmod 755` for scripts or `chmod 644` for files",
+    ),
+    (
+        re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;"),
+        "fork bombs are blocked",
+        "use a non-destructive command",
+    ),
     (
         re.compile(r"(?:~|\$HOME)/\.ssh\b|/etc/(?:shadow|sudoers)\b"),
         "access to system secrets is blocked",
+        "use workspace paths instead of `~/.ssh` or `/etc`",
     ),
 ]
 
 # Text rules that bwrap's mounts already enforce (masked secrets, hidden `.tether/`, read-only root,
 # hidden home). They only guard the no-bwrap fallback: with the kernel jail they would just refuse
 # harmless commands such as `cat .env.example` (#125).
-_MOUNT_ENFORCED_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+_MOUNT_ENFORCED_PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
     (
         re.compile(
             r"(?:^|[\s/\"'])(\.env(?!\.(?:example|sample|template|dist)\b)"
             r"(?:\.[a-zA-Z0-9_-]+)?)\b"
         ),
-        "access to `.env` files is blocked",
+        "access to protected path `.env` is denied",
+        "use `.env.example`",
     ),
     (
         re.compile(r"(?:^|[\s/\"'])\.tether(?:/|\b)"),
-        "access to `.tether` internal store is blocked",
+        "access to protected path `.tether` is denied",
+        "keep files outside `.tether/`",
     ),
     (
         re.compile(r"(?:^|[\s/\"'])\.git/(?:config|hooks)\b"),
-        "access to `.git/config` or `hooks` is blocked",
+        "access to protected path `.git/config` is denied",
+        "change git config outside the session",
     ),
 ]
 
@@ -263,17 +319,19 @@ class SandboxPolicy:
     def resolve_safe_path(self, raw_path: str | Path, *, write: bool = False) -> Path:
         """Resolve a path and enforce workspace confinement + sensitive-file protection."""
         if write and self.profile == "read-only":
-            raise SandboxViolationError(
-                "Sandbox violation: file writes are disabled in `read-only` profile."
+            raise _refusal(
+                "file writes are disabled in `read-only` profile",
+                "read the file, or use a write-capable profile",
+                "--sandbox workspace-write",
             )
 
         p = Path(raw_path)
         candidate = (self.workspace_root / p).resolve() if not p.is_absolute() else p.resolve()
 
         if not candidate.is_relative_to(self.workspace_root):
-            raise SandboxViolationError(
-                f"Sandbox violation: path `{raw_path}` resolves outside "
-                f"workspace `{self.workspace_root}`."
+            raise _refusal(
+                f"path `{_clip(raw_path)}` resolves outside workspace",
+                "use a relative path inside the workspace",
             )
 
         rel = candidate.relative_to(self.workspace_root)
@@ -289,8 +347,11 @@ class SandboxPolicy:
             or candidate.name in ("id_rsa", "id_ed25519", "authorized_keys")
             or candidate.suffix in (".pem", ".key")
         ):
-            raise SandboxViolationError(
-                f"Sandbox violation: access to protected path `{rel_str}` is denied."
+            access = "not writable" if write else "not accessible"
+            raise _refusal(
+                f"access to protected path `{_clip(rel_str)}` is denied; "
+                f"it is protected and {access}",
+                _protected_hint(rel_str),
             )
 
         return candidate
@@ -314,14 +375,14 @@ class SandboxPolicy:
         """Deterministically validate a shell command against sandbox rules."""
         stripped = cmd.strip()
         if not stripped:
-            raise SandboxViolationError("Empty command.")
+            raise _refusal("Empty command", "pass a non-empty `cmd`")
 
         kernel = self.use_kernel_sandbox and _can_use_bwrap()
-        for pattern, reason in (
+        for pattern, reason, instead in (
             _BLOCKED_BASH_PATTERNS if kernel else _BLOCKED_BASH_PATTERNS + _MOUNT_ENFORCED_PATTERNS
         ):
             if pattern.search(stripped):
-                raise SandboxViolationError(f"Sandbox violation: {reason}.")
+                raise _refusal(reason, instead)
 
         # Block explicit parent directory traversal (`..`) or absolute paths outside workspace
         try:
@@ -351,14 +412,16 @@ class SandboxPolicy:
             if is_program_arg:
                 continue
             if tok == ".." or tok.startswith("../") or "/../" in tok or tok.endswith("/.."):
-                raise SandboxViolationError(
-                    "Sandbox violation: parent directory traversal (`..`) is blocked."
+                raise _refusal(
+                    "parent directory traversal (`..`) is blocked",
+                    "use a path inside the workspace, e.g. `./src`",
                 )
             if tok.startswith("/") and not tok.startswith(("/dev/null", "/tmp")):
                 resolved = Path(tok).resolve()
                 if not resolved.is_relative_to(self.workspace_root):
-                    raise SandboxViolationError(
-                        f"Sandbox violation: absolute path `{tok}` is outside workspace."
+                    raise _refusal(
+                        f"absolute path `{_clip(tok)}` is outside workspace",
+                        "use a relative path inside the workspace",
                     )
 
         if self.profile == "read-only":
@@ -366,13 +429,17 @@ class SandboxPolicy:
                 op in stripped
                 for op in (">", ">>", "| tee", "rm ", "mv ", "cp ", "mkdir ", "touch ")
             ):
-                raise SandboxViolationError(
-                    "Sandbox violation: mutating shell commands are blocked in `read-only` profile."
+                raise _refusal(
+                    "mutating shell commands are blocked in `read-only` profile",
+                    "use an inspect-only command such as `cat`, `ls` or `grep`",
+                    "--sandbox workspace-write",
                 )
             first_bin = Path(tokens[0]).name if tokens else ""
             if first_bin not in _READONLY_ALLOWED_BINARIES:
-                raise SandboxViolationError(
-                    f"Sandbox violation: binary `{first_bin}` is not in the `read-only` allowlist."
+                raise _refusal(
+                    f"binary `{first_bin}` is not in the `read-only` allowlist",
+                    "use an allowlisted binary such as `ls`, `cat`, `grep` or `rg`",
+                    "--sandbox workspace-write",
                 )
 
     def _protected_mounts(self) -> list[str]:
@@ -485,9 +552,10 @@ class SandboxPolicy:
             ]
             return bwrap_cmd
         if not self.network:
-            raise SandboxViolationError(
-                "Sandbox violation: network isolation (`--no-network`) requires `bwrap`, "
-                "which is unavailable; refusing to run un-isolated."
+            raise _refusal(
+                "network isolation (`--no-network`) requires `bwrap`, which is unavailable; "
+                "refusing to run un-isolated",
+                "install `bwrap`, or drop `--no-network`",
             )
         return ["bash", "-c", cmd]
 
