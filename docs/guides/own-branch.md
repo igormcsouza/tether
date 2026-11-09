@@ -46,7 +46,16 @@ The relevant part of the output looks like this:
 {"id": "a1b2c3", "status": "done", "worktree": "/home/you/.cache/tether/worktrees/a1b2c3", "branch": "tether/a1b2c3", "commit": "9f3e2d1c0b7a6e5f4d3c2b1a0987654321fedcba"}
 ```
 
-The session JSON holds `worktree` (the path), `branch` (`tether/<id>`), and `commit` (the full sha, or `null` when the run changed nothing). The commit uses `git add -A`, so it commits everything not ignored by .gitignore.
+The session JSON holds `worktree` (the path), `branch` (`tether/<id>`), and `commit` (the full sha, or `null` when the run changed nothing). The commit uses `git add -A --`, so it commits every tracked or new file except the following, which are always excluded regardless of `.gitignore`:
+
+- `__pycache__/`
+- `*.pyc`
+- `.pytest_cache/`
+- `.ruff_cache/`
+- `.mypy_cache/`
+- `.tether/`
+
+Everything else not ignored by `.gitignore` is committed.
 
 ## Merge the branch
 
