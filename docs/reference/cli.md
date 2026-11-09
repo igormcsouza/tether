@@ -13,6 +13,9 @@ The `tether` command is the primary entry point for running, inspecting, and con
 | `2` | Waiting for input (`WAITING_INPUT`), including a session that is stuck or out of steps and was handed back |
 | `3` | Verification gate failed |
 | `5` | Worker or provider error |
+| `6` | `wait` timed out with sessions still `RUNNING` or `PENDING` (message on stderr) |
+
+A `wait` with `--timeout` (default 120 seconds) that expires while sessions are still `RUNNING` or `PENDING` exits `6` and prints `timed out; still RUNNING: <ids>` to stderr.
 
 ## tether run
 

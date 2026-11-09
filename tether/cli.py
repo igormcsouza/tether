@@ -243,7 +243,12 @@ def build_parser() -> argparse.ArgumentParser:
     # `tether wait`
     p_wait = sub.add_parser("wait", help="Wait for one or more headless sessions to finish")
     p_wait.add_argument("session_ids", nargs="+", help="Session ID(s)")
-    p_wait.add_argument("--timeout", type=float, default=120.0)
+    p_wait.add_argument(
+        "--timeout",
+        type=float,
+        default=120.0,
+        help="seconds to wait before giving up (default: 120 seconds)",
+    )
     p_wait.add_argument("--db", type=str, default=None)
     _add_json(p_wait)
 
@@ -745,7 +750,10 @@ async def _async_main(argv: list[str]) -> int:
         return 0
 
     if cmd == "wait":
+        # 6 is used by no other wait outcome; a timeout must not look like success (#269).
+        exit_wait_timeout = 6
         elapsed = 0.0
+        timed_out = False
         while elapsed < ns.timeout:
             records = [store.get_session(sid) for sid in ns.session_ids]
             if any(r is not None and r.status == "WAITING_INPUT" for r in records) or all(
@@ -754,12 +762,19 @@ async def _async_main(argv: list[str]) -> int:
                 break
             await asyncio.sleep(0.05)
             elapsed += 0.05
+        else:
+            # Only a wait that ran out of time reaches here; an early break is not a timeout.
+            timed_out = True
         recs = [store.get_session(sid) for sid in ns.session_ids]
         if ns.json:
             print(json.dumps([api.digest_dict(store, r) for r in recs if r]))
         else:
             for sid in ns.session_ids:
                 print(store.get_session_digest(sid))
+        still = [r.id for r in recs if r and r.status in ("RUNNING", "PENDING")]
+        if timed_out and still:
+            print(f"timed out; still RUNNING: {' '.join(still)}", file=sys.stderr)
+            return exit_wait_timeout
         return max((api.exit_code(r) for r in recs if r), default=0)
 
     if cmd == "stop":
