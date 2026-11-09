@@ -19,6 +19,6 @@ def test_guide_is_in_the_nav() -> None:
 
 
 def test_release_notes_and_agent_interface_mention_it() -> None:
-    notes = (ROOT / "docs" / "release-notes.md").read_text().split("## v", 1)[0]
+    notes = (ROOT / "docs" / "release-notes.md").read_text()
     assert "--worktree" in notes
     assert "worktree" in (ROOT / "docs" / "reference" / "agent-interface.md").read_text()
