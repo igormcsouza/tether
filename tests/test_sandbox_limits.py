@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import os
 import resource
-import shlex
 import shutil
 import sys
 import time
@@ -95,7 +94,7 @@ async def test_fsize_limit_hit(tmp_path: Path) -> None:
 @LINUX_ONLY
 async def test_fsize_limit_hit_python_write(tmp_path: Path) -> None:
     policy = _policy(tmp_path, limits={"fsize": 1}, timeout_seconds=20)
-    cmd = shlex.quote(sys.executable) + ' -c \'open("big.bin", "w").write("x" * 3000000)\''
+    cmd = 'python3 -c \'open("big.bin", "w").write("x" * 3000000)\''
     rc, out = await policy.execute_bash_with_code(cmd)
     assert rc != 0
     assert "[limit hit: fsize 1 MB]" in out, out
@@ -113,7 +112,7 @@ async def test_procs_limit_enforced(tmp_path: Path) -> None:
 @NOT_ROOT
 async def test_mem_limit_enforced(tmp_path: Path) -> None:
     mem_policy = _policy(tmp_path, limits={"mem": 64}, timeout_seconds=20)
-    cmd = shlex.quote(sys.executable) + " -c 'b = bytearray(512 * 2**20)'"
+    cmd = "python3 -c 'b = bytearray(512 * 2**20)'"
     rc, out = await mem_policy.execute_bash_with_code(cmd)
     assert rc != 0
     assert "[limit hit: mem 64 MB]" in out, out
