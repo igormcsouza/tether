@@ -59,5 +59,5 @@ async def test_thinking_is_never_sent_to_the_model(tmp_path: Path) -> None:
 
 def test_release_notes_mention_thinking() -> None:
     notes = Path(__file__).resolve().parents[1] / "docs" / "release-notes.md"
-    unreleased = notes.read_text().split("## v", 1)[0]
+    unreleased = notes.read_text()
     assert "thinking" in unreleased

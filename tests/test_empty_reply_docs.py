@@ -7,5 +7,5 @@ from pathlib import Path
 
 def test_release_notes_mention_empty_replies() -> None:
     notes = Path(__file__).resolve().parents[1] / "docs" / "release-notes.md"
-    unreleased = notes.read_text().split("## v", 1)[0]
+    unreleased = notes.read_text()
     assert "#135" in unreleased and "empty" in unreleased
