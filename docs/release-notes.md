@@ -2,8 +2,20 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- Without `bwrap`, a `workspace-write` session with the kernel sandbox on is now refused before the first model call (exit 1). Migration: pass `--allow-unsandboxed` (SDK `SandboxPolicy(allow_unsandboxed=True)`/`Harness(allow_unsandboxed=True)`, MCP `allow_unsandboxed`), or set `TETHER_SANDBOX=container` in Docker. With the opt-out, one `[sandbox] bwrap not available, running with command checks only` line is printed on stderr (#124 item 2).
+
+### Changed
+
+- Sandbox refusals now name the rule, what to do instead, and the flag that would permit it when one exists (#124 item 3). No change to which commands are allowed or refused.
+
 ### Added
 
+- Web domain allowlist (#124): `tether run --web-allow` (and `SandboxPolicy(web_allow=)`) restricts the `web` tool to listed domains; sub-agents and stages can only narrow it.
+- `tether pipeline --web-allow` and the MCP `tether_run` argument `web_allow` set the same domain allowlist. A malformed value (spaces, a `*` outside a leading `*.`, a URL) is a usage error or a ToolError, not a silent pass.
+- Docs: install with the network, work without it (`--setup`, `--no-network`) (#124).
+- `tether status` shows `sandbox: bwrap` or `sandbox: command checks only`.
 - `tether export <id>` prints a session as a Markdown transcript (`--out FILE` to save it).
 - A `--verify` gate whose program does not exist (checked for every command in a `&&`/`||`/`;`/`|` chain) now fails the session before the first model call, as a misconfigured gate (#82).
 - `tether doctor` checks your setup (Ollama reachable, model pulled, bwrap, providers.yaml, session DB) and says what to fix; exit 1 when a check fails.
@@ -20,13 +32,15 @@
 - Observation folding is automatic by default: above half of `max_context_tokens`, old outputs fold oldest-first only until the history is back under that target (no cliff), and each unedited re-read lengthens K by one (cap 8). `--fold-after N` keeps the fixed rule (#205).
 
 ### Fixed
+- A headless worker that dies before it starts no longer leaves its session PENDING: it is marked FAILED with `Worker died (pid N) before starting`, and the result names the worker's log (`<db dir>/workers/<id>.log`), which now keeps the worker's stdout and stderr (#271).
 - `edit write` on an existing file with stdin made only of complete SEARCH/REPLACE blocks now applies them as `edit replace` instead of replacing the whole file (#267).
+- Replay and list columns no longer collide with long model ids or WAITING_INPUT, and `replay` accepts `--worktree`, `--worktree-from` and `--setup` (#279).
 - `tether wait` exits 6 and prints `timed out; still RUNNING: ...` on stderr when the timeout expires (#269).
 - Command provider timeouts and empty failures are retried twice before raising `ProviderError` (#268).
 - Headless workers always import the installed tether, never a workspace's own tether/ package (#273).
 - An empty model reply is retried. If the retry is empty too, the session stops instead of continuing with no output (#135).
 - `tether run --worktree` no longer commits bytecode and tool caches (`__pycache__`, `*.pyc`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.tether/`) (#278).
-
+- `tether diff` shows writes by `sed -i`, `perl -i`, `mv`, `cp`, `python -c`, and names files changed by commands it could not track instead of `no file changes recorded` (#280).
 ## v0.2.18 (2026-11-08)
 
 Small fixes from the v0.2.17 release check and the paasio labs: shell-style file writes work when only `edit` is enabled, `edit append` adds to a file instead of replacing it, a foreground run prints its session id at once, and a `cd` into a container path that does not exist no longer costs a step.

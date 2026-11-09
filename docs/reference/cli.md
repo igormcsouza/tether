@@ -15,6 +15,8 @@ The `tether` command is the primary entry point for running, inspecting, and con
 | `5` | Worker or provider error |
 | `6` | `wait` timed out with sessions still `RUNNING` or `PENDING` (message on stderr) |
 
+If a headless worker dies before it starts (exit `5`), the session is marked `FAILED` with `Worker died (pid N) before starting`, and the failure names the worker log at `<db dir>/workers/<id>.log`, which keeps the worker's stdout and stderr. Read that file to see why it died.
+
 A `wait` with `--timeout` (default 120 seconds) that expires while sessions are still `RUNNING` or `PENDING` exits `6` and prints `timed out; still RUNNING: <ids>` to stderr.
 
 ## tether run
@@ -33,7 +35,9 @@ tether run "your goal here" [flags]
 | `--tools` | Comma-separated tools (e.g., `web,mem,bash` or `all`) |
 | `--verify` | Deterministic verification gate command to run before `done` (repeatable) |
 | `--sandbox` | Deterministic sandbox profile |
+| `--web-allow` | Comma list of domains the `web` tool may reach, e.g. `python.org,*.github.com`; other hosts and IP literals are refused |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
+| `--allow-unsandboxed` | Run write sessions without bwrap (command checks only). Without bwrap and without this flag, a workspace-write session is refused with exit 1 |
 | `--max-steps` | Maximum reasoning steps |
 | `--max-tokens` | Token budget (prompt + completion); pauses as WAITING_INPUT (exit 2) when reached |
 | `--context-tokens` | Context token budget (default 32768) |
@@ -67,7 +71,9 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 | `--headless` | Run detached in background and print session ID |
 | `--model` | Default fallback model when a stage omits `model` |
 | `--sandbox` | Root deterministic sandbox profile (stages can only narrow) |
+| `--web-allow` | Comma list of domains the `web` tool may reach (stages can only narrow) |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
+| `--allow-unsandboxed` | Run write sessions without bwrap (command checks only). Without bwrap and without this flag, a workspace-write session is refused with exit 1 |
 | `--max-steps` | Default max reasoning steps per stage |
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--context-tokens` | Context token budget (default 32768) |
@@ -94,6 +100,8 @@ Show the current state of a session (running, paused, completed, failed). Use th
 ```bash
 tether status <session_id> [flags]
 ```
+
+The text output ends with `sandbox: bwrap` or `sandbox: command checks only` (sessions created since 0.3).
 
 | Flag | Meaning |
 |------|---------|
@@ -272,6 +280,8 @@ tether events ses_abc123 --follow
 
 Show what a session changed in its files, against the first bytes the session saw. New files show as added from empty. Current contents are read from disk.
 
+Tracked: files that `edit write|replace|append`, a shell redirect (`>`, `>>`) or `tee` change, and existing files named as arguments on a command's first line (`sed -i`, `perl -i`, `mv new f`, `cp new f`, `python3 -c` with a quoted path). Limits, per command: at most 32 named paths, each at most 256 kB, and no workspace walk. Limits at diff time: the walk covers at most 2000 files; dot-directories, `__pycache__` and `node_modules` are skipped; a file counts as changed by an untracked command when its mtime falls between the session start and its last update. Files changed that way are listed as `N files changed by commands tether could not track: <paths>`. When the walk stops early the output says so, and it never prints `no file changes` while a change may be missing. One gap remains: a file DELETED by an opaque command leaves no mtime, so it is not detected and no note names it.
+
 ```bash
 tether diff <session_id> [flags]
 ```
@@ -360,13 +370,14 @@ tether mcp --workspace /path/to/project
 Re-run a session's goal with its saved setup and compare the two runs.
 
 ```
-tether replay SESSION_ID [--model M] [--max-steps N] [--db PATH] [--json]
+tether replay SESSION_ID [--model M] [--max-steps N] [--worktree] [--worktree-from REF] [--setup CMD] [--db PATH] [--json]
 ```
 
-- The replay runs in the current directory with the original's tools, skill, sandbox profile and network, output_schema and params. There is no workspace copy, so `cd` to the right place first.
+- Plain replay runs in the current directory with the original's tools, skill, sandbox profile and network, output_schema and params. There is no workspace copy, so `cd` to the right place first.
 - Verify gates are not stored, so a replay runs without them.
 - The replay is recorded as a child of the original (`parent_id`), so `tether list` shows it under the original.
 - `--model` and `--max-steps` override the original's values. `--max-steps` must be at least 1.
+- `--worktree` runs the replay in its own git worktree on branch `tether/<id>`, as `tether run --worktree` does. `--worktree-from REF` sets the base ref (default HEAD) and `--setup CMD` runs a shell command in the worktree before the model starts. The setup runs outside the sandbox and is not offered over MCP. `--worktree-from` and `--setup` without `--worktree` are a usage error and exit `2`.
 - `--db` points at the database file, as for the other subcommands.
 - Exit `0` once the comparison prints, even if the replay FAILED (the status row shows it). Exit `1` if the session is unknown, still RUNNING or WAITING_INPUT, or the harness raises.
 

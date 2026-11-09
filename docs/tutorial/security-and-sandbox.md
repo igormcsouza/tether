@@ -38,11 +38,29 @@ On Linux, when `bwrap` is available and functional, `bash` subprocesses automati
 - `/home`, `/media`, `/mnt`, `/srv` and `/var/tmp` are hidden behind empty tmpfs, `/run/user` is hidden, and every unix socket under `/run` (for example `docker.sock`) is masked. A read-only bind does not stop `connect()`, so an exposed `docker.sock` would be a host escape. Existing `PATH` directories that sit under a hidden root (`~/.local/bin` for `uv`, nvm's `bin` for `node`) are re-bound read-only so tools installed there still run in `bash` and `--verify` gates; credential directories (`.ssh`, `.gnupg`, `.aws`, `.kube`, `.docker`, `.config`) and the hidden roots themselves are never re-exposed.
 - `--unshare-pid`, `--unshare-ipc` and `--die-with-parent` ensure runaway child processes are reaped immediately on timeout.
 
+### Without bwrap (fail closed)
+Without `bwrap` (macOS, Windows, or Linux without bubblewrap) only the command-text checks remain, and those are easy to get around (`python -c ...`). So a `workspace-write` session with the kernel sandbox on is refused before the first model call (exit `1`). The message names the three ways out:
+
+- Install bubblewrap (`apt install bubblewrap`, then `tether doctor`).
+- Pass `--allow-unsandboxed` (`tether run`, `tether pipeline`), `SandboxPolicy(allow_unsandboxed=True)` or `Harness(allow_unsandboxed=True)` in Python, or the MCP `tether_run` argument `allow_unsandboxed`. The session then runs and prints one `[sandbox] bwrap not available, running with command checks only` line on stderr per process.
+- In Docker, set `TETHER_SANDBOX=container`: the container is the sandbox. No refusal and no notice. Any other value of `TETHER_SANDBOX` is refused. The command-text checks still apply in this mode.
+
+`read-only` sessions and `SandboxPolicy(use_kernel_sandbox=False)` are not refused. Sub-agents and pipeline stages inherit the opt-out and can only drop it. `tether status <id>` shows `sandbox: bwrap` or `sandbox: command checks only`.
+
 ### 5. Optional network isolation (`--no-network`)
 By default `bash` keeps network access. `tether run --no-network ...` (or `SandboxPolicy(network=False)`) adds `--unshare-net`, which also separates abstract unix sockets. Sub-agents and pipeline stages inherit it and can never re-enable it. Without `bwrap` the policy cannot be enforced, so `bash` refuses to run (fail closed) instead of running un-isolated. `web fetch` runs in the harness process and is not affected by `--no-network`.
 
 ### 6. `web fetch` SSRF guard
 `web fetch` resolves the host (and every redirect hop) and refuses non-public addresses: loopback, RFC1918, link-local, and cloud metadata (`169.254.169.254`). Set `TETHER_WEB_ALLOW_PRIVATE=1` to fetch local services on purpose.
+
+### 7. Web domain allowlist (`--web-allow`)
+By default the `web` tool can reach any public host. `tether run --web-allow python.org,*.github.com` (or `SandboxPolicy(web_allow=...)`) limits it to the listed domains.
+
+- A bare `d` such as `python.org` matches `python.org` and every subdomain of it (`docs.python.org`). `*.d` such as `*.python.org` matches subdomains of `d` only, not `d` itself.
+- IP literals (such as `http://93.184.216.34/`) are always refused, even if they look public.
+- Redirects are checked hop by hop. A redirect to a host outside the list is refused.
+- Search results are filtered to the list before the count limit is applied; hidden results are reported as a count.
+- Children can only narrow the list. Sub-agents and pipeline stages inherit it and can never widen it.
 
 ## Configuring `SandboxPolicy` in Python
 
@@ -68,6 +86,38 @@ harness = Harness(
 ## Example: awk/sed programs that start with `/`
 
 The command guard (the non-`bwrap` fallback check on `bash` commands) treats tokens starting with `/` as absolute paths. Since v0.1.4 the program or pattern argument of `awk`, `sed`, `grep`, `rg` and `perl` (and `/regex{...}` tokens given to them) is not treated as a path, so `awk '/Módulo/ {n++}' plan.md` and `sed -n '/^## M/p' plan.md` work in `bash` and in `verify:` gates. File operands (`sed -n p /etc/hosts`, `awk -f /etc/passwd`) are still checked ([#31](https://github.com/igormcsouza/tether/issues/31)).
+
+## Install with the network, work without it
+
+Some tasks need packages from the internet before the model starts, but the model's own commands should not reach the network. Install with `--setup` while the network is on, then run the model with `--no-network`:
+
+```bash
+tether run --worktree --setup "uv sync" --no-network --verify "uv run pytest -q" "<goal>"
+```
+
+| Flag | What it does |
+|---|---|
+| `--worktree` | Runs the session in a git worktree on branch `tether/<id>`, so your checkout is not touched until you merge. |
+| `--setup "uv sync"` | Runs on the host, with the network on, before the model starts. It is trusted code and is not sandboxed. |
+| `--no-network` | Adds `--unshare-net` to the model's `bash`. It requires `bwrap`; without `bwrap` the run fails closed instead of running without isolation. |
+| `--verify "uv run pytest -q"` | A gate that must pass before the session can report `done`. |
+
+Output is not shown.
+
+Limits:
+
+- `--setup` is the only step that needs the network to install dependencies. A task where the model must download something while it works keeps the default (network on) and cannot use `--no-network`.
+- The `--verify` commands must work without the network once `--setup` has finished. They run inside the same bwrap sandbox as the model's `bash`, so with `--no-network` they have no network either.
+- `--no-network` covers the model's `bash` only. `web fetch` runs in the harness process and is not affected by it. To limit which domains `web fetch` may reach, use the web domain allowlist (`--web-allow`, section 7 above).
+
+## When a command is refused
+
+A refusal names the rule, what to do instead, and the flag that would permit it when one exists. Two real messages:
+
+```text
+Sandbox violation: `sudo` privilege escalation is blocked. Instead: run the command without elevated privileges.
+Sandbox violation: binary `python3` is not in the `read-only` allowlist. Instead: use an allowlisted binary such as `ls`, `cat`, `grep` or `rg`. Flag: --sandbox workspace-write.
+```
 
 ## Known limits
 - Network is on unless you pass `--no-network`; with it on, `curl` can reach localhost services and the internet.

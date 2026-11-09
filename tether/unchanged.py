@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import ast
 import difflib
+import os
 import re
+import shlex
+from collections.abc import Collection
 from contextlib import suppress
 from pathlib import Path
 
@@ -23,6 +26,8 @@ _EDIT_WRITE = re.compile(r"^(?:bash\s+)?edit\s+write\s+(\S+)")
 _REDIRECT = re.compile(r">>?\s*([\w./-]+)")
 _SINGLE_REDIRECT = re.compile(r"(?<![>\d])>(?!>)\s*([\w./-]+)")
 _TEE = re.compile(r"\btee\b([^|;&<>\n]*)")
+MAX_ARGS = 32  # candidate paths named on a command line that are snapshotted
+_QUOTED = re.compile(r"['\"]([\w./-]+)['\"]")  # path literals inside python -c code
 
 
 def _targets(cmd: str) -> list[str]:
@@ -41,6 +46,15 @@ def _current(rel: str, root: Path) -> bytes | None:
         if path.is_file() and path.is_relative_to(base) and path.stat().st_size <= MAX_BYTES:
             return path.read_bytes()
     return None
+
+
+def snapshot_key(rel: str, root: Path) -> str:
+    """The key a snapshot is stored under: `rel` relative to `root`; absolute paths too.
+
+    Only called for paths that already resolved inside `root` (see `_current`).
+    """
+    base = root.resolve()
+    return os.path.relpath((base / rel).resolve(), base)
 
 
 def _same_code(old: bytes, new: bytes) -> bool:
@@ -67,6 +81,37 @@ def snapshot(cmd: str, root: Path) -> dict[str, bytes]:
     Never raises.
     """
     return {rel: data for rel in _targets(cmd) if (data := _current(rel, root)) is not None}
+
+
+def _words(head: str) -> list[str]:
+    # shell words, plus quoted path literals inside each word; an unterminated quote falls back
+    try:
+        words = shlex.split(head)
+    except ValueError:
+        words = head.split()
+    out: list[str] = []
+    for word in words:
+        out.append(word)
+        out.extend(_QUOTED.findall(word))
+    return out
+
+
+def arg_snapshot(cmd: str, root: Path, skip: Collection[str]) -> dict[str, bytes]:
+    """Current bytes of the existing files that the first line of `cmd` names as arguments.
+
+    Covers writes that are not redirects or `edit`: `sed -i`, `perl -i`, `mv new f`, `cp new f`,
+    `python -c "open('f','w')"`. Words in `skip` (already snapshotted) and in `_targets(cmd)` are
+    left out; so are options. At most MAX_ARGS candidates, in order. Never raises.
+    """
+    head = cmd.partition("\n")[0]  # a heredoc body is code, not arguments
+    seen = set(skip) | set(_targets(cmd))
+    candidates: list[str] = []
+    for word in _words(head):
+        if word.startswith("-") or word in seen:
+            continue
+        seen.add(word)
+        candidates.append(word)
+    return {rel: data for rel in candidates[:MAX_ARGS] if (data := _current(rel, root)) is not None}
 
 
 def missing_targets(cmd: str, root: Path) -> list[str]:

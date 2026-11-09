@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import dataclasses
 import os
 import re
 import subprocess
@@ -39,10 +40,10 @@ from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render
 from tether.providers import ModelProvider, resolve_provider
 from tether.providers.base import ProviderError
 from tether.providers.declarative import load_declared
-from tether.sandbox import SandboxPolicy
+from tether.sandbox import SandboxPolicy, SandboxUnavailableError
 from tether.schema import validate_output
 from tether.skills import Skill, SkillLoader, make_skill_tool
-from tether.store import SessionRecord, SQLiteStore
+from tether.store import SessionRecord, SQLiteStore, worker_log_path
 from tether.tools import (
     ALL_BUILTIN_TOOLS,
     make_agent_tool,
@@ -54,9 +55,11 @@ from tether.tools import (
 )
 from tether.trace import NEAR_PASS, failing_test_id, runtime_trace, smallest_failing
 from tether.unchanged import (
+    arg_snapshot,
     missing_targets,
     small_change_note,
     snapshot,
+    snapshot_key,
     unchanged_note,
     whole_file_targets,
 )
@@ -311,14 +314,18 @@ def spawn_detached_worker(db_path: Path, session_id: str) -> int:
     """
     env = dict(os.environ)
     env["TETHER_DB"] = str(db_path)
-    proc = subprocess.Popen(
-        [sys.executable, "-P", "-m", "tether.cli", "_worker", session_id, "--db", str(db_path)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        env=env,
-    )
+    log = worker_log_path(db_path, session_id)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    # Keep the worker's output: a worker that dies before RUNNING leaves its cause here (#271)
+    with log.open("ab") as out:
+        proc = subprocess.Popen(
+            [sys.executable, "-P", "-m", "tether.cli", "_worker", session_id, "--db", str(db_path)],
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=env,
+        )
     return proc.pid
 
 
@@ -367,6 +374,7 @@ class Harness:
         worktree: bool = False,
         worktree_from: str | None = None,
         setup: str | None = None,
+        allow_unsandboxed: bool = False,
     ) -> None:
         if max_tokens is not None and max_tokens <= 0:
             raise ValueError(f"--max-tokens must be a positive integer (got {max_tokens}).")
@@ -377,6 +385,8 @@ class Harness:
         self.model = model or os.environ.get("TETHER_MODEL") or "ollama/qwen3.5:9b"
         self.store = SQLiteStore(db_path=db_path)
         self.sandbox = sandbox or SandboxPolicy()
+        if allow_unsandboxed:  # never mutate the caller's policy object
+            self.sandbox = dataclasses.replace(self.sandbox, allow_unsandboxed=True)
         self.max_steps = max_steps
         self.worktree = worktree
         self.worktree_from = worktree_from
@@ -537,7 +547,7 @@ class Harness:
             elif name == "edit":
                 mux.register(make_edit_tool(sandbox))
             elif name == "web":
-                mux.register(make_web_tool())
+                mux.register(make_web_tool(web_allow=sandbox.web_allow))
             elif name == "mem":
                 mux.register(make_mem_tool(self.store, session_id))
             elif name == "skill":
@@ -580,7 +590,10 @@ class Harness:
         """Create a persisted root pipeline session row in SQLite without executing it yet."""
         resolved = self._resolve_pipeline(pipeline)
         root_sandbox = self.sandbox.attenuate(resolved.sandbox)
+        for stage in resolved.stages:  # only stages that still write need bwrap
+            root_sandbox.attenuate(stage.sandbox).require_isolation()
         sbox_dict = root_sandbox.to_dict()
+        sbox_dict["sandbox_mode"] = root_sandbox.mode()
         sbox_dict["pipeline"] = resolved.to_dict()
         if isinstance(pipeline, Path):
             sbox_dict["pipeline_source"] = str(pipeline.resolve())
@@ -671,7 +684,9 @@ class Harness:
 
     def create_session(self, goal: str, *, parent_id: str | None = None) -> SessionRecord:
         """Create a persisted session row in SQLite without executing it yet."""
+        self.sandbox.require_isolation()  # before the worktree, the row and any model call
         sbox_dict = self.sandbox.to_dict()
+        sbox_dict["sandbox_mode"] = self.sandbox.mode()
         if self.output_schema:
             sbox_dict["output_schema"] = self.output_schema
         if self.params:
@@ -712,11 +727,16 @@ class Harness:
         db_path: str | Path | None = None,
         model: str | None = None,
         max_steps: int | None = None,
+        worktree: bool = False,
+        worktree_from: str | None = None,
+        setup: str | None = None,
     ) -> Harness:
         """Rebuild a harness from a stored session (used by `tether replay`).
 
         Runs in the current directory (the stored workspace_root is not reused).
         Verify gates are not stored, so they are not restored.
+        With worktree=True the replay runs in its own git worktree (worktree_from sets
+        the base ref). setup is a shell command run in that worktree before the model starts.
         """
         cfg = dict(rec.sandbox_config)
         output_schema = cfg.pop("output_schema", None)
@@ -731,6 +751,9 @@ class Harness:
             max_steps=rec.max_steps if max_steps is None else max_steps,
             output_schema=output_schema,
             params=params,
+            worktree=worktree,
+            worktree_from=worktree_from,
+            setup=setup,
         )
 
     def spawn(self, goal: str, *, parent_id: str | None = None) -> str:
@@ -1058,6 +1081,23 @@ class Harness:
         ]:
             if sv not in verify_commands:
                 verify_commands.append(sv)
+
+        try:
+            isolation = sandbox.isolation_error()
+        except SandboxUnavailableError as exc:
+            isolation = str(exc)
+        if isolation is not None:
+            self.store.add_turn(
+                session_id=session_id,
+                step=rec.step_count,
+                role="tool",
+                content=isolation,
+                event_type="gate_error",
+            )
+            self.store.update_session(session_id, status="FAILED", result=isolation)
+            refused = self.store.get_session(session_id)
+            assert refused is not None
+            return refused
 
         precheck_result = gates_precheck(verify_commands, sandbox)
         if precheck_result is not None:
@@ -1570,18 +1610,30 @@ class Harness:
                     )
                     continue
 
-                before = {} if is_quiet(cmd) else snapshot(cmd, Path(sandbox.workspace_root))
+                quiet = is_quiet(cmd)
+                before = {} if quiet else snapshot(cmd, Path(sandbox.workspace_root))
                 for rel, data in before.items():  # untouched since the session started
                     with suppress(OSError):
                         path = Path(sandbox.workspace_root) / rel
                         if path.stat().st_mtime < rec.created_at:
-                            key = os.path.normpath(rel)
+                            key = snapshot_key(rel, Path(sandbox.workspace_root))
                             if key not in originals:
                                 originals[key] = data
                                 self.store.record_snapshot(session_id, key, data)
                 # a file the command creates has no bytes yet: its snapshot is NULL
                 for rel in missing_targets(cmd, Path(sandbox.workspace_root)):
-                    self.store.record_snapshot(session_id, os.path.normpath(rel), None)
+                    self.store.record_snapshot(
+                        session_id, snapshot_key(rel, Path(sandbox.workspace_root)), None
+                    )
+                # named arguments (sed -i f, mv new f) are kept for `tether diff` only
+                arg_bytes = (
+                    {} if quiet else arg_snapshot(cmd, Path(sandbox.workspace_root), skip=before)
+                )
+                for rel, data in arg_bytes.items():  # not added to `originals`
+                    with suppress(OSError):
+                        if (Path(sandbox.workspace_root) / rel).stat().st_mtime < rec.created_at:
+                            key = snapshot_key(rel, Path(sandbox.workspace_root))
+                            self.store.record_snapshot(session_id, key, data)
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)
