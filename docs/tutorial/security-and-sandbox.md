@@ -44,6 +44,15 @@ By default `bash` keeps network access. `tether run --no-network ...` (or `Sandb
 ### 6. `web fetch` SSRF guard
 `web fetch` resolves the host (and every redirect hop) and refuses non-public addresses: loopback, RFC1918, link-local, and cloud metadata (`169.254.169.254`). Set `TETHER_WEB_ALLOW_PRIVATE=1` to fetch local services on purpose.
 
+### 7. Web domain allowlist (`--web-allow`)
+By default the `web` tool can reach any public host. `tether run --web-allow python.org,*.github.com` (or `SandboxPolicy(web_allow=...)`) limits it to the listed domains.
+
+- A bare `d` such as `python.org` matches `python.org` and every subdomain of it (`docs.python.org`). `*.d` such as `*.python.org` matches subdomains of `d` only, not `d` itself.
+- IP literals (such as `http://93.184.216.34/`) are always refused, even if they look public.
+- Redirects are checked hop by hop. A redirect to a host outside the list is refused.
+- Search results are filtered to the list before the count limit is applied; hidden results are reported as a count.
+- Children can only narrow the list. Sub-agents and pipeline stages inherit it and can never widen it.
+
 ## Configuring `SandboxPolicy` in Python
 
 ```python
@@ -90,7 +99,7 @@ Limits:
 
 - `--setup` is the only step that needs the network to install dependencies. A task where the model must download something while it works keeps the default (network on) and cannot use `--no-network`.
 - The `--verify` commands must work without the network once `--setup` has finished. They run inside the same bwrap sandbox as the model's `bash`, so with `--no-network` they have no network either.
-- `--no-network` covers the model's `bash` only. `web fetch` runs in the harness process and is not affected by it. To limit which domains `web fetch` may reach, use the `web` tool domain allowlist (see the `web` tool reference; it is planned as S5b).
+- `--no-network` covers the model's `bash` only. `web fetch` runs in the harness process and is not affected by it. To limit which domains `web fetch` may reach, use the web domain allowlist (`--web-allow`, section 7 above).
 
 ## When a command is refused
 

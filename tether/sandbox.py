@@ -11,6 +11,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,51 @@ from typing import Any
 
 class SandboxViolationError(PermissionError):
     """Raised when a tool call violates the deterministic SandboxPolicy."""
+
+
+def parse_web_allow(raw: str | Sequence[str] | None) -> tuple[str, ...] | None:
+    """Normalise a `web_allow` domain list; None means unset, () means deny every host."""
+    if raw is None:
+        return None
+    items = raw.split(",") if isinstance(raw, str) else list(raw)
+    cleaned: list[str] = []
+    for item in items:
+        entry = str(item).strip().lower().rstrip(".")
+        if not entry:
+            raise ValueError("web_allow has an empty entry; give domains such as python.org")
+        if "://" in entry or any(ch in entry for ch in "/@:") or entry == "*":
+            raise ValueError(
+                f"web_allow entry {item!r} must be a bare domain like python.org or *.python.org"
+            )
+        stars = entry.count("*")
+        if any(ch.isspace() for ch in entry) or (
+            stars and (not entry.startswith("*.") or stars > 1)
+        ):
+            raise ValueError(
+                f"web_allow entry {item!r} may only contain a leading '*.' wildcard, with no spaces"
+            )
+        cleaned.append(entry)
+    return tuple(cleaned)
+
+
+def _entry_within(child: str, parent: str) -> bool:
+    """True when every host the child entry matches is also matched by the parent entry."""
+    base = child.removeprefix("*.")
+    if parent.startswith("*."):
+        return base.endswith("." + parent[2:])
+    return base == parent or base.endswith("." + parent)
+
+
+def _narrow_web_allow(
+    parent: tuple[str, ...] | None, child: Sequence[str] | str | None
+) -> tuple[str, ...] | None:
+    """A child may only keep entries the parent already allows; an unset child inherits."""
+    if child is None:
+        return parent
+    requested = parse_web_allow(child) or ()
+    if parent is None:
+        return requested
+    return tuple(c for c in requested if any(_entry_within(c, p) for p in parent))
 
 
 def _clip(value: object, limit: int = 60) -> str:
@@ -265,11 +311,14 @@ class SandboxPolicy:
     use_kernel_sandbox: bool = True
     network: bool = True
     verify_commands: list[str] = field(default_factory=list)
+    # None = unset (today's behaviour); () = deny every host. Set by --web-allow / web_allow.
+    web_allow: tuple[str, ...] | None = None
 
     def __post_init__(self) -> None:
         self.workspace_root = Path(self.workspace_root).resolve()
         if self.profile not in ("workspace-write", "read-only"):
             raise ValueError(f"Unsupported sandbox profile: {self.profile}")
+        self.web_allow = parse_web_allow(self.web_allow)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -280,6 +329,7 @@ class SandboxPolicy:
             "use_kernel_sandbox": self.use_kernel_sandbox,
             "network": self.network,
             "verify_commands": list(self.verify_commands),
+            "web_allow": None if self.web_allow is None else list(self.web_allow),
         }
 
     @classmethod
@@ -295,10 +345,14 @@ class SandboxPolicy:
             use_kernel_sandbox=bool(data.get("use_kernel_sandbox", True)),
             network=bool(data.get("network", True)),
             verify_commands=[str(v) for v in raw_verify if str(v).strip()],
+            web_allow=parse_web_allow(data.get("web_allow")),
         )
 
     def attenuate(
-        self, child_profile: str | None = None, child_network: bool | None = None
+        self,
+        child_profile: str | None = None,
+        child_network: bool | None = None,
+        child_web_allow: Sequence[str] | str | None = None,
     ) -> SandboxPolicy:
         """Create a child SandboxPolicy that can only narrow (never escalate) privileges."""
         if self.profile == "read-only":
@@ -314,6 +368,7 @@ class SandboxPolicy:
             use_kernel_sandbox=self.use_kernel_sandbox,
             network=self.network and child_network is not False,
             verify_commands=list(self.verify_commands),
+            web_allow=_narrow_web_allow(self.web_allow, child_web_allow),
         )
 
     def resolve_safe_path(self, raw_path: str | Path, *, write: bool = False) -> Path:

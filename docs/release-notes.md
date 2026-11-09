@@ -8,6 +8,8 @@
 
 ### Added
 
+- Web domain allowlist (#124): `tether run --web-allow` (and `SandboxPolicy(web_allow=)`) restricts the `web` tool to listed domains; sub-agents and stages can only narrow it.
+- `tether pipeline --web-allow` and the MCP `tether_run` argument `web_allow` set the same domain allowlist. A malformed value (spaces, a `*` outside a leading `*.`, a URL) is a usage error or a ToolError, not a silent pass.
 - Docs: install with the network, work without it (`--setup`, `--no-network`) (#124).
 - `tether export <id>` prints a session as a Markdown transcript (`--out FILE` to save it).
 - A `--verify` gate whose program does not exist (checked for every command in a `&&`/`||`/`;`/`|` chain) now fails the session before the first model call, as a misconfigured gate (#82).

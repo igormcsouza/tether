@@ -35,6 +35,7 @@ tether run "your goal here" [flags]
 | `--tools` | Comma-separated tools (e.g., `web,mem,bash` or `all`) |
 | `--verify` | Deterministic verification gate command to run before `done` (repeatable) |
 | `--sandbox` | Deterministic sandbox profile |
+| `--web-allow` | Comma list of domains the `web` tool may reach, e.g. `python.org,*.github.com`; other hosts and IP literals are refused |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--max-steps` | Maximum reasoning steps |
 | `--max-tokens` | Token budget (prompt + completion); pauses as WAITING_INPUT (exit 2) when reached |
@@ -69,6 +70,7 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 | `--headless` | Run detached in background and print session ID |
 | `--model` | Default fallback model when a stage omits `model` |
 | `--sandbox` | Root deterministic sandbox profile (stages can only narrow) |
+| `--web-allow` | Comma list of domains the `web` tool may reach (stages can only narrow) |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--max-steps` | Default max reasoning steps per stage |
 | `--db` | SQLite DB path (default .tether/tether.db) |

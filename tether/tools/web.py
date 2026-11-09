@@ -10,6 +10,7 @@ import re
 import socket
 import urllib.parse
 from html.parser import HTMLParser
+from typing import Any
 
 import httpx
 
@@ -18,6 +19,30 @@ from tether.decorator import ToolSpec, build_tool_spec
 
 class PrivateAddressError(PermissionError):
     """Raised when `web fetch` targets a loopback/private/link-local address (SSRF guard)."""
+
+
+class HostNotAllowedError(PermissionError):
+    """Raised when `web` targets a host outside the configured domain allowlist."""
+
+
+def host_allowed(host: str, allow: tuple[str, ...]) -> bool:
+    """Match a host against allowlist entries; IP literals are never allowed by name."""
+    host = host.lower().rstrip(".")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        pass
+    else:
+        return False
+    if ":" in host:
+        return False
+    for entry in allow:
+        if entry.startswith("*."):
+            if host.endswith("." + entry[2:]):
+                return True
+        elif host == entry or host.endswith("." + entry):
+            return True
+    return False
 
 
 async def assert_public_url(request: httpx.Request) -> None:
@@ -103,7 +128,9 @@ def _unwrap_ddg_url(href: str) -> str:
     return href
 
 
-async def search_web_backend(query: str, max_results: int = 5) -> str:
+async def search_web_backend(
+    query: str, max_results: int = 5, web_allow: tuple[str, ...] | None = None
+) -> str:
     """Search the web via SearXNG/Brave/Tavily if configured, else DuckDuckGo HTML."""
     headers = {
         "User-Agent": (
@@ -123,9 +150,11 @@ async def search_web_backend(query: str, max_results: int = 5) -> str:
                 params={"q": query, "format": "json"},
             )
             resp.raise_for_status()
-            items = (resp.json().get("results") or [])[:max_results]
-            return _format_results(
-                [(i.get("title", ""), i.get("url", ""), i.get("content", "")) for i in items]
+            items = resp.json().get("results") or []
+            return _render_results(
+                [(i.get("title", ""), i.get("url", ""), i.get("content", "")) for i in items],
+                web_allow,
+                max_results,
             )
 
         if brave_key:
@@ -135,9 +164,11 @@ async def search_web_backend(query: str, max_results: int = 5) -> str:
                 headers={"X-Subscription-Token": brave_key, "Accept": "application/json"},
             )
             resp.raise_for_status()
-            items = ((resp.json().get("web") or {}).get("results") or [])[:max_results]
-            return _format_results(
-                [(i.get("title", ""), i.get("url", ""), i.get("description", "")) for i in items]
+            items = (resp.json().get("web") or {}).get("results") or []
+            return _render_results(
+                [(i.get("title", ""), i.get("url", ""), i.get("description", "")) for i in items],
+                web_allow,
+                max_results,
             )
 
         if tavily_key:
@@ -146,9 +177,11 @@ async def search_web_backend(query: str, max_results: int = 5) -> str:
                 json={"api_key": tavily_key, "query": query, "max_results": max_results},
             )
             resp.raise_for_status()
-            items = (resp.json().get("results") or [])[:max_results]
-            return _format_results(
-                [(i.get("title", ""), i.get("url", ""), i.get("content", "")) for i in items]
+            items = resp.json().get("results") or []
+            return _render_results(
+                [(i.get("title", ""), i.get("url", ""), i.get("content", "")) for i in items],
+                web_allow,
+                max_results,
             )
 
         # Default zero-config DuckDuckGo HTML endpoint
@@ -171,7 +204,7 @@ async def search_web_backend(query: str, max_results: int = 5) -> str:
     snippets = snip_re.findall(body)
 
     results: list[tuple[str, str, str]] = []
-    for idx, (raw_href, raw_title) in enumerate(links[:max_results]):
+    for idx, (raw_href, raw_title) in enumerate(links):
         title = html.unescape(re.sub(r"<[^>]+>", "", raw_title)).strip()
         url = _unwrap_ddg_url(html.unescape(raw_href).strip())
         snippet = ""
@@ -179,7 +212,39 @@ async def search_web_backend(query: str, max_results: int = 5) -> str:
             snippet = html.unescape(re.sub(r"<[^>]+>", "", snippets[idx])).strip()
         results.append((title, url, snippet))
 
-    return _format_results(results)
+    return _render_results(results, web_allow, max_results)
+
+
+def _render_results(
+    items: list[tuple[str, str, str]], web_allow: tuple[str, ...] | None, max_results: int
+) -> str:
+    """Format backend hits, dropping and counting any host outside the allowlist."""
+    if web_allow is None:
+        return _format_results(items[:max_results])
+    kept, blocked = _filter_results_by_host(items, web_allow)
+    note = _blocked_note(blocked, web_allow) if blocked else ""
+    return _format_results(kept[:max_results]) + note
+
+
+def _filter_results_by_host(
+    results: list[tuple[str, str, str]], allow: tuple[str, ...]
+) -> tuple[list[tuple[str, str, str]], int]:
+    kept: list[tuple[str, str, str]] = []
+    blocked = 0
+    for item in results:
+        host = urllib.parse.urlparse(item[1]).hostname or ""
+        if host and host_allowed(host, allow):
+            kept.append(item)
+        else:
+            blocked += 1
+    return kept, blocked
+
+
+def _blocked_note(blocked: int, allow: tuple[str, ...]) -> str:
+    return (
+        f"\n\n[{blocked} result(s) hidden: host not allowed. "
+        f"Instead: use one of: {', '.join(allow) or '(none)'}]"
+    )
 
 
 def _format_results(items: list[tuple[str, str, str]]) -> str:
@@ -191,7 +256,18 @@ def _format_results(items: list[tuple[str, str, str]]) -> str:
     return "\n\n".join(out)
 
 
-def make_web_tool(max_fetch_chars: int = 8000) -> ToolSpec:
+async def assert_allowed_host(request: httpx.Request, allow: tuple[str, ...]) -> None:
+    """Refuse hosts outside the allowlist; runs before the SSRF guard on every redirect hop."""
+    host = request.url.host
+    if not host_allowed(host, allow):
+        options = ", ".join(allow) or "(none)"
+        message = f"web fetch blocked: host {host} not allowed. Instead: use one of: {options}"
+        raise HostNotAllowedError(message)
+
+
+def make_web_tool(
+    max_fetch_chars: int = 8000, web_allow: tuple[str, ...] | None = None
+) -> ToolSpec:
     help_str = (
         "Usage: web search <query> [--max 5] | web fetch <url>\n"
         "Desc : Search the web or fetch clean markdown text from a URL."
@@ -218,7 +294,7 @@ def make_web_tool(max_fetch_chars: int = 8000) -> ToolSpec:
             query = " ".join(query_parts).strip() or (stdin or "").strip()
             if not query:
                 return f"Error: missing `<query>`.\n{help_str}"
-            return await search_web_backend(query, max_results=max_res)
+            return await search_web_backend(query, max_results=max_res, web_allow=web_allow)
 
         if sub == "fetch":
             if len(args) < 2:
@@ -227,15 +303,23 @@ def make_web_tool(max_fetch_chars: int = 8000) -> ToolSpec:
             if not url.startswith(("http://", "https://")):
                 return "Error: URL must start with http:// or https://."
             headers = {"User-Agent": "Tether-MicroHarness/0.1"}
+            hooks: list[Any] = [assert_public_url]
+            if web_allow is not None:
+                allow = web_allow
+
+                async def _allow_hook(request: httpx.Request) -> None:
+                    await assert_allowed_host(request, allow)
+
+                hooks.insert(0, _allow_hook)
             async with httpx.AsyncClient(
                 timeout=20.0,
                 follow_redirects=True,
                 headers=headers,
-                event_hooks={"request": [assert_public_url]},
+                event_hooks={"request": hooks},
             ) as client:
                 try:
                     resp = await client.get(url)
-                except PrivateAddressError as exc:
+                except (PrivateAddressError, HostNotAllowedError) as exc:
                     return f"Error: {exc}"
                 resp.raise_for_status()
                 ctype = resp.headers.get("content-type", "")

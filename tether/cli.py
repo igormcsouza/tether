@@ -18,9 +18,11 @@ from tether.diff import render_diff
 from tether.harness import Harness, PipelineResumeError
 from tether.progress import watch
 from tether.providers.base import parse_params
-from tether.sandbox import SandboxPolicy
+from tether.sandbox import SandboxPolicy, parse_web_allow
 from tether.store import SessionRecord, SQLiteStore
 from tether.worktree import WorktreeError
+
+EXIT_USAGE = api.EXIT_USAGE
 
 _KNOWN_SUBCOMMANDS = {
     "run",
@@ -88,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-network",
         action="store_true",
         help="Disable network inside the bash sandbox (requires bwrap; fails closed without it)",
+    )
+    p_run.add_argument(
+        "--web-allow",
+        type=str,
+        default=None,
+        help="Comma list of domains the web tool may reach, e.g. python.org,*.github.com",
     )
     p_run.add_argument("--max-steps", type=int, default=15, help="Max reasoning steps")
     p_run.add_argument(
@@ -173,6 +181,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-network",
         action="store_true",
         help="Disable network inside the bash sandbox (requires bwrap; fails closed without it)",
+    )
+    p_pipe.add_argument(
+        "--web-allow",
+        type=str,
+        default=None,
+        help="Comma list of domains the web tool may reach (stages can only narrow)",
     )
     p_pipe.add_argument(
         "--max-steps", type=int, default=15, help="Default max reasoning steps per stage"
@@ -509,8 +523,16 @@ async def _async_main(argv: list[str]) -> int:
         if not ns.worktree and (ns.setup or ns.worktree_from):
             print("Error: --setup and --worktree-from need --worktree", file=sys.stderr)
             return api.EXIT_USAGE
+        try:
+            web_allow = parse_web_allow(ns.web_allow)
+        except ValueError as exc:
+            print(f"Error: --web-allow: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         sandbox = SandboxPolicy(
-            profile=ns.sandbox, workspace_root=Path.cwd(), network=not ns.no_network
+            profile=ns.sandbox,
+            workspace_root=Path.cwd(),
+            network=not ns.no_network,
+            web_allow=web_allow,
         )
         try:
             schema = json.loads(Path(ns.output_schema).read_text()) if ns.output_schema else None
@@ -580,8 +602,16 @@ async def _async_main(argv: list[str]) -> int:
             )
             return api.EXIT_USAGE
         goal = " ".join(ns.goal).strip()
+        try:
+            web_allow = parse_web_allow(ns.web_allow)
+        except ValueError as exc:
+            print(f"Error: --web-allow: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         sandbox = SandboxPolicy(
-            profile=ns.sandbox, workspace_root=Path.cwd(), network=not ns.no_network
+            profile=ns.sandbox,
+            workspace_root=Path.cwd(),
+            network=not ns.no_network,
+            web_allow=web_allow,
         )
         harness = Harness(
             model=ns.model,
