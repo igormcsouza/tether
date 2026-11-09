@@ -102,6 +102,8 @@ def _argv(cmd: str | None) -> list[str]:
 
 # Unedited file reads kept unfolded; older ones fold normally. #81 is the real budget backstop.
 MAX_LIVE_READS = 8
+# Auto mode (#205): each unedited re-read lengthens K by one, up to this bound (same as above).
+AUTO_FOLD_MAX_K = 8
 
 
 # Restart (north star): after RESTART_AFTER_FAILS failing check runs separated by edits the
@@ -232,15 +234,15 @@ def _read_range(cmd: str, path: str) -> str:
     return " ".join(a for a in _argv(cmd) if a not in skip)
 
 
-def _live_map(
+def _scan_reads(
     turns: list[TurnRecord], observations: dict[str, ObservationRecord], root: str = ""
-) -> dict[tuple[str, str], str]:
-    """Build a map of (normalized path, range) -> obs_id for live reads, oldest first.
+) -> tuple[dict[tuple[str, str], str], int]:
+    """(live map as `_live_map` returns it, number of reads that repeat a still-live read).
 
-    A path stops being live on `edit write|replace` or on any non-read command that
-    mentions it (sed -i, tee, `cat > p << EOF`, with or without a `bash` prefix).
+    Stateless on purpose: the re-read count is rebuilt from the turns, so it survives resume.
     """
     live: dict[tuple[str, str], str] = {}  # (normalized path, cmd) -> obs_id, oldest first
+    rereads = 0
 
     def norm(p: str) -> str:
         return os.path.normpath(os.path.join(root, p))
@@ -250,7 +252,8 @@ def _live_map(
             cmd = observations[turn.obs_id].cmd
             if (path := _read_path(cmd)) is not None:
                 key = (norm(path), _read_range(cmd, path))
-                live.pop(key, None)
+                if live.pop(key, None) is not None:
+                    rereads += 1  # read again with no edit in between: the model forgot it
                 live[key] = turn.obs_id
         elif turn.role == "assistant" and turn.tool_cmd:
             argv = _argv(turn.tool_cmd)
@@ -268,7 +271,25 @@ def _live_map(
                     if k[0] not in tokens
                     and os.path.relpath(k[0], root or ".") not in turn.tool_cmd
                 }
-    return live
+    return live, rereads
+
+
+def _live_map(
+    turns: list[TurnRecord], observations: dict[str, ObservationRecord], root: str = ""
+) -> dict[tuple[str, str], str]:
+    """Build a map of (normalized path, range) -> obs_id for live reads, oldest first.
+
+    A path stops being live on `edit write|replace` or on any non-read command that
+    mentions it (sed -i, tee, `cat > p << EOF`, with or without a `bash` prefix).
+    """
+    return _scan_reads(turns, observations, root)[0]
+
+
+def reread_count(
+    turns: list[TurnRecord], observations: dict[str, ObservationRecord], root: str = ""
+) -> int:
+    """Number of executed reads that repeat an unedited earlier read of the same path+range."""
+    return _scan_reads(turns, observations, root)[1]
 
 
 def live_reads(
@@ -325,8 +346,12 @@ class ContextAssembler:
         structured: bool = False,
         mem_enabled: bool = True,
         workspace_root: str = "",
+        auto_fold: bool = False,
     ) -> None:
         self.fold_after_turns = fold_after_turns
+        # False: fixed K (explicit --fold-after), every old observation folds over the target.
+        # True (#205): fold oldest-first only until the history is back under the target.
+        self.auto_fold = auto_fold
         self.fold_char_threshold = fold_char_threshold
         # One observation may use a third of the context (4 chars/token); the budget still folds
         # older ones first, so a 12 KB test file is seen whole instead of head+tail, then re-read.
@@ -406,6 +431,48 @@ class ContextAssembler:
         body = min(obs.char_len, self.active_char_cap) if obs else len(turn.content or "")
         return body + len(turn.tool_cmd or "") + len(turn.tool_stdin or "")
 
+    def effective_fold_after(
+        self, turns: list[TurnRecord], observations: dict[str, ObservationRecord]
+    ) -> int:
+        """K, or in auto mode K lengthened by the unedited re-reads (bounded by AUTO_FOLD_MAX_K)."""
+        if not self.auto_fold:
+            return self.fold_after_turns
+        rereads = reread_count(turns, observations, self.workspace_root)
+        return min(self.fold_after_turns + rereads, AUTO_FOLD_MAX_K)
+
+    def _age_fold_set(
+        self,
+        turns: list[TurnRecord],
+        observations: dict[str, ObservationRecord],
+        keep: set[str],
+        current_step: int,
+        used: int,
+    ) -> set[str]:
+        """Obs ids to fold by age; empty while the history fits in half the window."""
+        target = self.max_context_tokens // 2
+        if used <= target:
+            return set()
+        k_eff = self.effective_fold_after(turns, observations)
+        eligible = [
+            observations[t.obs_id]
+            for t in turns
+            if t.obs_id in observations
+            and current_step - t.step >= k_eff
+            and observations[t.obs_id].char_len >= self.fold_char_threshold
+            and t.obs_id not in keep
+            and not observations[t.obs_id].cmd.startswith("mem recall")  # re-folding loops (#86)
+        ]
+        if not self.auto_fold:
+            return {obs.id for obs in eligible}
+        chosen: set[str] = set()
+        for obs in eligible:  # oldest first; a fold only swaps the tool turn's body
+            if used <= target:
+                break
+            body = min(obs.char_len, self.active_char_cap)
+            used -= (body - len(tombstone(obs, self.mem_enabled))) // 4
+            chosen.add(obs.id)
+        return chosen
+
     def assemble(
         self,
         *,
@@ -439,7 +506,7 @@ class ContextAssembler:
             estimate_messages_tokens(messages, [ACT_TOOL_SCHEMA])
             + sum(self._turn_chars(t, observations) for t in turns) // 4
         )
-        fold_by_age = used > self.max_context_tokens // 2
+        age_fold = self._age_fold_set(turns, observations, keep, current_step, used)
         # Live (unfolded) observation messages, oldest first: shrunk in place under budget pressure.
         live: list[tuple[dict[str, Any], ObservationRecord, str]] = []
         for turn in turns:
@@ -447,14 +514,7 @@ class ContextAssembler:
             obs = None
             if turn.obs_id and turn.obs_id in observations:
                 obs = observations[turn.obs_id]
-                age = current_step - turn.step
-                if (
-                    fold_by_age
-                    and age >= self.fold_after_turns
-                    and obs.char_len >= self.fold_char_threshold
-                    and obs.id not in keep
-                    and not obs.cmd.startswith("mem recall")  # asked for; re-folding loops (#86)
-                ):
+                if obs.id in age_fold:
                     content = tombstone(obs, self.mem_enabled)
                     obs = None
                 else:

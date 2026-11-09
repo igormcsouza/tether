@@ -16,6 +16,9 @@
 - `tether mcp`: `tether_run` accepts `workspace`, an absolute directory inside the server's workspace, so a caller working in a git worktree can root the run there; anything outside is refused (#242).
 - `tether diff <session_id>` shows what a session changed in its files, against the first bytes the session saw (`--stat` for line counts). Snapshots are recorded by the harness write-tracking loop in a new `file_snapshots` table; files created by the session show as added from empty.
 
+### Changed
+- Observation folding is automatic by default: above half of `max_context_tokens`, old outputs fold oldest-first only until the history is back under that target (no cliff), and each unedited re-read lengthens K by one (cap 8). `--fold-after N` keeps the fixed rule (#205).
+
 ### Fixed
 - `edit write` on an existing file with stdin made only of complete SEARCH/REPLACE blocks now applies them as `edit replace` instead of replacing the whole file (#267).
 - `tether wait` exits 6 and prints `timed out; still RUNNING: ...` on stderr when the timeout expires (#269).
