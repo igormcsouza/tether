@@ -1,6 +1,6 @@
 # Release Notes
 
-## Unreleased
+## v0.3.0 (2026-11-09)
 
 ### Breaking changes
 
