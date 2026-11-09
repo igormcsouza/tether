@@ -119,7 +119,21 @@ Sandbox violation: `sudo` privilege escalation is blocked. Instead: run the comm
 Sandbox violation: binary `python3` is not in the `read-only` allowlist. Instead: use an allowlisted binary such as `ls`, `cat`, `grep` or `rg`. Flag: --sandbox workspace-write.
 ```
 
+## 8. Running a command outside the jail
+
+Some commands must reach things the jail hides, such as pushing a branch or opening a pull request. You can allow a prefix to run outside the jail with `--allow` (CLI), `allow` in `.tether/allow.json`, or the `allow` argument of MCP `tether_run`.
+
+- **Whole-token prefix matching.** `--allow "gh pr create"` matches `gh pr create --draft` but not `gh pr createx`. `--allow git` matches any `git` command.
+- **No shell.** An allowed command runs as a plain argv with no shell. Shell metacharacters (`;`, `&&`, `||`, `|`, `$(`, backtick, `>`, `<`, newline, and a single background `&`) are refused, so nothing can be chained after the allowed prefix.
+- **Never in read-only or `--no-network` sessions.** Read-only sessions never run an allowed command outside. `--no-network` refuses it, because the outside run has no network isolation.
+- **`.tether/allow.json` is protected.** The model cannot edit it with `edit` or redirect into it. A missing file means no allowed prefixes. A malformed file fails the run before the first model call.
+- **Children can only narrow.** A pipeline stage or an `agent spawn` child keeps the parent's list, or a subset of it. It can never add a prefix.
+- **Git options that run code or leave the repo stay jailed.** With `git` allowed, `-c`, `-C`, `--exec`, `--exec-path`, `--receive-pack`, `--upload-pack`, `--git-dir`, `--work-tree`, `--config-env` and `--namespace` (including attached and `=value` forms) fall back to the jailed path.
+
+**Deliberate hole: a whole tool exposes its credentials.** The outside run uses your real `HOME`, so the tool sees `~/.gitconfig`, credential helpers and hooks. Allowing `gh` lets the model run `gh auth token`, which prints your token into the transcript. Prefer narrow prefixes such as `gh pr create` or `git push origin`, and never allow a whole tool you would not run yourself.
+
 ## Known limits
+- Commands run outside the jail (`--allow`) get your real `HOME`, credentials and git hooks, and git's `-c`/`--exec`/`--receive-pack` options are refused only when they appear as separate tokens or with `=`. Keep allowlisted prefixes narrow. A bare `git` entry never covers `git config`, `git remote add|set-url|set-head` or `git submodule`; those run outside only when the entry names that subcommand.
 - Network is on unless you pass `--no-network`; with it on, `curl` can reach localhost services and the internet.
 - There is no process-count limit inside `bwrap` (a fork bomb is only stopped by the timeout).
 - Prompt injection still steers the model; the envelope only limits what an injected command can reach.

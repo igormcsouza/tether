@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import glob
+import json
 import os
 import re
 import shlex
@@ -13,7 +14,7 @@ import signal
 import subprocess
 import sys
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +66,144 @@ def _narrow_web_allow(
     if parent is None:
         return requested
     return tuple(c for c in requested if any(_entry_within(c, p) for p in parent))
+
+
+_OUTSIDE_META_RE = re.compile(r"[;&|`<>\n]|\$\(")
+_GIT_UNSAFE_OPTS = frozenset(
+    {
+        "-c",
+        "-C",
+        "--exec",
+        "--exec-path",
+        "--receive-pack",
+        "--upload-pack",
+        "--git-dir",
+        "--work-tree",
+        "--config-env",
+        "--namespace",
+    }
+)
+
+
+def _git_unsafe_option(cmd: str) -> bool:
+    """True when a `git` command carries an option that runs code or leaves the repo.
+
+    Such a command stays in the jail even when its prefix is allowlisted (#59 security).
+    Attached forms (`-C/etc`, `-ccore.x=y`) and `--opt=value` forms are caught too.
+    """
+    try:
+        argv = shlex.split(cmd)
+    except ValueError:
+        return False
+    if not argv or argv[0] != "git":
+        return False
+    for tok in argv[1:]:
+        if tok.startswith(("-c", "-C")):
+            return True
+        if tok.split("=", 1)[0] in _GIT_UNSAFE_OPTS:
+            return True
+    return False
+
+
+_GIT_JAILED_REMOTE_OPS = frozenset({"add", "set-url", "set-head"})
+_GIT_JAILED_SECTIONS = frozenset({"alias", "url", "include", "includeif", "credential"})
+_GIT_JAILED_KEYS = frozenset(
+    {
+        "core.sshcommand",
+        "core.hookspath",
+        "core.fsmonitor",
+        "core.pager",
+        "core.editor",
+        "gpg.program",
+        "http.proxy",
+    }
+)
+
+
+def _git_config_key_jailed(token: str) -> bool:
+    # Keys that run code or redirect the repo when written to .git/config (case-insensitive).
+    key = token.lower()
+    if key.split(".", 1)[0] in _GIT_JAILED_SECTIONS or key in _GIT_JAILED_KEYS:
+        return True
+    return key.startswith("http.") and key.endswith(".proxy")
+
+
+def _git_jailed(head: list[str], want: list[str]) -> bool:
+    # True when a git command stays in the jail although an allow entry matches its prefix.
+    # A bare `git` entry never covers `git config`, `git remote add|set-url|set-head` or
+    # `git submodule`; the entry must name that subcommand itself. `git config` with a risky
+    # key stays jailed even then.
+    if not head or head[0] != "git":
+        return False
+    args = head[1:]
+    idx = next((i for i, tok in enumerate(args) if not tok.startswith("-")), None)
+    if idx is None:
+        return False
+    named = len(want) - 1  # tokens the entry names after `git`
+    sub = args[idx]
+    if sub == "config":
+        if any(_git_config_key_jailed(t) for t in args[idx + 1 :] if not t.startswith("-")):
+            return True
+        return named <= idx
+    if sub == "submodule":
+        return named <= idx
+    if sub == "remote":
+        pos = next((i for i in range(idx + 1, len(args)) if not args[i].startswith("-")), None)
+        if pos is not None and args[pos] in _GIT_JAILED_REMOTE_OPS:
+            return named <= pos
+    return False
+
+
+_ALLOW_FILE_HINT = 'expected {"allow": ["git push", ...]}; fix or delete the file'
+
+
+def parse_allow_outside(raw: Sequence[str] | None) -> tuple[str, ...]:
+    """Normalise `allow_outside` prefixes: single-spaced tokens, no duplicates, order kept."""
+    if raw is None:
+        return ()
+    cleaned: list[str] = []
+    for item in raw:
+        entry = " ".join(str(item).split())
+        if not entry:
+            raise ValueError("allow_outside has an empty entry; give a command such as `git push`")
+        if _OUTSIDE_META_RE.search(entry):
+            raise ValueError(
+                f"allow_outside entry {_clip(item)!r} has a shell metacharacter; "
+                "give a plain command prefix"
+            )
+        if entry not in cleaned:
+            cleaned.append(entry)
+    return tuple(cleaned)
+
+
+def load_allow_file(root: Path) -> tuple[str, ...]:
+    """Entries of `<root>/.tether/allow.json`; a missing file allows nothing."""
+    path = root / ".tether" / "allow.json"
+    if not path.is_file():
+        return ()
+
+    def bad(problem: str) -> ValueError:
+        return ValueError(f".tether/allow.json: {problem}; {_ALLOW_FILE_HINT}")
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise bad(f"not valid JSON ({exc.msg})") from exc
+    entries = data.get("allow") if isinstance(data, dict) else None
+    if not isinstance(entries, list) or not all(isinstance(e, str) for e in entries):
+        raise bad('the "allow" key must be a list of strings')
+    try:
+        return parse_allow_outside(entries)
+    except ValueError as exc:
+        raise bad(str(exc)) from exc
+
+
+def _narrow_allow_outside(parent: tuple[str, ...], child: Sequence[str] | None) -> tuple[str, ...]:
+    """A child keeps only the parent's entries it also requests; it can never add one."""
+    if child is None:
+        return parent
+    requested = set(parse_allow_outside(child))
+    return tuple(entry for entry in parent if entry in requested)
 
 
 class SandboxUnavailableError(RuntimeError):
@@ -177,7 +316,7 @@ _MOUNT_ENFORCED_PATTERNS: list[tuple[re.Pattern[str], str, str]] = [
         "use `.env.example`",
     ),
     (
-        re.compile(r"(?:^|[\s/\"'])\.tether(?:/|\b)"),
+        re.compile(r"(?:^|[\s/\"':=])\.tether(?:/|\b)"),
         "access to protected path `.tether` is denied",
         "keep files outside `.tether/`",
     ),
@@ -344,12 +483,15 @@ class SandboxPolicy:
     web_allow: tuple[str, ...] | None = None
     # Opt-out for write profiles when bwrap is missing (SDK / CLI / MCP). Only ever narrowed.
     allow_unsandboxed: bool = False
+    # Command prefixes that run outside bwrap (`--allow`); a child can only narrow this.
+    allow_outside: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         self.workspace_root = Path(self.workspace_root).resolve()
         if self.profile not in ("workspace-write", "read-only"):
             raise ValueError(f"Unsupported sandbox profile: {self.profile}")
         self.web_allow = parse_web_allow(self.web_allow)
+        self.allow_outside = parse_allow_outside(self.allow_outside)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -362,6 +504,7 @@ class SandboxPolicy:
             "verify_commands": list(self.verify_commands),
             "web_allow": None if self.web_allow is None else list(self.web_allow),
             "allow_unsandboxed": self.allow_unsandboxed,
+            "allow_outside": list(self.allow_outside),
         }
 
     @classmethod
@@ -379,7 +522,13 @@ class SandboxPolicy:
             verify_commands=[str(v) for v in raw_verify if str(v).strip()],
             web_allow=parse_web_allow(data.get("web_allow")),
             allow_unsandboxed=bool(data.get("allow_unsandboxed", False)),
+            allow_outside=parse_allow_outside(data.get("allow_outside")),
         )
+
+    def with_allow_file(self) -> SandboxPolicy:
+        """A copy whose allow_outside also holds the project's `.tether/allow.json` entries."""
+        merged = parse_allow_outside([*load_allow_file(self.workspace_root), *self.allow_outside])
+        return replace(self, allow_outside=merged)
 
     def attenuate(
         self,
@@ -387,6 +536,7 @@ class SandboxPolicy:
         child_network: bool | None = None,
         child_web_allow: Sequence[str] | str | None = None,
         child_allow_unsandboxed: bool | None = None,
+        child_allow_outside: Sequence[str] | None = None,
     ) -> SandboxPolicy:
         """Create a child SandboxPolicy that can only narrow (never escalate) privileges."""
         if self.profile == "read-only":
@@ -404,6 +554,7 @@ class SandboxPolicy:
             verify_commands=list(self.verify_commands),
             web_allow=_narrow_web_allow(self.web_allow, child_web_allow),
             allow_unsandboxed=self.allow_unsandboxed and child_allow_unsandboxed is not False,
+            allow_outside=_narrow_allow_outside(self.allow_outside, child_allow_outside),
         )
 
     def _relies_on_bwrap(self) -> bool:
@@ -491,13 +642,14 @@ class SandboxPolicy:
         clean["PAGER"] = "cat"
         return clean
 
-    def validate_bash_command(self, cmd: str) -> None:
+    def validate_bash_command(self, cmd: str, *, text_rules: bool = False) -> None:
         """Deterministically validate a shell command against sandbox rules."""
         stripped = cmd.strip()
         if not stripped:
             raise _refusal("Empty command", "pass a non-empty `cmd`")
 
-        kernel = self.use_kernel_sandbox and _can_use_bwrap()
+        # text_rules forces the fallback checks, e.g. for commands that run outside the jail.
+        kernel = self.use_kernel_sandbox and _can_use_bwrap() and not text_rules
         for pattern, reason, instead in (
             _BLOCKED_BASH_PATTERNS if kernel else _BLOCKED_BASH_PATTERNS + _MOUNT_ENFORCED_PATTERNS
         ):
@@ -686,16 +838,62 @@ class SandboxPolicy:
             effective_cmd = stdin.strip()
             stdin = None
 
+        entry = self._outside_match(effective_cmd)
+        if entry is not None and not _git_unsafe_option(effective_cmd):
+            return await self._execute_outside(effective_cmd, entry, stdin)
         self.validate_bash_command(effective_cmd)
         argv = self._build_exec_argv(effective_cmd)
-        env = self.scrub_env()
+        return await self._run_argv(argv, stdin, env=self.scrub_env(), cwd=str(self.workspace_root))
 
+    def _outside_match(self, cmd: str) -> str | None:
+        """The `allow_outside` entry whose whole tokens start the command, else None.
+
+        Text after the first shell metacharacter still counts, so `git push;rm x` is refused
+        rather than silently jailed.
+        """
+        if self.profile == "read-only" or not self.allow_outside:
+            return None  # read-only never mutates, and `git push` mutates
+        head = _OUTSIDE_META_RE.split(cmd, maxsplit=1)[0].split()
+        for entry in self.allow_outside:
+            want = entry.split()
+            if head[: len(want)] == want and not _git_jailed(head, want):
+                return entry
+        return None
+
+    async def _execute_outside(self, cmd: str, entry: str, stdin: str | None) -> tuple[int, str]:
+        """Run an allowlisted command with no shell, no bwrap, and the scrubbed environment."""
+        if _OUTSIDE_META_RE.search(cmd):
+            raise _refusal(
+                f"`{_clip(entry)}` runs outside the jail, so shell metacharacters "
+                "(`;`, `&&`, `||`, `|`, `$(`, backtick, `>`, `<`, newline) are refused",
+                "run the allowed command alone, one per call",
+            )
+        if not self.network:
+            raise _refusal(
+                f"`{_clip(entry)}` runs outside the jail, which `--no-network` forbids",
+                "drop `--no-network` or the --allow entry",
+            )
+        try:
+            argv = shlex.split(cmd)
+        except ValueError as exc:
+            raise _refusal(
+                f"unbalanced quotes in `{_clip(cmd)}`", "close every quote, one command per call"
+            ) from exc
+        self.validate_bash_command(cmd, text_rules=True)
+        env = self.scrub_env()
+        env["HOME"] = os.path.expanduser("~")  # git and gh read ~/.gitconfig and credentials
+        return await self._run_argv(argv, stdin, env=env, cwd=str(self.workspace_root))
+
+    async def _run_argv(
+        self, argv: list[str], stdin: str | None, *, env: dict[str, str], cwd: str
+    ) -> tuple[int, str]:
+        """Run argv under the shared wall-clock cap and output compaction (both paths use it)."""
         proc = await asyncio.create_subprocess_exec(
             *argv,
             stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=str(self.workspace_root),
+            cwd=cwd,
             env=env,
             start_new_session=True,
         )

@@ -18,7 +18,12 @@ from tether.diff import render_diff
 from tether.harness import Harness, PipelineResumeError
 from tether.progress import watch
 from tether.providers.base import parse_params
-from tether.sandbox import SandboxPolicy, SandboxUnavailableError, parse_web_allow
+from tether.sandbox import (
+    SandboxPolicy,
+    SandboxUnavailableError,
+    parse_allow_outside,
+    parse_web_allow,
+)
 from tether.store import SessionRecord, SQLiteStore
 from tether.worktree import WorktreeError
 
@@ -96,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Comma list of domains the web tool may reach, e.g. python.org,*.github.com",
+    )
+    p_run.add_argument(
+        "--allow",
+        action="append",
+        metavar="PREFIX",
+        help="command prefix that runs outside the jail (repeatable)",
     )
     p_run.add_argument(
         "--allow-unsandboxed",
@@ -192,6 +203,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Comma list of domains the web tool may reach (stages can only narrow)",
+    )
+    p_pipe.add_argument(
+        "--allow",
+        action="append",
+        metavar="PREFIX",
+        help="command prefix that runs outside the jail (repeatable)",
     )
     p_pipe.add_argument(
         "--allow-unsandboxed",
@@ -538,12 +555,18 @@ async def _async_main(argv: list[str]) -> int:
         except ValueError as exc:
             print(f"Error: --web-allow: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
+        try:
+            allow_outside = parse_allow_outside(ns.allow)
+        except ValueError as exc:
+            print(f"Error: --allow: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         sandbox = SandboxPolicy(
             profile=ns.sandbox,
             workspace_root=Path.cwd(),
             network=not ns.no_network,
             web_allow=web_allow,
             allow_unsandboxed=ns.allow_unsandboxed,
+            allow_outside=allow_outside,
         )
         try:
             schema = json.loads(Path(ns.output_schema).read_text()) if ns.output_schema else None
@@ -618,12 +641,18 @@ async def _async_main(argv: list[str]) -> int:
         except ValueError as exc:
             print(f"Error: --web-allow: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
+        try:
+            allow_outside = parse_allow_outside(ns.allow)
+        except ValueError as exc:
+            print(f"Error: --allow: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         sandbox = SandboxPolicy(
             profile=ns.sandbox,
             workspace_root=Path.cwd(),
             network=not ns.no_network,
             web_allow=web_allow,
             allow_unsandboxed=ns.allow_unsandboxed,
+            allow_outside=allow_outside,
         )
         try:
             harness = Harness(
@@ -635,6 +664,7 @@ async def _async_main(argv: list[str]) -> int:
                 fold_observations_after=ns.fold_after,
             )
         except ValueError as exc:
+            # A bad .tether/allow.json is a config error: loud on stderr, exit 1, no traceback.
             print(f"Error: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
         try:

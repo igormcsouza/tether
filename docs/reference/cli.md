@@ -38,6 +38,7 @@ tether run "your goal here" [flags]
 | `--web-allow` | Comma list of domains the `web` tool may reach, e.g. `python.org,*.github.com`; other hosts and IP literals are refused |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--allow-unsandboxed` | Run write sessions without bwrap (command checks only). Without bwrap and without this flag, a workspace-write session is refused with exit 1 |
+| `--allow` | Command prefix allowed to run outside the jail (no shell, whole tokens; repeatable). Never in read-only or `--no-network` sessions. See security-and-sandbox section 8 |
 | `--max-steps` | Maximum reasoning steps |
 | `--max-tokens` | Token budget (prompt + completion); pauses as WAITING_INPUT (exit 2) when reached |
 | `--context-tokens` | Context token budget (default 32768) |
@@ -74,6 +75,7 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 | `--web-allow` | Comma list of domains the `web` tool may reach (stages can only narrow) |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--allow-unsandboxed` | Run write sessions without bwrap (command checks only). Without bwrap and without this flag, a workspace-write session is refused with exit 1 |
+| `--allow` | Command prefix allowed to run outside the jail (no shell, whole tokens; repeatable). Never in read-only or `--no-network` sessions. See security-and-sandbox section 8 |
 | `--max-steps` | Default max reasoning steps per stage |
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--context-tokens` | Context token budget (default 32768) |
