@@ -19,6 +19,7 @@
 ### Fixed
 - `edit write` on an existing file with stdin made only of complete SEARCH/REPLACE blocks now applies them as `edit replace` instead of replacing the whole file (#267).
 - `tether wait` exits 6 and prints `timed out; still RUNNING: ...` on stderr when the timeout expires (#269).
+- Command provider timeouts and empty failures are retried twice before raising `ProviderError` (#268).
 - Headless workers always import the installed tether, never a workspace's own tether/ package (#273).
 - An empty model reply is retried. If the retry is empty too, the session stops instead of continuing with no output (#135).
 - `tether run --worktree` no longer commits bytecode and tool caches (`__pycache__`, `*.pyc`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.tether/`) (#278).
