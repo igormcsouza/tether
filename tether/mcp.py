@@ -21,6 +21,7 @@ from tether.sandbox import (
     SandboxPolicy,
     SandboxUnavailableError,
     parse_allow_outside,
+    parse_limits,
     parse_web_allow,
 )
 from tether.store import SQLiteStore
@@ -65,6 +66,12 @@ TOOLS: list[dict[str, Any]] = [
             "allow_unsandboxed": {
                 "type": "boolean",
                 "description": "run write sessions without bwrap",
+            },
+            "limits": {
+                "type": "object",
+                "additionalProperties": {"type": "integer", "minimum": 1},
+                "description": 'opt-in rlimits for bash, e.g. {"cpu": 60, "mem": 2048}; '
+                "keys cpu (s), mem (MB), procs, fsize (MB); Linux only",
             },
             "output_schema": {"type": "object", "description": "JSON Schema for the deliverable"},
             "params": {
@@ -202,6 +209,7 @@ class TetherMCP:
                 web_allow=parse_web_allow(a.get("web_allow")),
                 allow_unsandboxed=bool(a.get("allow_unsandboxed")),
                 allow_outside=parse_allow_outside(a.get("allow")),
+                limits=parse_limits(a.get("limits")),
             )
         except ValueError as exc:
             raise ToolError(str(exc)) from exc

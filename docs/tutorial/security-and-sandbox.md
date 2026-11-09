@@ -62,6 +62,24 @@ By default the `web` tool can reach any public host. `tether run --web-allow pyt
 - Search results are filtered to the list before the count limit is applied; hidden results are reported as a count.
 - Children can only narrow the list. Sub-agents and pipeline stages inherit it and can never widen it.
 
+### 8. Resource limits (`--limit`)
+Off by default. `tether run --limit cpu=60 --limit mem=2048` (also `tether pipeline --limit`, `SandboxPolicy(limits={"cpu": 60})` and the MCP `tether_run` argument `limits`) sets rlimits on every `bash` command. Linux only: elsewhere a session with limits is refused with a usage error.
+
+| Key | Unit | Kernel limit | When it is hit |
+|-----|------|--------------|----------------|
+| `cpu` | seconds of CPU time | `RLIMIT_CPU` | the command gets SIGXCPU (SIGKILL one second later) |
+| `mem` | MB | `RLIMIT_DATA` | allocations fail (`MemoryError`, `Cannot allocate memory`) |
+| `procs` | processes | `RLIMIT_NPROC` | `fork` fails (`Resource temporarily unavailable`) |
+| `fsize` | MB per file | `RLIMIT_FSIZE` | writes past the size fail (`File too large`) |
+
+- When a failed command is explained by a limit, the last output line is `[limit hit: <key> <value>] Instead: <hint>`. A `kill -9` or OOM-killer SIGKILL is only reported as a cpu hit when the command really used its CPU time.
+- `mem` uses `RLIMIT_DATA` (heap and anonymous mappings), not `RLIMIT_AS` (all address space) and not a cgroup. Runtimes that reserve large virtual ranges up front still start, but the cap is not a total RSS cap.
+- Node and the JVM size their heaps on their own; with a low `mem` they can fail at startup or abort with a heap error. Raise `mem` or set `--max-old-space-size` / `-Xmx` below it.
+- `procs` (`RLIMIT_NPROC`) counts every process of your user id on the host, not only the command's own children, so set it with room above what you already run. Root ignores it.
+- Limits also apply to `--verify` gate commands, which run through the same sandbox.
+- Values are positive whole numbers up to 2147483647. Integral floats such as `1.0` (common from JSON clients) are rejected as "not a whole number"; send `1`.
+- Sub-agents and pipeline stages inherit the limits and can only lower them.
+
 ## Configuring `SandboxPolicy` in Python
 
 ```python
@@ -135,5 +153,5 @@ Some commands must reach things the jail hides, such as pushing a branch or open
 ## Known limits
 - Commands run outside the jail (`--allow`) get your real `HOME`, credentials and git hooks, and git's `-c`/`--exec`/`--receive-pack` options are refused only when they appear as separate tokens or with `=`. Keep allowlisted prefixes narrow. A bare `git` entry never covers `git config`, `git remote add|set-url|set-head` or `git submodule`; those run outside only when the entry names that subcommand.
 - Network is on unless you pass `--no-network`; with it on, `curl` can reach localhost services and the internet.
-- There is no process-count limit inside `bwrap` (a fork bomb is only stopped by the timeout).
+- There is no process-count limit by default (a fork bomb is only stopped by the timeout); opt in with `--limit procs=N` (see Resource limits above).
 - Prompt injection still steers the model; the envelope only limits what an injected command can reach.

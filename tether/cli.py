@@ -22,6 +22,7 @@ from tether.sandbox import (
     SandboxPolicy,
     SandboxUnavailableError,
     parse_allow_outside,
+    parse_limits,
     parse_web_allow,
 )
 from tether.store import SessionRecord, SQLiteStore
@@ -107,6 +108,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="PREFIX",
         help="command prefix that runs outside the jail (repeatable)",
+    )
+    p_run.add_argument(
+        "--limit",
+        action="append",
+        default=None,
+        metavar="K=V",
+        help="Resource limit, repeatable: cpu=SECONDS mem=MB procs=N fsize=MB; opt-in",
     )
     p_run.add_argument(
         "--allow-unsandboxed",
@@ -209,6 +217,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="PREFIX",
         help="command prefix that runs outside the jail (repeatable)",
+    )
+    p_pipe.add_argument(
+        "--limit",
+        action="append",
+        default=None,
+        metavar="K=V",
+        help="Resource limit, repeatable: cpu=SECONDS mem=MB procs=N fsize=MB; opt-in",
     )
     p_pipe.add_argument(
         "--allow-unsandboxed",
@@ -447,6 +462,36 @@ def _format_compare(orig: dict[str, object], rep: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _sandbox_from_ns(
+    ns: argparse.Namespace, web_allow: tuple[str, ...] | None
+) -> SandboxPolicy | None:
+    """Build the SandboxPolicy for run/pipeline; print the error and return None on bad input."""
+    try:
+        allow_outside = parse_allow_outside(ns.allow)
+    except ValueError as exc:
+        print(f"Error: --allow: {exc}", file=sys.stderr)
+        return None
+    try:
+        limits = parse_limits(ns.limit)
+    except ValueError as exc:
+        print(f"Error: --limit: {exc}", file=sys.stderr)
+        return None
+    try:
+        return SandboxPolicy(
+            profile=ns.sandbox,
+            workspace_root=Path.cwd(),
+            network=not ns.no_network,
+            web_allow=web_allow,
+            allow_unsandboxed=ns.allow_unsandboxed,
+            allow_outside=allow_outside,
+            limits=limits,
+        )
+    except ValueError as exc:
+        label = "--limit: " if limits and str(exc).startswith("limit ") else ""
+        print(f"Error: {label}{exc}", file=sys.stderr)
+        return None
+
+
 async def _replay(ns: argparse.Namespace) -> int:
     """Re-run a session's goal with its saved setup and print a comparison."""
     if not ns.worktree and (ns.setup or ns.worktree_from):
@@ -555,19 +600,9 @@ async def _async_main(argv: list[str]) -> int:
         except ValueError as exc:
             print(f"Error: --web-allow: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
-        try:
-            allow_outside = parse_allow_outside(ns.allow)
-        except ValueError as exc:
-            print(f"Error: --allow: {exc}", file=sys.stderr)
+        sandbox = _sandbox_from_ns(ns, web_allow)
+        if sandbox is None:
             return api.EXIT_USAGE
-        sandbox = SandboxPolicy(
-            profile=ns.sandbox,
-            workspace_root=Path.cwd(),
-            network=not ns.no_network,
-            web_allow=web_allow,
-            allow_unsandboxed=ns.allow_unsandboxed,
-            allow_outside=allow_outside,
-        )
         try:
             schema = json.loads(Path(ns.output_schema).read_text()) if ns.output_schema else None
             harness = Harness(
@@ -641,19 +676,9 @@ async def _async_main(argv: list[str]) -> int:
         except ValueError as exc:
             print(f"Error: --web-allow: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
-        try:
-            allow_outside = parse_allow_outside(ns.allow)
-        except ValueError as exc:
-            print(f"Error: --allow: {exc}", file=sys.stderr)
+        sandbox = _sandbox_from_ns(ns, web_allow)
+        if sandbox is None:
             return api.EXIT_USAGE
-        sandbox = SandboxPolicy(
-            profile=ns.sandbox,
-            workspace_root=Path.cwd(),
-            network=not ns.no_network,
-            web_allow=web_allow,
-            allow_unsandboxed=ns.allow_unsandboxed,
-            allow_outside=allow_outside,
-        )
         try:
             harness = Harness(
                 model=ns.model,

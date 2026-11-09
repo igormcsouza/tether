@@ -14,6 +14,7 @@
 
 - Allowlist of command prefixes that run outside the jail (#59, #124 item 4): `tether run --allow` (repeatable), `allow` in `.tether/allow.json`, and the MCP `tether_run` argument `allow`. Whole-token prefixes, no shell, never in read-only or `--no-network` sessions.
 - Sandbox refusals are recorded as `sandbox_violation` events with their rule, and `tether stats` shows the top rules (#124).
+- Opt-in resource limits for `bash` (#124 item 6): `tether run`/`pipeline --limit KEY=VALUE` (cpu, mem, fsize, procs), `SandboxPolicy(limits=)` and the MCP `tether_run` argument `limits`; off by default, Linux only, a hit adds a `[limit hit: ...]` line.
 - Web domain allowlist (#124): `tether run --web-allow` (and `SandboxPolicy(web_allow=)`) restricts the `web` tool to listed domains; sub-agents and stages can only narrow it.
 - `tether pipeline --web-allow` and the MCP `tether_run` argument `web_allow` set the same domain allowlist. A malformed value (spaces, a `*` outside a leading `*.`, a URL) is a usage error or a ToolError, not a silent pass.
 - Docs: install with the network, work without it (`--setup`, `--no-network`) (#124).

@@ -13,7 +13,7 @@ import shutil
 import signal
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -21,6 +21,87 @@ from typing import Any
 
 class SandboxViolationError(PermissionError):
     """Raised when a tool call violates the deterministic SandboxPolicy."""
+
+
+LIMIT_KEYS = ("cpu", "mem", "procs", "fsize")
+# Largest accepted value per key; bigger ones are refused before they reach setrlimit.
+LIMIT_MAX = 2**31 - 1
+
+
+def parse_limits(raw: str | Sequence[str] | Mapping[str, Any] | None) -> dict[str, int]:
+    """Normalise resource limits from CLI `K=V` strings or a mapping; empty means no limits."""
+    if raw is None:
+        return {}
+    if isinstance(raw, str):
+        raw = [raw]  # one `K=V` item, never iterated char by char
+    if isinstance(raw, Mapping):
+        pairs: list[tuple[str, Any]] = [(str(k).strip(), v) for k, v in raw.items()]
+    else:
+        pairs = []
+        for item in raw:
+            key, sep, value = str(item).partition("=")
+            if not sep:
+                raise ValueError(f"limit {key.strip() or item!r}: expected K=V, e.g. cpu=60")
+            pairs.append((key.strip(), value))
+    out: dict[str, int] = {}
+    for key, value in pairs:
+        if key not in LIMIT_KEYS:
+            raise ValueError(f"limit {key}: unknown key; use one of {', '.join(LIMIT_KEYS)}")
+        if key in out:
+            raise ValueError(f"limit {key}: given more than once")
+        if isinstance(value, bool):
+            raise ValueError(f"limit {key}: must be a whole number, not a bool")
+        if isinstance(value, str):
+            try:
+                number = int(value.strip())
+            except ValueError:
+                raise ValueError(f"limit {key}: must be a whole number, got {value!r}") from None
+        elif isinstance(value, int):
+            number = value
+        else:
+            raise ValueError(f"limit {key}: must be a whole number, got {value!r}")
+        if number <= 0:
+            raise ValueError(f"limit {key}: must be positive, got {number}")
+        if number > LIMIT_MAX:
+            raise ValueError(f"limit {key}: too large, the maximum is {LIMIT_MAX}")
+        out[key] = number
+    return out
+
+
+def _limit_setter(limits: Mapping[str, int]) -> Callable[[], None]:
+    """Build the preexec_fn that applies rlimits in the forked child before exec."""
+    import resource  # stdlib, Linux only; imported lazily so other platforms never load it
+
+    def apply() -> None:
+        mib = 1024 * 1024
+        if "cpu" in limits:
+            _set_rlimit(resource, resource.RLIMIT_CPU, limits["cpu"], limits["cpu"] + 1)
+        if "mem" in limits:
+            _set_rlimit(resource, resource.RLIMIT_DATA, limits["mem"] * mib)
+        if "procs" in limits:
+            _set_rlimit(resource, resource.RLIMIT_NPROC, limits["procs"])
+        if "fsize" in limits:
+            _set_rlimit(resource, resource.RLIMIT_FSIZE, limits["fsize"] * mib)
+
+    return apply
+
+
+def _set_rlimit(resource: Any, which: int, soft: int, hard: int | None = None) -> None:
+    # Clamp to the current hard limit: raising a hard limit fails and surfaces as an opaque error.
+    _, current_hard = resource.getrlimit(which)
+    want_hard = soft if hard is None else hard
+    if current_hard != resource.RLIM_INFINITY:
+        want_hard = min(want_hard, current_hard)
+        soft = min(soft, want_hard)
+    resource.setrlimit(which, (soft, want_hard))
+
+
+def _children_cpu_seconds() -> float:
+    """User+system CPU seconds of all reaped children of this process (Linux only)."""
+    import resource
+
+    usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return float(usage.ru_utime + usage.ru_stime)
 
 
 def parse_web_allow(raw: str | Sequence[str] | None) -> tuple[str, ...] | None:
@@ -485,6 +566,8 @@ class SandboxPolicy:
     allow_unsandboxed: bool = False
     # Command prefixes that run outside bwrap (`--allow`); a child can only narrow this.
     allow_outside: tuple[str, ...] = ()
+    # Optional rlimits (LIMIT_KEYS). Empty = off, the default.
+    limits: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.workspace_root = Path(self.workspace_root).resolve()
@@ -492,9 +575,15 @@ class SandboxPolicy:
             raise ValueError(f"Unsupported sandbox profile: {self.profile}")
         self.web_allow = parse_web_allow(self.web_allow)
         self.allow_outside = parse_allow_outside(self.allow_outside)
+        self.limits = parse_limits(self.limits)
+        if self.limits and sys.platform != "linux":
+            key = next(iter(self.limits))
+            raise ValueError(
+                f"limit {key}: needs Linux (RLIMIT_DATA/RLIMIT_NPROC); remove --limit {key}"
+            )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "profile": self.profile,
             "workspace_root": str(self.workspace_root),
             "timeout_seconds": self.timeout_seconds,
@@ -506,6 +595,9 @@ class SandboxPolicy:
             "allow_unsandboxed": self.allow_unsandboxed,
             "allow_outside": list(self.allow_outside),
         }
+        if self.limits:
+            data["limits"] = dict(self.limits)
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> SandboxPolicy:
@@ -523,6 +615,7 @@ class SandboxPolicy:
             web_allow=parse_web_allow(data.get("web_allow")),
             allow_unsandboxed=bool(data.get("allow_unsandboxed", False)),
             allow_outside=parse_allow_outside(data.get("allow_outside")),
+            limits=parse_limits(data.get("limits")),
         )
 
     def with_allow_file(self) -> SandboxPolicy:
@@ -537,8 +630,14 @@ class SandboxPolicy:
         child_web_allow: Sequence[str] | str | None = None,
         child_allow_unsandboxed: bool | None = None,
         child_allow_outside: Sequence[str] | None = None,
+        child_limits: Mapping[str, int] | None = None,
     ) -> SandboxPolicy:
         """Create a child SandboxPolicy that can only narrow (never escalate) privileges."""
+        limits = dict(self.limits)
+        for key, value in parse_limits(child_limits).items():
+            if key in limits and value > limits[key]:
+                raise ValueError(f"limit {key}: child cannot raise {limits[key]} to {value}")
+            limits[key] = value
         if self.profile == "read-only":
             effective_profile = "read-only"
         else:
@@ -555,7 +654,64 @@ class SandboxPolicy:
             web_allow=_narrow_web_allow(self.web_allow, child_web_allow),
             allow_unsandboxed=self.allow_unsandboxed and child_allow_unsandboxed is not False,
             allow_outside=_narrow_allow_outside(self.allow_outside, child_allow_outside),
+            limits=limits,
         )
+
+    def _limit_hit(self, rc: int, output: str, cpu_used: float | None = None) -> str | None:
+        """Name the first configured limit that explains a failed command, else None.
+
+        `cpu_used` is the child's CPU seconds; a SIGKILL counts as a cpu hit only when that
+        time reached the limit (RLIMIT_CPU's hard kill), so `kill -9` or the OOM killer do not.
+        """
+        if not self.limits:
+            return None
+        checks: list[tuple[str, bool, str, str]] = []
+        if "cpu" in self.limits:
+            killed = rc in {-signal.SIGKILL, 128 + signal.SIGKILL}
+            cpu_reached = cpu_used is not None and cpu_used >= self.limits["cpu"] - 0.05
+            checks.append(
+                (
+                    "cpu",
+                    rc in {-signal.SIGXCPU, 128 + signal.SIGXCPU} or (killed and cpu_reached),
+                    f"cpu {self.limits['cpu']}s",
+                    "do less work per command (smaller input, fewer iterations) or split it into "
+                    "steps.",
+                )
+            )
+        if "fsize" in self.limits:
+            checks.append(
+                (
+                    "fsize",
+                    rc in {-signal.SIGXFSZ, 128 + signal.SIGXFSZ}
+                    or (rc != 0 and "File too large" in output),
+                    f"fsize {self.limits['fsize']} MB",
+                    "write less data or split the output into smaller files.",
+                )
+            )
+        if "procs" in self.limits:
+            checks.append(
+                (
+                    "procs",
+                    rc != 0
+                    and ("Resource temporarily unavailable" in output or "fork: retry" in output),
+                    f"procs {self.limits['procs']}",
+                    "start fewer processes at once (no background loops, lower -j).",
+                )
+            )
+        if "mem" in self.limits:
+            markers = ("MemoryError", "Cannot allocate memory", "bad_alloc", "out of memory")
+            checks.append(
+                (
+                    "mem",
+                    rc != 0 and any(m in output for m in markers),
+                    f"mem {self.limits['mem']} MB",
+                    "process the data in smaller chunks or stream it.",
+                )
+            )
+        for _key, hit, label, hint in checks:
+            if hit:
+                return f"[limit hit: {label}] Instead: {hint}"
+        return None
 
     def _relies_on_bwrap(self) -> bool:
         # A write session that asked for the kernel sandbox, on a host without one.
@@ -688,7 +844,7 @@ class SandboxPolicy:
                     "parent directory traversal (`..`) is blocked",
                     "use a path inside the workspace, e.g. `./src`",
                 )
-            if tok.startswith("/") and not tok.startswith(("/dev/null", "/tmp")):
+            if tok.startswith("/") and not tok.startswith(("/dev/null", "/dev/zero", "/tmp")):
                 resolved = Path(tok).resolve()
                 if not resolved.is_relative_to(self.workspace_root):
                     raise _refusal(
@@ -888,6 +1044,11 @@ class SandboxPolicy:
         self, argv: list[str], stdin: str | None, *, env: dict[str, str], cwd: str
     ) -> tuple[int, str]:
         """Run argv under the shared wall-clock cap and output compaction (both paths use it)."""
+        extra: dict[str, Any] = {}
+        if self.limits:
+            # preexec_fn is unsafe with threads; tether spawns from the asyncio loop only.
+            extra["preexec_fn"] = _limit_setter(self.limits)
+        cpu_before = _children_cpu_seconds() if "cpu" in self.limits else None
         proc = await asyncio.create_subprocess_exec(
             *argv,
             stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
@@ -896,6 +1057,7 @@ class SandboxPolicy:
             cwd=cwd,
             env=env,
             start_new_session=True,
+            **extra,
         )
 
         stdin_bytes = stdin.encode("utf-8") if stdin is not None else None
@@ -938,6 +1100,10 @@ class SandboxPolicy:
                 f"... [truncated {omitted:,} chars by sandbox cap] ...\n"
                 f"{combined[-half:]}"
             )
+        cpu_used = None if cpu_before is None else _children_cpu_seconds() - cpu_before
+        hit = self._limit_hit(returncode, combined, cpu_used)
+        if hit:
+            combined = f"{combined}\n{hit}"
         return returncode, combined
 
     async def execute_bash(self, cmd: str, stdin: str | None = None) -> str:
