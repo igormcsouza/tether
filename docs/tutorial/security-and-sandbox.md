@@ -69,6 +69,15 @@ harness = Harness(
 
 The command guard (the non-`bwrap` fallback check on `bash` commands) treats tokens starting with `/` as absolute paths. Since v0.1.4 the program or pattern argument of `awk`, `sed`, `grep`, `rg` and `perl` (and `/regex{...}` tokens given to them) is not treated as a path, so `awk '/Módulo/ {n++}' plan.md` and `sed -n '/^## M/p' plan.md` work in `bash` and in `verify:` gates. File operands (`sed -n p /etc/hosts`, `awk -f /etc/passwd`) are still checked ([#31](https://github.com/igormcsouza/tether/issues/31)).
 
+## When a command is refused
+
+A refusal names the rule, what to do instead, and the flag that would permit it when one exists. Two real messages:
+
+```text
+Sandbox violation: `sudo` privilege escalation is blocked. Instead: run the command without elevated privileges.
+Sandbox violation: binary `python3` is not in the `read-only` allowlist. Instead: use an allowlisted binary such as `ls`, `cat`, `grep` or `rg`. Flag: --sandbox workspace-write.
+```
+
 ## Known limits
 - Network is on unless you pass `--no-network`; with it on, `curl` can reach localhost services and the internet.
 - There is no process-count limit inside `bwrap` (a fork bomb is only stopped by the timeout).

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Sandbox refusals now name the rule, what to do instead, and the flag that would permit it when one exists (#124 item 3). No change to which commands are allowed or refused.
+
 ### Added
 
 - `tether export <id>` prints a session as a Markdown transcript (`--out FILE` to save it).
