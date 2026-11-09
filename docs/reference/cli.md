@@ -15,6 +15,8 @@ The `tether` command is the primary entry point for running, inspecting, and con
 | `5` | Worker or provider error |
 | `6` | `wait` timed out with sessions still `RUNNING` or `PENDING` (message on stderr) |
 
+If a headless worker dies before it starts (exit `5`), the session is marked `FAILED` with `Worker died (pid N) before starting`, and the failure names the worker log at `<db dir>/workers/<id>.log`, which keeps the worker's stdout and stderr. Read that file to see why it died.
+
 A `wait` with `--timeout` (default 120 seconds) that expires while sessions are still `RUNNING` or `PENDING` exits `6` and prints `timed out; still RUNNING: <ids>` to stderr.
 
 ## tether run

@@ -17,6 +17,7 @@
 - `tether diff <session_id>` shows what a session changed in its files, against the first bytes the session saw (`--stat` for line counts). Snapshots are recorded by the harness write-tracking loop in a new `file_snapshots` table; files created by the session show as added from empty.
 
 ### Fixed
+- A headless worker that dies before it starts no longer leaves its session PENDING: it is marked FAILED with `Worker died (pid N) before starting`, and the result names the worker's log (`<db dir>/workers/<id>.log`), which now keeps the worker's stdout and stderr (#271).
 - `edit write` on an existing file with stdin made only of complete SEARCH/REPLACE blocks now applies them as `edit replace` instead of replacing the whole file (#267).
 - `tether wait` exits 6 and prints `timed out; still RUNNING: ...` on stderr when the timeout expires (#269).
 - Command provider timeouts and empty failures are retried twice before raising `ProviderError` (#268).
