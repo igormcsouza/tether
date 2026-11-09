@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import dataclasses
 import os
 import re
 import subprocess
@@ -39,7 +40,7 @@ from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render
 from tether.providers import ModelProvider, resolve_provider
 from tether.providers.base import ProviderError
 from tether.providers.declarative import load_declared
-from tether.sandbox import SandboxPolicy
+from tether.sandbox import SandboxPolicy, SandboxUnavailableError
 from tether.schema import validate_output
 from tether.skills import Skill, SkillLoader, make_skill_tool
 from tether.store import SessionRecord, SQLiteStore, worker_log_path
@@ -373,12 +374,15 @@ class Harness:
         worktree: bool = False,
         worktree_from: str | None = None,
         setup: str | None = None,
+        allow_unsandboxed: bool = False,
     ) -> None:
         if max_tokens is not None and max_tokens <= 0:
             raise ValueError(f"--max-tokens must be a positive integer (got {max_tokens}).")
         self.model = model or os.environ.get("TETHER_MODEL") or "ollama/qwen3.5:9b"
         self.store = SQLiteStore(db_path=db_path)
         self.sandbox = sandbox or SandboxPolicy()
+        if allow_unsandboxed:  # never mutate the caller's policy object
+            self.sandbox = dataclasses.replace(self.sandbox, allow_unsandboxed=True)
         self.max_steps = max_steps
         self.worktree = worktree
         self.worktree_from = worktree_from
@@ -573,7 +577,10 @@ class Harness:
         """Create a persisted root pipeline session row in SQLite without executing it yet."""
         resolved = self._resolve_pipeline(pipeline)
         root_sandbox = self.sandbox.attenuate(resolved.sandbox)
+        for stage in resolved.stages:  # only stages that still write need bwrap
+            root_sandbox.attenuate(stage.sandbox).require_isolation()
         sbox_dict = root_sandbox.to_dict()
+        sbox_dict["sandbox_mode"] = root_sandbox.mode()
         sbox_dict["pipeline"] = resolved.to_dict()
         if isinstance(pipeline, Path):
             sbox_dict["pipeline_source"] = str(pipeline.resolve())
@@ -664,7 +671,9 @@ class Harness:
 
     def create_session(self, goal: str, *, parent_id: str | None = None) -> SessionRecord:
         """Create a persisted session row in SQLite without executing it yet."""
+        self.sandbox.require_isolation()  # before the worktree, the row and any model call
         sbox_dict = self.sandbox.to_dict()
+        sbox_dict["sandbox_mode"] = self.sandbox.mode()
         if self.output_schema:
             sbox_dict["output_schema"] = self.output_schema
         if self.params:
@@ -1059,6 +1068,23 @@ class Harness:
         ]:
             if sv not in verify_commands:
                 verify_commands.append(sv)
+
+        try:
+            isolation = sandbox.isolation_error()
+        except SandboxUnavailableError as exc:
+            isolation = str(exc)
+        if isolation is not None:
+            self.store.add_turn(
+                session_id=session_id,
+                step=rec.step_count,
+                role="tool",
+                content=isolation,
+                event_type="gate_error",
+            )
+            self.store.update_session(session_id, status="FAILED", result=isolation)
+            refused = self.store.get_session(session_id)
+            assert refused is not None
+            return refused
 
         precheck_result = gates_precheck(verify_commands, sandbox)
         if precheck_result is not None:

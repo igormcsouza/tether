@@ -37,6 +37,7 @@ tether run "your goal here" [flags]
 | `--sandbox` | Deterministic sandbox profile |
 | `--web-allow` | Comma list of domains the `web` tool may reach, e.g. `python.org,*.github.com`; other hosts and IP literals are refused |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
+| `--allow-unsandboxed` | Run write sessions without bwrap (command checks only). Without bwrap and without this flag, a workspace-write session is refused with exit 1 |
 | `--max-steps` | Maximum reasoning steps |
 | `--max-tokens` | Token budget (prompt + completion); pauses as WAITING_INPUT (exit 2) when reached |
 | `--context-tokens` | Context token budget (default 32768) |
@@ -72,6 +73,7 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 | `--sandbox` | Root deterministic sandbox profile (stages can only narrow) |
 | `--web-allow` | Comma list of domains the `web` tool may reach (stages can only narrow) |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
+| `--allow-unsandboxed` | Run write sessions without bwrap (command checks only). Without bwrap and without this flag, a workspace-write session is refused with exit 1 |
 | `--max-steps` | Default max reasoning steps per stage |
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--context-tokens` | Context token budget (default 32768) |
@@ -98,6 +100,8 @@ Show the current state of a session (running, paused, completed, failed). Use th
 ```bash
 tether status <session_id> [flags]
 ```
+
+The text output ends with `sandbox: bwrap` or `sandbox: command checks only` (sessions created since 0.3).
 
 | Flag | Meaning |
 |------|---------|

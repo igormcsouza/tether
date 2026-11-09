@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- Without `bwrap`, a `workspace-write` session with the kernel sandbox on is now refused before the first model call (exit 1). Migration: pass `--allow-unsandboxed` (SDK `SandboxPolicy(allow_unsandboxed=True)`/`Harness(allow_unsandboxed=True)`, MCP `allow_unsandboxed`), or set `TETHER_SANDBOX=container` in Docker. With the opt-out, one `[sandbox] bwrap not available, running with command checks only` line is printed on stderr (#124 item 2).
+
 ### Changed
 
 - Sandbox refusals now name the rule, what to do instead, and the flag that would permit it when one exists (#124 item 3). No change to which commands are allowed or refused.
@@ -11,6 +15,7 @@
 - Web domain allowlist (#124): `tether run --web-allow` (and `SandboxPolicy(web_allow=)`) restricts the `web` tool to listed domains; sub-agents and stages can only narrow it.
 - `tether pipeline --web-allow` and the MCP `tether_run` argument `web_allow` set the same domain allowlist. A malformed value (spaces, a `*` outside a leading `*.`, a URL) is a usage error or a ToolError, not a silent pass.
 - Docs: install with the network, work without it (`--setup`, `--no-network`) (#124).
+- `tether status` shows `sandbox: bwrap` or `sandbox: command checks only`.
 - `tether export <id>` prints a session as a Markdown transcript (`--out FILE` to save it).
 - A `--verify` gate whose program does not exist (checked for every command in a `&&`/`||`/`;`/`|` chain) now fails the session before the first model call, as a misconfigured gate (#82).
 - `tether doctor` checks your setup (Ollama reachable, model pulled, bwrap, providers.yaml, session DB) and says what to fix; exit 1 when a check fails.

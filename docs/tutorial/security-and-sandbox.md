@@ -38,6 +38,15 @@ On Linux, when `bwrap` is available and functional, `bash` subprocesses automati
 - `/home`, `/media`, `/mnt`, `/srv` and `/var/tmp` are hidden behind empty tmpfs, `/run/user` is hidden, and every unix socket under `/run` (for example `docker.sock`) is masked. A read-only bind does not stop `connect()`, so an exposed `docker.sock` would be a host escape. Existing `PATH` directories that sit under a hidden root (`~/.local/bin` for `uv`, nvm's `bin` for `node`) are re-bound read-only so tools installed there still run in `bash` and `--verify` gates; credential directories (`.ssh`, `.gnupg`, `.aws`, `.kube`, `.docker`, `.config`) and the hidden roots themselves are never re-exposed.
 - `--unshare-pid`, `--unshare-ipc` and `--die-with-parent` ensure runaway child processes are reaped immediately on timeout.
 
+### Without bwrap (fail closed)
+Without `bwrap` (macOS, Windows, or Linux without bubblewrap) only the command-text checks remain, and those are easy to get around (`python -c ...`). So a `workspace-write` session with the kernel sandbox on is refused before the first model call (exit `1`). The message names the three ways out:
+
+- Install bubblewrap (`apt install bubblewrap`, then `tether doctor`).
+- Pass `--allow-unsandboxed` (`tether run`, `tether pipeline`), `SandboxPolicy(allow_unsandboxed=True)` or `Harness(allow_unsandboxed=True)` in Python, or the MCP `tether_run` argument `allow_unsandboxed`. The session then runs and prints one `[sandbox] bwrap not available, running with command checks only` line on stderr per process.
+- In Docker, set `TETHER_SANDBOX=container`: the container is the sandbox. No refusal and no notice. Any other value of `TETHER_SANDBOX` is refused. The command-text checks still apply in this mode.
+
+`read-only` sessions and `SandboxPolicy(use_kernel_sandbox=False)` are not refused. Sub-agents and pipeline stages inherit the opt-out and can only drop it. `tether status <id>` shows `sandbox: bwrap` or `sandbox: command checks only`.
+
 ### 5. Optional network isolation (`--no-network`)
 By default `bash` keeps network access. `tether run --no-network ...` (or `SandboxPolicy(network=False)`) adds `--unshare-net`, which also separates abstract unix sockets. Sub-agents and pipeline stages inherit it and can never re-enable it. Without `bwrap` the policy cannot be enforced, so `bash` refuses to run (fail closed) instead of running un-isolated. `web fetch` runs in the harness process and is not affected by `--no-network`.
 

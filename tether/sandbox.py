@@ -11,6 +11,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -64,6 +65,15 @@ def _narrow_web_allow(
     if parent is None:
         return requested
     return tuple(c for c in requested if any(_entry_within(c, p) for p in parent))
+
+
+class SandboxUnavailableError(RuntimeError):
+    """A write session needs bwrap and the caller did not opt out."""
+
+
+UNSANDBOXED_NOTICE = "[sandbox] bwrap not available, running with command checks only"
+# Printed once per process, at session creation, so repeated runs do not flood stderr.
+_UNSANDBOXED_NOTICE_SHOWN: bool = False
 
 
 def _clip(value: object, limit: int = 60) -> str:
@@ -264,6 +274,25 @@ def _can_use_bwrap() -> bool:
     return _BWRAP_USABLE
 
 
+_ISOLATION_MSG = (
+    "Sandbox unavailable: workspace-write needs bwrap (Linux kernel sandbox), which is not "
+    "available here. Install bubblewrap (e.g. apt install bubblewrap, then tether doctor), run "
+    "inside a container with TETHER_SANDBOX=container, or pass --allow-unsandboxed (SDK/MCP: "
+    "allow_unsandboxed=True) to run with command checks only."
+)
+
+
+def _container_mode() -> bool:
+    """`TETHER_SANDBOX=container`: the container is the sandbox. Other values fail loudly."""
+    value = os.environ.get("TETHER_SANDBOX", "").strip()
+    if value and value != "container":
+        raise SandboxUnavailableError(
+            f"TETHER_SANDBOX={_clip(value)!r} is not supported; use TETHER_SANDBOX=container "
+            "or unset it."
+        )
+    return value == "container"
+
+
 _RULE_LINE = re.compile(r"^(?:={20,}|-{20,})$\n?", re.M)
 
 
@@ -313,6 +342,8 @@ class SandboxPolicy:
     verify_commands: list[str] = field(default_factory=list)
     # None = unset (today's behaviour); () = deny every host. Set by --web-allow / web_allow.
     web_allow: tuple[str, ...] | None = None
+    # Opt-out for write profiles when bwrap is missing (SDK / CLI / MCP). Only ever narrowed.
+    allow_unsandboxed: bool = False
 
     def __post_init__(self) -> None:
         self.workspace_root = Path(self.workspace_root).resolve()
@@ -330,6 +361,7 @@ class SandboxPolicy:
             "network": self.network,
             "verify_commands": list(self.verify_commands),
             "web_allow": None if self.web_allow is None else list(self.web_allow),
+            "allow_unsandboxed": self.allow_unsandboxed,
         }
 
     @classmethod
@@ -346,6 +378,7 @@ class SandboxPolicy:
             network=bool(data.get("network", True)),
             verify_commands=[str(v) for v in raw_verify if str(v).strip()],
             web_allow=parse_web_allow(data.get("web_allow")),
+            allow_unsandboxed=bool(data.get("allow_unsandboxed", False)),
         )
 
     def attenuate(
@@ -353,6 +386,7 @@ class SandboxPolicy:
         child_profile: str | None = None,
         child_network: bool | None = None,
         child_web_allow: Sequence[str] | str | None = None,
+        child_allow_unsandboxed: bool | None = None,
     ) -> SandboxPolicy:
         """Create a child SandboxPolicy that can only narrow (never escalate) privileges."""
         if self.profile == "read-only":
@@ -369,7 +403,38 @@ class SandboxPolicy:
             network=self.network and child_network is not False,
             verify_commands=list(self.verify_commands),
             web_allow=_narrow_web_allow(self.web_allow, child_web_allow),
+            allow_unsandboxed=self.allow_unsandboxed and child_allow_unsandboxed is not False,
         )
+
+    def _relies_on_bwrap(self) -> bool:
+        # A write session that asked for the kernel sandbox, on a host without one.
+        return (
+            self.profile != "read-only"
+            and self.use_kernel_sandbox
+            and not _can_use_bwrap()
+            and not _container_mode()
+        )
+
+    def isolation_error(self) -> str | None:
+        """The refusal message when this policy needs bwrap and has no opt-out, else None."""
+        _container_mode()  # validate TETHER_SANDBOX on every host, before any short-circuit
+        if self.allow_unsandboxed or not self._relies_on_bwrap():
+            return None
+        return _ISOLATION_MSG
+
+    def require_isolation(self) -> None:
+        """Refuse before any model call; with the opt-out, print the notice once per process."""
+        global _UNSANDBOXED_NOTICE_SHOWN
+        err = self.isolation_error()
+        if err is not None:
+            raise SandboxUnavailableError(err)
+        if not _UNSANDBOXED_NOTICE_SHOWN and self._relies_on_bwrap():
+            print(UNSANDBOXED_NOTICE, file=sys.stderr, flush=True)
+            _UNSANDBOXED_NOTICE_SHOWN = True
+
+    def mode(self) -> str:
+        """What `tether status` shows for the session."""
+        return "bwrap" if self.use_kernel_sandbox and _can_use_bwrap() else "command checks only"
 
     def resolve_safe_path(self, raw_path: str | Path, *, write: bool = False) -> Path:
         """Resolve a path and enforce workspace confinement + sensitive-file protection."""
