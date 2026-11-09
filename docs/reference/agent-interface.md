@@ -48,7 +48,7 @@ Optional: `pip install "tether-sdk[mcp]"` (installs the official `mcp` SDK; core
 
 | Tool | Arguments |
 |------|-----------|
-| `tether_run` | `goal`, `model`, `skill`, `tools`, `verify[]`, `max_steps`, `max_tokens`, `context_tokens`, `fold_after`, `sandbox`, `workspace`, `no_network`, `allow_unsandboxed`, `allow`, `output_schema`, `wait` (default true) |
+| `tether_run` | `goal`, `model`, `skill`, `tools`, `verify[]`, `max_steps`, `max_tokens`, `context_tokens`, `fold_after`, `sandbox`, `workspace`, `no_network`, `web_allow`, `allow_unsandboxed`, `allow`, `limits`, `output_schema`, `wait` (default true) |
 | `tether_status` | `id` |
 | `tether_wait` | `ids[]`, `timeout` |
 | `tether_read` | `id`, `mode` = `full` \| `digest` \| `steps` |
@@ -59,3 +59,4 @@ Optional: `pip install "tether-sdk[mcp]"` (installs the official `mcp` SDK; core
 
 Security: sandboxes are always rooted at `--workspace` (default: the server's cwd). Callers can choose `read-only` or `no_network`, never widen, with two exceptions that widen what runs outside the jail: `allow` (a list of command prefixes that run outside the jail, see security-and-sandbox section 8) and `allow_unsandboxed` (boolean) lets a `workspace-write` session run without `bwrap` (command checks only). Without `bwrap` and without it, `tether_run` returns a tool error that names `--allow-unsandboxed`, `TETHER_SANDBOX=container` and how to install bubblewrap; the CLI exits `1` in the same case. A caller of a shared MCP server can opt out per call with `allow_unsandboxed`; the server does not set a default for it.
 `workspace` (optional) must be an absolute existing directory inside the server workspace; anything else is rejected.
+`limits` (optional) is an object of key to whole number, e.g. `{"cpu": 60, "mem": 2048}` (keys `cpu` seconds, `mem` MB, `procs`, `fsize` MB; Linux only), the same as `--limit`. An unknown key, a non-integer (including `1.0`), a value below 1 or above 2147483647 is a tool error.
