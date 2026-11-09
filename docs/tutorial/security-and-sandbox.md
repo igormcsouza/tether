@@ -187,3 +187,22 @@ On `approve`, Tether adds the prefix to `.tether/allow.json`, runs the command o
 - Network is on unless you pass `--no-network`; with it on, `curl` can reach localhost services and the internet.
 - There is no process-count limit by default (a fork bomb is only stopped by the timeout); opt in with `--limit procs=N` (see Resource limits above).
 - Prompt injection still steers the model; the envelope only limits what an injected command can reach.
+
+## Conformance
+
+The sandbox conformance table lives in `tests/test_sandbox_conformance.py` as `(command, expect)` rows. The same rows are used by two tests: the unit test checks the text layer, and the e2e test in `e2e/test_sandbox_conformance.py` runs them under real bwrap. The e2e layer also needs the local Ollama reachable; the e2e suite skips otherwise.
+
+To add a command, add one line to `TABLE`. The `expect` value means:
+
+- `RUN`: the command must validate in both layers and exit 0 under bwrap.
+- `REFUSE`: the text layer must raise `SandboxViolationError` with an `Instead:` hint.
+- `MOUNT`: the text layer refuses it only in fallback mode. Under bwrap, the mounts must block it.
+
+Run both layers from the repo root:
+
+```bash
+uv run pytest tests/test_sandbox_conformance.py -q
+TETHER_E2E=1 uv run pytest e2e/test_sandbox_conformance.py -q
+```
+
+The e2e layer needs `bwrap` with user namespaces. Without them its tests are skipped, and `-rs` shows the reason.

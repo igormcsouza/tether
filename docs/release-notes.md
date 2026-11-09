@@ -12,7 +12,7 @@
 - Observation folding is automatic by default: above half of `max_context_tokens`, old outputs fold oldest-first only until the history is back under that target (no cliff), and each unedited re-read lengthens K by one (cap 8). `--fold-after N` keeps the fixed rule (#205).
 
 ### Added
-
+- Sandbox conformance suite: a table of must-run and must-refuse commands, run against the text layer and real bwrap. It proves items 1 and 9 of #124.
 - Escalation: ask the caller once, then remember (#59, #124 item 4). A command whose prefix is in the policy's `escalate` list (default `git push|pull|fetch|clone|worktree|config`, `gh`, `docker`) and not allowlisted pauses the session as `WAITING_INPUT` (exit 2) with `[APPROVAL NEEDED] <command>` and the JSON key `approval`. `tether send <id> approve` (or the new `tether allow <id>`, MCP `tether_send`) adds the prefix to `.tether/allow.json`, runs the command outside the jail and resumes; any other reply refuses it. Never offered for metacharacters, unsafe git options, read-only or `--no-network` sessions.
 - Allowlist of command prefixes that run outside the jail (#59, #124 item 4): `tether run --allow` (repeatable), `allow` in `.tether/allow.json`, and the MCP `tether_run` argument `allow`. Whole-token prefixes, no shell, never in read-only or `--no-network` sessions.
 - Sandbox refusals are recorded as `sandbox_violation` events with their rule, and `tether stats` shows the top rules (#124).
@@ -26,7 +26,6 @@
 - `tether doctor` checks your setup (Ollama reachable, model pulled, bwrap, providers.yaml, session DB) and says what to fix; exit 1 when a check fails.
 - `tether run --worktree` runs the session in its own git worktree on branch `tether/<id>` and commits the result there when it stops. `--worktree-from <ref>` sets the base ref and `--setup <cmd>` runs a shell command in the worktree before the model starts (outside the sandbox, not offered over MCP). See [Run a session on its own branch](guides/own-branch.md).
 - `tether read <id> --thinking` prints the stored model thinking for each step. Thinking is kept for reading only and is never replayed to the model.
-
 - `tether replay SESSION_ID` re-runs a session's goal in the current directory with its saved tools, skill, sandbox, output_schema and params, and prints the original and replay side by side (`--model`, `--max-steps`, `--json`). Verify gates are not stored, so a replay runs without them.
 - `tether pipeline --resume <id>` re-runs a failed or waiting pipeline from its first unfinished stage and reuses the stages that completed (#35).
 - `--max-tokens N` (CLI), `Harness(max_tokens=)` and the MCP `tether_run` argument `max_tokens` set a token budget (prompt + completion). When the budget is reached the session pauses as WAITING_INPUT (exit 2) and `send` adds the same amount again as a grant. Sessions without a budget are unchanged.
