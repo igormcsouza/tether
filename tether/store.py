@@ -10,7 +10,7 @@ import tempfile
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ _FRICTION_EVENTS = (
     "cycle_stall",
     "syntax_error",
     "tool_error",
+    "sandbox_violation",
     "gate_fail",
     "gate_error",
 )
@@ -64,6 +65,7 @@ class TurnRecord:
     duration_ms: int = 0
     event_type: str = "ok"
     thinking: str = ""
+    rule: str = ""
 
 
 @dataclass(slots=True)
@@ -128,6 +130,7 @@ class ToolOffender:
 class StatsReport:
     models: list[ModelStats]
     offenders: list[ToolOffender]
+    sandbox_refusals: list[tuple[str, int]] = field(default_factory=list)
 
 
 _SUBCOMMAND_TOOLS: dict[str, set[str]] = {
@@ -221,6 +224,15 @@ def _sanitize_fts_tokens(query: str) -> list[str]:
     stopwords = {"the", "a", "an", "of", "to", "in", "for", "on", "with", "is", "are", "and", "or"}
     filtered = [t for t in tokens if len(t) > 1 and t not in stopwords]
     return filtered or tokens
+
+
+_RULE = re.compile(r"Sandbox violation: (.+?)\. Instead:")
+
+
+def sandbox_rule(output: str) -> str:
+    """The rule named by a sandbox refusal, cut to 80 chars; `(unknown)` if unparseable."""
+    m = _RULE.search(output)
+    return m.group(1)[:80] if m else "(unknown)"
 
 
 def worker_log_path(db_path: Path, session_id: str) -> Path:
@@ -367,6 +379,7 @@ class SQLiteStore:
                     "duration_ms": "INTEGER NOT NULL DEFAULT 0",
                     "event_type": "TEXT NOT NULL DEFAULT 'ok'",
                     "thinking": "TEXT NOT NULL DEFAULT ''",
+                    "rule": "TEXT NOT NULL DEFAULT ''",
                 },
             )
 
@@ -466,6 +479,7 @@ class SQLiteStore:
             duration_ms=int(row["duration_ms"]),
             event_type=str(row["event_type"]),
             thinking=str(row["thinking"] or ""),
+            rule=str(row["rule"] or ""),
         )
 
     def _reap_dead(self, rec: SessionRecord) -> SessionRecord:
@@ -606,6 +620,7 @@ class SQLiteStore:
         duration_ms: int = 0,
         event_type: str = "ok",
         thinking: str = "",
+        rule: str = "",
     ) -> int:
         with self._connect() as conn:
             cur = conn.execute(
@@ -613,9 +628,9 @@ class SQLiteStore:
                 INSERT INTO turns (
                     session_id, step, role, content, tool_cmd, tool_stdin, obs_id,
                     prompt_tokens, completion_tokens, duration_ms, event_type, thinking,
-                    created_at
+                    rule, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session_id,
@@ -630,6 +645,7 @@ class SQLiteStore:
                     duration_ms,
                     event_type,
                     thinking[:4000],
+                    rule,
                     time.time(),
                 ),
             )
@@ -641,12 +657,16 @@ class SQLiteStore:
         *,
         event_type: str | None = None,
         duration_ms: int | None = None,
+        rule: str | None = None,
     ) -> None:
         updates: list[str] = []
         params: list[Any] = []
         if event_type is not None:
             updates.append("event_type = ?")
             params.append(event_type)
+        if rule is not None:
+            updates.append("rule = ?")
+            params.append(rule)
         if duration_ms is not None:
             updates.append("duration_ms = ?")
             params.append(duration_ms)
@@ -1073,6 +1093,15 @@ class SQLiteStore:
                 tuple(session_ids),
             ).fetchall()
             turns = [self._row_to_turn(r) for r in turn_rows]
+            top = [
+                (str(r["rule"]), int(r["n"]))
+                for r in conn.execute(
+                    "SELECT rule, COUNT(*) AS n FROM turns "
+                    f"WHERE session_id IN ({placeholders}) AND event_type = 'sandbox_violation' "
+                    "GROUP BY rule ORDER BY n DESC, rule LIMIT 5",
+                    tuple(session_ids),
+                ).fetchall()
+            ]
 
         turns_by_session: dict[str, list[TurnRecord]] = {sid: [] for sid in session_ids}
         for t in turns:
@@ -1102,7 +1131,7 @@ class SQLiteStore:
             loops = sum(1 for t in mturns if t.event_type == "loop_stall")
             cycles = sum(1 for t in mturns if t.event_type == "cycle_stall")
             syn_err = sum(1 for t in mturns if t.event_type == "syntax_error")
-            tool_err = sum(1 for t in mturns if t.event_type == "tool_error")
+            tool_err = sum(1 for t in mturns if t.event_type in ("tool_error", "sandbox_violation"))
             gate_fail = sum(1 for t in mturns if t.event_type == "gate_fail")
             gate_err = sum(1 for t in mturns if t.event_type == "gate_error")
 
@@ -1142,6 +1171,7 @@ class SQLiteStore:
                 "loop_stall",
                 "cycle_stall",
                 "tool_error",
+                "sandbox_violation",
                 "gate_error",
             ):
                 cmd_key = canonical_tool_command(t.tool_cmd)
@@ -1173,7 +1203,7 @@ class SQLiteStore:
             offenders_by_cmd.values(),
             key=lambda o: (-o.total_friction, -o.syntax_errors, -o.loop_stalls, o.command),
         )
-        return StatsReport(models=model_stats, offenders=offenders)
+        return StatsReport(models=model_stats, offenders=offenders, sandbox_refusals=top)
 
     def format_stats_report(
         self,
@@ -1214,4 +1244,8 @@ class SQLiteStore:
                     f"{off.cycle_stalls:>6} {off.tool_errors:>8} {off.gate_errors:>8} "
                     f"{off.total_friction:>5}"
                 )
+        if report.sandbox_refusals:
+            lines.append("")
+            lines.append("sandbox refusals:")
+            lines.extend(f"{rule}: {count}" for rule, count in report.sandbox_refusals)
         return "\n".join(lines)

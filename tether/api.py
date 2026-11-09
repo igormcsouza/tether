@@ -124,4 +124,5 @@ def stats_dict(store: SQLiteStore, **kw: Any) -> dict[str, Any]:
         "v": SCHEMA_VERSION,
         "models": [dataclasses.asdict(m) for m in rep.models],
         "offenders": [dataclasses.asdict(o) for o in rep.offenders],
+        "sandbox_refusals": [{"rule": r, "count": n} for r, n in rep.sandbox_refusals],
     }

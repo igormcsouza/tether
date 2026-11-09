@@ -241,6 +241,8 @@ tether stats [flags]
 tether stats --model openai/gpt-4o-mini --json
 ```
 
+When sandbox refusals occurred, `tether stats` ends with a `sandbox refusals` block listing the top 5 refused rules as `rule: count` (most frequent first, ties by rule name). The block is omitted when there are no refusals. With `--json`, the same data is the `sandbox_refusals` key: a list of `{"rule": ..., "count": ...}` objects, empty when there are none.
+
 ## tether retro
 
 Generate a retrospective summary of a completed session (what worked, what didn't, suggestions). Use this to learn from past runs and improve prompts or pipelines.

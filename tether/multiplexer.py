@@ -336,7 +336,7 @@ class Multiplexer:
         try:
             out = await spec.invoke(args, stdin=stdin)
         except SandboxViolationError as exc:
-            return DispatchResult(output=str(exc), is_error=True, error_kind="runtime_error")
+            return DispatchResult(output=str(exc), is_error=True, error_kind="sandbox_violation")
         except Exception as exc:
             return DispatchResult(
                 output=f"Error executing `{name}`: {exc}\n{spec.help_text()}",
