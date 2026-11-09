@@ -54,9 +54,11 @@ from tether.tools import (
 )
 from tether.trace import NEAR_PASS, failing_test_id, runtime_trace, smallest_failing
 from tether.unchanged import (
+    arg_snapshot,
     missing_targets,
     small_change_note,
     snapshot,
+    snapshot_key,
     unchanged_note,
     whole_file_targets,
 )
@@ -1568,18 +1570,30 @@ class Harness:
                     )
                     continue
 
-                before = {} if is_quiet(cmd) else snapshot(cmd, Path(sandbox.workspace_root))
+                quiet = is_quiet(cmd)
+                before = {} if quiet else snapshot(cmd, Path(sandbox.workspace_root))
                 for rel, data in before.items():  # untouched since the session started
                     with suppress(OSError):
                         path = Path(sandbox.workspace_root) / rel
                         if path.stat().st_mtime < rec.created_at:
-                            key = os.path.normpath(rel)
+                            key = snapshot_key(rel, Path(sandbox.workspace_root))
                             if key not in originals:
                                 originals[key] = data
                                 self.store.record_snapshot(session_id, key, data)
                 # a file the command creates has no bytes yet: its snapshot is NULL
                 for rel in missing_targets(cmd, Path(sandbox.workspace_root)):
-                    self.store.record_snapshot(session_id, os.path.normpath(rel), None)
+                    self.store.record_snapshot(
+                        session_id, snapshot_key(rel, Path(sandbox.workspace_root)), None
+                    )
+                # named arguments (sed -i f, mv new f) are kept for `tether diff` only
+                arg_bytes = (
+                    {} if quiet else arg_snapshot(cmd, Path(sandbox.workspace_root), skip=before)
+                )
+                for rel, data in arg_bytes.items():  # not added to `originals`
+                    with suppress(OSError):
+                        if (Path(sandbox.workspace_root) / rel).stat().st_mtime < rec.created_at:
+                            key = snapshot_key(rel, Path(sandbox.workspace_root))
+                            self.store.record_snapshot(session_id, key, data)
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)

@@ -32,7 +32,7 @@
 - Headless workers always import the installed tether, never a workspace's own tether/ package (#273).
 - An empty model reply is retried. If the retry is empty too, the session stops instead of continuing with no output (#135).
 - `tether run --worktree` no longer commits bytecode and tool caches (`__pycache__`, `*.pyc`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.tether/`) (#278).
-
+- `tether diff` shows writes by `sed -i`, `perl -i`, `mv`, `cp`, `python -c`, and names files changed by commands it could not track instead of `no file changes recorded` (#280).
 ## v0.2.18 (2026-11-08)
 
 Small fixes from the v0.2.17 release check and the paasio labs: shell-style file writes work when only `edit` is enabled, `edit append` adds to a file instead of replacing it, a foreground run prints its session id at once, and a `cd` into a container path that does not exist no longer costs a step.
