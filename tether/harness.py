@@ -43,7 +43,7 @@ from tether.providers.declarative import load_declared
 from tether.sandbox import SandboxPolicy, SandboxUnavailableError
 from tether.schema import validate_output
 from tether.skills import Skill, SkillLoader, make_skill_tool
-from tether.store import SessionRecord, SQLiteStore, worker_log_path
+from tether.store import SessionRecord, SQLiteStore, sandbox_rule, worker_log_path
 from tether.tools import (
     ALL_BUILTIN_TOOLS,
     make_agent_tool,
@@ -1787,6 +1787,12 @@ class Harness:
 
                 if dispatch.error_kind in ("syntax_error", "unknown_cmd"):
                     self.store.update_turn_telemetry(assistant_turn_id, event_type="syntax_error")
+                elif dispatch.error_kind == "sandbox_violation":
+                    self.store.update_turn_telemetry(
+                        assistant_turn_id,
+                        event_type="sandbox_violation",
+                        rule=sandbox_rule(dispatch.output),
+                    )
                 elif dispatch.is_error:
                     self.store.update_turn_telemetry(assistant_turn_id, event_type="tool_error")
 
