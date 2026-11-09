@@ -360,13 +360,14 @@ tether mcp --workspace /path/to/project
 Re-run a session's goal with its saved setup and compare the two runs.
 
 ```
-tether replay SESSION_ID [--model M] [--max-steps N] [--db PATH] [--json]
+tether replay SESSION_ID [--model M] [--max-steps N] [--worktree] [--worktree-from REF] [--setup CMD] [--db PATH] [--json]
 ```
 
-- The replay runs in the current directory with the original's tools, skill, sandbox profile and network, output_schema and params. There is no workspace copy, so `cd` to the right place first.
+- Plain replay runs in the current directory with the original's tools, skill, sandbox profile and network, output_schema and params. There is no workspace copy, so `cd` to the right place first.
 - Verify gates are not stored, so a replay runs without them.
 - The replay is recorded as a child of the original (`parent_id`), so `tether list` shows it under the original.
 - `--model` and `--max-steps` override the original's values. `--max-steps` must be at least 1.
+- `--worktree` runs the replay in its own git worktree on branch `tether/<id>`, as `tether run --worktree` does. `--worktree-from REF` sets the base ref (default HEAD) and `--setup CMD` runs a shell command in the worktree before the model starts. The setup runs outside the sandbox and is not offered over MCP. `--worktree-from` and `--setup` without `--worktree` are a usage error and exit `2`.
 - `--db` points at the database file, as for the other subcommands.
 - Exit `0` once the comparison prints, even if the replay FAILED (the status row shows it). Exit `1` if the session is unknown, still RUNNING or WAITING_INPUT, or the harness raises.
 

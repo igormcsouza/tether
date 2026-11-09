@@ -18,6 +18,7 @@
 
 ### Fixed
 - `edit write` on an existing file with stdin made only of complete SEARCH/REPLACE blocks now applies them as `edit replace` instead of replacing the whole file (#267).
+- Replay and list columns no longer collide with long model ids or WAITING_INPUT, and `replay` accepts `--worktree`, `--worktree-from` and `--setup` (#279).
 - `tether wait` exits 6 and prints `timed out; still RUNNING: ...` on stderr when the timeout expires (#269).
 - Command provider timeouts and empty failures are retried twice before raising `ProviderError` (#268).
 - Headless workers always import the installed tether, never a workspace's own tether/ package (#273).
