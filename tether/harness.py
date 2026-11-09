@@ -42,7 +42,7 @@ from tether.providers.declarative import load_declared
 from tether.sandbox import SandboxPolicy
 from tether.schema import validate_output
 from tether.skills import Skill, SkillLoader, make_skill_tool
-from tether.store import SessionRecord, SQLiteStore
+from tether.store import SessionRecord, SQLiteStore, worker_log_path
 from tether.tools import (
     ALL_BUILTIN_TOOLS,
     make_agent_tool,
@@ -311,14 +311,18 @@ def spawn_detached_worker(db_path: Path, session_id: str) -> int:
     """
     env = dict(os.environ)
     env["TETHER_DB"] = str(db_path)
-    proc = subprocess.Popen(
-        [sys.executable, "-P", "-m", "tether.cli", "_worker", session_id, "--db", str(db_path)],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
-        env=env,
-    )
+    log = worker_log_path(db_path, session_id)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    # Keep the worker's output: a worker that dies before RUNNING leaves its cause here (#271)
+    with log.open("ab") as out:
+        proc = subprocess.Popen(
+            [sys.executable, "-P", "-m", "tether.cli", "_worker", session_id, "--db", str(db_path)],
+            stdin=subprocess.DEVNULL,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+            env=env,
+        )
     return proc.pid
 
 
