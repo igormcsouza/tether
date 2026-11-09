@@ -172,6 +172,22 @@ tether send <session_id> <message...> [flags]
 tether send ses_abc123 "Focus only on the authentication module" --json
 ```
 
+When the session waits on `[APPROVAL NEEDED] <command>` (JSON key `approval`), the message `approve` (case and surrounding spaces ignored) adds the prefix to `.tether/allow.json`, runs the command outside the jail and resumes; any other message refuses it and nothing runs (#59).
+
+## tether allow
+
+Approve a session's pending `[APPROVAL NEEDED]` command. The same as `tether send <session_id> approve`.
+
+```bash
+tether allow <session_id> [flags]
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--headless` | Resume in the background |
+| `--db` | SQLite DB path (default .tether/tether.db) |
+| `--json` | Machine-readable JSON output |
+
 ## tether wait
 
 Block until one or more sessions reach a terminal state (completed, failed, or paused). Use this in scripts to synchronize parallel runs.

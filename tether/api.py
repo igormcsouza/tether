@@ -78,6 +78,10 @@ def session_dict(rec: SessionRecord, *, include_result: bool = True) -> dict[str
         out["result"] = None if fail else rec.result
     if rec.max_tokens is not None:
         out["max_tokens"] = rec.max_tokens
+    approval = rec.sandbox_config.get("approval")
+    if rec.status == "WAITING_INPUT" and approval:
+        # Present only while an [APPROVAL NEEDED] request waits on the caller (#59).
+        out["approval"] = {"command": approval["command"], "prefix": approval["prefix"]}
     return out
 
 

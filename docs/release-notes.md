@@ -13,6 +13,7 @@
 
 ### Added
 
+- Escalation: ask the caller once, then remember (#59, #124 item 4). A command whose prefix is in the policy's `escalate` list (default `git push|pull|fetch|clone|worktree|config`, `gh`, `docker`) and not allowlisted pauses the session as `WAITING_INPUT` (exit 2) with `[APPROVAL NEEDED] <command>` and the JSON key `approval`. `tether send <id> approve` (or the new `tether allow <id>`, MCP `tether_send`) adds the prefix to `.tether/allow.json`, runs the command outside the jail and resumes; any other reply refuses it. Never offered for metacharacters, unsafe git options, read-only or `--no-network` sessions.
 - Allowlist of command prefixes that run outside the jail (#59, #124 item 4): `tether run --allow` (repeatable), `allow` in `.tether/allow.json`, and the MCP `tether_run` argument `allow`. Whole-token prefixes, no shell, never in read-only or `--no-network` sessions.
 - Sandbox refusals are recorded as `sandbox_violation` events with their rule, and `tether stats` shows the top rules (#124).
 - Opt-in resource limits for `bash` (#124 item 6): `tether run`/`pipeline --limit KEY=VALUE` (cpu, mem, fsize, procs), `SandboxPolicy(limits=)` and the MCP `tether_run` argument `limits`; off by default, Linux only, a hit adds a `[limit hit: ...]` line.

@@ -103,7 +103,8 @@ TOOLS: list[dict[str, Any]] = [
     ),
     _tool(
         "tether_send",
-        "Answer a WAITING_INPUT session or give a follow-up. wait=true runs inline.",
+        "Answer a WAITING_INPUT session or give a follow-up. wait=true runs inline. "
+        "`approve` grants a pending [APPROVAL NEEDED].",
         {"id": _ID, "message": {"type": "string"}, "wait": {"type": "boolean"}},
         ["id", "message"],
     ),

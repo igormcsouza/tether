@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from tether.decorator import ToolSpec, build_tool_spec
-from tether.sandbox import SandboxPolicy
+from tether.sandbox import ApprovalNeeded, SandboxPolicy
 
 # `<tests> 2>&1 | head -N` cuts the runner's summary (it prints last) and hides its exit code.
 _HEAD_PIPE = re.compile(r"(?P<cmd>.+?)\s*\|\s*head(?:\s+-n)?(?:\s+-?(?P<n>\d+))?\s*", re.DOTALL)
@@ -44,7 +45,10 @@ def _keep_summary(out: str, n: int) -> str:
     return "\n".join([*lines[:n], marker, *lines[-HEAD_TAIL_LINES:]])
 
 
-def make_bash_tool(sandbox: SandboxPolicy) -> ToolSpec:
+def make_bash_tool(
+    sandbox: SandboxPolicy, on_approval: Callable[[ApprovalNeeded], None] | None = None
+) -> ToolSpec:
+    # on_approval lets the harness pause the session (#59); without it the request is a refusal.
     help_str = (
         "Usage: bash <command> (or pass script via stdin)\n"
         "Desc : Run shell command inside workspace sandbox."
@@ -62,9 +66,15 @@ def make_bash_tool(sandbox: SandboxPolicy) -> ToolSpec:
             # qwen3.5:9b lost a step to `cd /testbed && ...` in 3 of 6 paasio runs
             cmd_str = cd[1]
             note = f"[`cd {cd[0]}` skipped: no such directory; commands run in the workspace]\n"
-        if stdin is None and (head := _test_head(cmd_str)):
-            return note + _keep_summary(await sandbox.execute_bash(head[0]), head[1])
-        return note + await sandbox.execute_bash(cmd_str, stdin=stdin)
+        try:
+            if stdin is None and (head := _test_head(cmd_str)):
+                return note + _keep_summary(await sandbox.execute_bash(head[0]), head[1])
+            return note + await sandbox.execute_bash(cmd_str, stdin=stdin)
+        except ApprovalNeeded as exc:
+            if on_approval is None:
+                raise
+            on_approval(exc)
+            return str(exc)
 
     return build_tool_spec(
         _bash,
