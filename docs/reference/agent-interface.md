@@ -28,6 +28,7 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 | 2 | waiting for input (`done --ask`), or handed back as `[STUCK ...]` after two restarts that did not help |
 | 3 | verification gate failed or misconfigured (including `--output-schema`) |
 | 5 | worker or provider error, or `tether stop` |
+| 6 | `wait` timed out with sessions still `RUNNING` or `PENDING` (message on stderr) |
 
 In plain mode the failure reason goes to **stderr**; stdout only ever holds a deliverable. `wait` returns the highest code among its sessions.
 
