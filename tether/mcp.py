@@ -17,7 +17,12 @@ from mcp.server.stdio import stdio_server
 
 from tether import __version__, api
 from tether.harness import Harness
-from tether.sandbox import SandboxPolicy, SandboxUnavailableError, parse_web_allow
+from tether.sandbox import (
+    SandboxPolicy,
+    SandboxUnavailableError,
+    parse_allow_outside,
+    parse_web_allow,
+)
 from tether.store import SQLiteStore
 from tether.worktree import WorktreeError
 
@@ -51,6 +56,11 @@ TOOLS: list[dict[str, Any]] = [
             "web_allow": {
                 "type": "string",
                 "description": "comma list of domains the web tool may reach, e.g. python.org",
+            },
+            "allow": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "command prefixes run outside the jail",
             },
             "allow_unsandboxed": {
                 "type": "boolean",
@@ -191,6 +201,7 @@ class TetherMCP:
                 network=not a.get("no_network"),
                 web_allow=parse_web_allow(a.get("web_allow")),
                 allow_unsandboxed=bool(a.get("allow_unsandboxed")),
+                allow_outside=parse_allow_outside(a.get("allow")),
             )
         except ValueError as exc:
             raise ToolError(str(exc)) from exc

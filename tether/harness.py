@@ -385,6 +385,8 @@ class Harness:
         self.model = model or os.environ.get("TETHER_MODEL") or "ollama/qwen3.5:9b"
         self.store = SQLiteStore(db_path=db_path)
         self.sandbox = sandbox or SandboxPolicy()
+        # .tether/allow.json entries join the caller's list once, before any model call.
+        self.sandbox = self.sandbox.with_allow_file()
         if allow_unsandboxed:  # never mutate the caller's policy object
             self.sandbox = dataclasses.replace(self.sandbox, allow_unsandboxed=True)
         self.max_steps = max_steps
