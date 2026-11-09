@@ -7,10 +7,16 @@ files are read from disk, so the output changes if they are edited later.
 from __future__ import annotations
 
 import difflib
+import os
+from contextlib import suppress
 from pathlib import Path
 
 from tether.store import SQLiteStore
 from tether.unchanged import MAX_BYTES
+
+_SKIP_DIRS = {"__pycache__", "node_modules"}  # never the user's work
+_LISTED = 20  # untracked paths named in full; the rest are counted
+SCAN_LIMIT = 2000  # files the diff-time walk considers
 
 
 def _is_binary(data: bytes) -> bool:
@@ -48,12 +54,67 @@ def _file_diff(rel: str, old: bytes | None, new: bytes | None, stat: bool) -> st
     return f"{rel} +{added} -{removed}\n"
 
 
+def untracked_changes(
+    root: Path, start: float, end: float, known: set[str], skip: set[Path]
+) -> tuple[list[str], bool]:
+    """Files in `root` modified inside [start, end] with no snapshot, and whether the walk bailed.
+
+    Writes by commands tether could not track show up here as an mtime inside the session window.
+    Dot-directories, `__pycache__` and `node_modules` are skipped, and so are symlinks and the
+    database files. Stops after SCAN_LIMIT entries and reports `bailed`.
+    """
+    base = root.resolve()
+    found: list[str] = []
+    entries = 0
+    for dirpath, dirnames, filenames in os.walk(base):
+        dirnames[:] = [d for d in dirnames if not d.startswith(".") and d not in _SKIP_DIRS]
+        for name in filenames:
+            entries += 1
+            if entries > SCAN_LIMIT:
+                return sorted(found), True
+            path = Path(dirpath) / name
+            if path.is_symlink() or path in skip:
+                continue
+            with suppress(OSError):
+                if start <= path.stat().st_mtime <= end:
+                    rel = os.path.normpath(path.relative_to(base).as_posix())
+                    if rel not in known:
+                        found.append(rel)
+    return sorted(found), False
+
+
+def _untracked_note(paths: list[str], bailed: bool) -> str:
+    """One line per kind of write tether could not attribute; "" when there is none."""
+    note = ""
+    if paths:
+        more = f", +{len(paths) - _LISTED} more" if len(paths) > _LISTED else ""
+        noun = "file" if len(paths) == 1 else "files"
+        shown = ", ".join(paths[:_LISTED])
+        note += f"{len(paths)} {noun} changed by commands tether could not track: {shown}{more}\n"
+    if bailed:
+        note += (
+            f"workspace has more than {SCAN_LIMIT} files: "
+            "changes by untracked commands were not checked\n"
+        )
+    return note
+
+
 def render_diff(store: SQLiteStore, session_id: str, root: Path, stat: bool) -> tuple[str, int]:
     """Text to print and exit code. Errors come back as text with exit code 1."""
     if not root.is_dir():
         return f"Error: workspace root {root} does not exist.\n", 1
     snapshots = store.list_snapshots(session_id)
-    if not snapshots:
+    rec = store.get_session(session_id)
+    untracked: list[str] = []
+    bailed = False
+    if rec is not None:
+        known = {os.path.normpath(rel) for rel, _ in snapshots}
+        db = store.db_path
+        skip = {db, Path(f"{db}-wal"), Path(f"{db}-shm")}
+        end = rec.updated_at + 1.0  # slack for mtime granularity
+        untracked, bailed = untracked_changes(root, rec.created_at, end, known, skip)
+    note = _untracked_note(untracked, bailed)
+    if not snapshots and not note:
         return "no file changes recorded\n", 0
     base = root.resolve()
     parts = []
@@ -68,4 +129,6 @@ def render_diff(store: SQLiteStore, session_id: str, root: Path, stat: bool) -> 
         new = path.read_bytes() if path.is_file() else None
         parts.append(_file_diff(rel, old, new, stat))
     text = "".join(parts)
-    return (text or "no file changes remain\n"), 0
+    if not text and not note:
+        text = "no file changes remain\n"
+    return text + note, 0

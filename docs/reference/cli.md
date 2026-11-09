@@ -276,6 +276,8 @@ tether events ses_abc123 --follow
 
 Show what a session changed in its files, against the first bytes the session saw. New files show as added from empty. Current contents are read from disk.
 
+Tracked: files that `edit write|replace|append`, a shell redirect (`>`, `>>`) or `tee` change, and existing files named as arguments on a command's first line (`sed -i`, `perl -i`, `mv new f`, `cp new f`, `python3 -c` with a quoted path). Limits, per command: at most 32 named paths, each at most 256 kB, and no workspace walk. Limits at diff time: the walk covers at most 2000 files; dot-directories, `__pycache__` and `node_modules` are skipped; a file counts as changed by an untracked command when its mtime falls between the session start and its last update. Files changed that way are listed as `N files changed by commands tether could not track: <paths>`. When the walk stops early the output says so, and it never prints `no file changes` while a change may be missing. One gap remains: a file DELETED by an opaque command leaves no mtime, so it is not detected and no note names it.
+
 ```bash
 tether diff <session_id> [flags]
 ```
