@@ -253,9 +253,13 @@ def test_command_invalid_json() -> None:
         _run(CommandProvider("m", argv=_script(code), reply="r"))
 
 
-def test_command_timeout() -> None:
+def test_command_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def no_sleep(delay: float) -> None:
+        return None
+
+    monkeypatch.setattr("tether.providers.declarative.asyncio.sleep", no_sleep)
     code = "import time; time.sleep(5)"
-    with pytest.raises(RuntimeError, match="timed out"):
+    with pytest.raises(ProviderError, match="unavailable after 3 attempts"):
         _run(CommandProvider("m", argv=_script(code), reply="r", timeout=0.2))
 
 

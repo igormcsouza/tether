@@ -170,6 +170,42 @@ def _as_int(value: Any) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
+_RETRIES = 2
+_BACKOFF = (1.0, 2.0)  # sleep before retry 1 and retry 2; tests patch asyncio.sleep
+
+
+class _Retryable(Exception):
+    """A command failure worth another attempt: it timed out or failed with no output."""
+
+
+async def _run_command(
+    model_name: str, argv: list[str], stdin: str, timeout: float
+) -> tuple[str, str]:
+    """Run one attempt; a timeout or a silent failure raises `_Retryable`."""
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(stdin.encode("utf-8")), timeout=timeout)
+    except TimeoutError:
+        proc.kill()  # a hung process is killed and reaped before the next attempt starts
+        await proc.wait()
+        raise _Retryable(f"timed out after {timeout:g}s") from None
+    out_text = out.decode("utf-8", errors="replace")
+    err_text = err.decode("utf-8", errors="replace")
+    if proc.returncode != 0:
+        if not out_text and not err_text:
+            raise _Retryable(f"exited {proc.returncode}")
+        raise RuntimeError(
+            f"command provider `{model_name}` exited with {proc.returncode}: "
+            f"{(err_text or out_text)[:300]}"
+        )
+    return out_text, err_text
+
+
 class CommandProvider:
     """Provider that shells out to an external command (argv, never a shell)."""
 
@@ -218,36 +254,28 @@ class CommandProvider:
         )
         argv = [self._render(a, system, conversation) for a in self.argv]
         stdin = self._render(self.stdin, system, conversation)
-        proc = await asyncio.create_subprocess_exec(
-            *argv,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        try:
-            out, err = await asyncio.wait_for(
-                proc.communicate(stdin.encode("utf-8")), timeout=self.timeout
+        last_error = ""
+        for attempt in range(_RETRIES + 1):
+            if attempt:
+                await asyncio.sleep(_BACKOFF[attempt - 1])
+            try:
+                out_text, err_text = await _run_command(self.model_name, argv, stdin, self.timeout)
+            except _Retryable as exc:
+                last_error = str(exc)
+                continue
+            try:
+                payload = json.loads(out_text)
+            except json.JSONDecodeError:
+                raise RuntimeError(
+                    f"command provider `{self.model_name}` returned invalid JSON: "
+                    f"{(out_text or err_text)[:300]}"
+                ) from None
+            break
+        else:
+            raise ProviderError(
+                f"command provider `{self.model_name}` unavailable after 3 attempts "
+                f"(timeout {self.timeout:g}s, last error: {last_error})"
             )
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
-            raise RuntimeError(
-                f"command provider `{self.model_name}` timed out after {self.timeout}s"
-            ) from None
-        out_text = out.decode("utf-8", errors="replace")
-        err_text = err.decode("utf-8", errors="replace")
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"command provider `{self.model_name}` exited with {proc.returncode}: "
-                f"{(err_text or out_text)[:300]}"
-            )
-        try:
-            payload = json.loads(out_text)
-        except json.JSONDecodeError:
-            raise RuntimeError(
-                f"command provider `{self.model_name}` returned invalid JSON: "
-                f"{(out_text or err_text)[:300]}"
-            ) from None
         value = _lookup(payload, self.reply)
         if not isinstance(value, str | dict) and isinstance(payload, dict):
             value = payload.get("structured_output")
