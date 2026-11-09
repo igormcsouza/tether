@@ -19,7 +19,7 @@ def test_protected_mounts_mask_sensitive_paths(tmp_path: Path) -> None:
     (tmp_path / ".git" / "config").write_text("cfg")
     args = SandboxPolicy(workspace_root=tmp_path)._protected_mounts()
     for masked in (".env", ".env.local", ".git/config"):
-        assert ["--ro-bind", "/dev/null", str(tmp_path / masked)] == [
+        assert ["--ro-bind", sb_mod._empty_mask_file(), str(tmp_path / masked)] == [
             *args[args.index(str(tmp_path / masked)) - 2 : args.index(str(tmp_path / masked)) + 1]
         ]
     assert ["--tmpfs", str(tmp_path / ".tether")] == [
@@ -45,7 +45,7 @@ async def test_bwrap_blocks_glob_access_to_protected_files(tmp_path: Path) -> No
     (tmp_path / ".git" / "config").write_text("cfg")
     sandbox = SandboxPolicy(workspace_root=tmp_path)
     code, out = await sandbox.execute_bash_with_code("cat .e*")
-    assert code != 0 and "SECRET" not in out
+    assert code == 0 and "SECRET" not in out
     code, _ = await sandbox.execute_bash_with_code("echo pwn >> .git/con*")
     assert code != 0
     assert (tmp_path / ".git" / "config").read_text() == "cfg"

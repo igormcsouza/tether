@@ -172,7 +172,8 @@ def test_unknown_tool_name_rejected(tmp_path: Path) -> None:
 def test_host_socket_masks_are_ro_bind_triples() -> None:
     args = sb_mod._host_socket_masks()
     assert len(args) % 3 == 0
-    assert all(args[i : i + 2] == ("--ro-bind", "/dev/null") for i in range(0, len(args), 3))
+    empty = sb_mod._empty_mask_file()
+    assert all(args[i : i + 2] == ("--ro-bind", empty) for i in range(0, len(args), 3))
 
 
 async def test_web_fetch_tool_reports_blocked_and_mapped_addresses(

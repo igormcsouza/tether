@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import functools
 import glob
 import json
@@ -11,8 +12,11 @@ import re
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
+import tempfile
+import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -452,14 +456,73 @@ _MAX_PATH_MOUNTS = 16
 _BWRAP_USABLE: bool | None = None
 
 
-@functools.lru_cache(maxsize=1)
-def _host_socket_masks() -> tuple[str, ...]:
-    """bwrap args hiding host unix sockets (docker.sock, containerd, dbus...) under /run.
+_EMPTY_LOCK = threading.Lock()
+_EMPTY_FILE: str | None = None
 
-    ro-bind does not stop `connect()`, so a reachable docker.sock is a host escape.
+
+def _empty_file_valid(path: str) -> bool:
+    """A regular, empty, 0o444 file owned by us: anything else (symlink, planted content) is
+    not trusted."""
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return False
+    return (
+        stat.S_ISREG(st.st_mode)
+        and st.st_size == 0
+        and st.st_mode & 0o777 == 0o444
+        and st.st_uid == os.getuid()
+    )
+
+
+def _empty_mask_file() -> str:
+    """Path of a private, empty, read-only (0o444) regular file used as the bind source for
+    file masks. Created once per process; recreated if it was removed or altered.
+
+    Not /dev/null: bwrap binds it as a nodev char device that nobody may open, so git and
+    recursive tools fail with "Permission denied" instead of reading an empty file.
+    The path is validated before bwrap binds it; a same-uid process could swap it in between,
+    which is accepted because the same uid is already trusted.
     """
+    global _EMPTY_FILE
+    with _EMPTY_LOCK:
+        if _EMPTY_FILE is not None and _empty_file_valid(_EMPTY_FILE):
+            return _EMPTY_FILE
+        try:
+            # A fresh mkdtemp dir (0o700, unique name) stops other users from pre-creating or
+            # symlinking the name in shared /tmp; O_EXCL never follows an existing entry.
+            directory = tempfile.mkdtemp(prefix="tether-mask-")
+            path = os.path.join(directory, "empty")
+            os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444))
+            os.chmod(path, 0o444)
+            atexit.register(shutil.rmtree, directory, ignore_errors=True)
+        except OSError as exc:
+            raise SandboxUnavailableError(
+                f"cannot create the empty mask file under {tempfile.gettempdir()}: {exc}; "
+                "set TMPDIR to a writable directory"
+            ) from exc
+        _EMPTY_FILE = path
+        return path
+
+
+@functools.lru_cache(maxsize=1)
+def _host_socket_paths() -> tuple[str, ...]:
+    """Host unix sockets under /run (docker.sock, containerd, dbus...)."""
     paths = [p for pat in ("/run/*", "/run/*/*") for p in sorted(glob.glob(pat))]
-    return tuple(a for p in paths if Path(p).is_socket() for a in ("--ro-bind", "/dev/null", p))
+    return tuple(p for p in paths if Path(p).is_socket())
+
+
+def _host_socket_masks() -> tuple[str, ...]:
+    """bwrap args hiding host unix sockets under /run.
+
+    ro-bind does not stop `connect()`, so a reachable docker.sock is a host escape. Uncached:
+    cached args would keep a stale source path after the empty file is recreated.
+    """
+    paths = _host_socket_paths()
+    if not paths:
+        return ()
+    empty = _empty_mask_file()
+    return tuple(a for p in paths for a in ("--ro-bind", empty, p))
 
 
 def _is_env_secret(name: str) -> bool:
@@ -875,6 +938,7 @@ class SandboxPolicy:
         ws = self.workspace_root
         args: list[str] = []
         found = 0
+        files_to_mask: list[str] = []
         for root, dirs, files in os.walk(ws):
             depth = len(Path(root).relative_to(ws).parts)
             dirs[:] = (
@@ -882,14 +946,20 @@ class SandboxPolicy:
             )
             for name in files:
                 if found < _MASK_MAX_FILES and _MASKED_NAME_RE.match(name):
-                    args += ["--ro-bind", "/dev/null", str(Path(root) / name)]
+                    files_to_mask.append(str(Path(root) / name))
                     found += 1
         for hidden in (ws / ".tether", ws / ".git" / "hooks"):
             if hidden.is_dir():
                 args += ["--tmpfs", str(hidden)]
         git_config = ws / ".git" / "config"
         if git_config.is_file():
-            args += ["--ro-bind", "/dev/null", str(git_config)]
+            files_to_mask.append(str(git_config))
+        if files_to_mask:
+            # Requested only when there is something to mask, so an idle workspace never
+            # touches the temp directory.
+            empty = _empty_mask_file()
+            for path in files_to_mask:
+                args += ["--ro-bind", empty, path]
         return args
 
     def _venv_prefixes(self) -> list[str]:

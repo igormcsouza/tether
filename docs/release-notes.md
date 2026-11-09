@@ -9,6 +9,7 @@
 ### Changed
 
 - Sandbox refusals now name the rule, what to do instead, and the flag that would permit it when one exists (#124 item 3). No change to which commands are allowed or refused.
+- Observation folding is automatic by default: above half of `max_context_tokens`, old outputs fold oldest-first only until the history is back under that target (no cliff), and each unedited re-read lengthens K by one (cap 8). `--fold-after N` keeps the fixed rule (#205).
 
 ### Added
 
@@ -31,9 +32,6 @@
 - `tether mcp`: `tether_run` accepts `workspace`, an absolute directory inside the server's workspace, so a caller working in a git worktree can root the run there; anything outside is refused (#242).
 - `tether diff <session_id>` shows what a session changed in its files, against the first bytes the session saw (`--stat` for line counts). Snapshots are recorded by the harness write-tracking loop in a new `file_snapshots` table; files created by the session show as added from empty.
 
-### Changed
-- Observation folding is automatic by default: above half of `max_context_tokens`, old outputs fold oldest-first only until the history is back under that target (no cliff), and each unedited re-read lengthens K by one (cap 8). `--fold-after N` keeps the fixed rule (#205).
-
 ### Fixed
 - A headless worker that dies before it starts no longer leaves its session PENDING: it is marked FAILED with `Worker died (pid N) before starting`, and the result names the worker's log (`<db dir>/workers/<id>.log`), which now keeps the worker's stdout and stderr (#271).
 - `edit write` on an existing file with stdin made only of complete SEARCH/REPLACE blocks now applies them as `edit replace` instead of replacing the whole file (#267).
@@ -44,6 +42,7 @@
 - An empty model reply is retried. If the retry is empty too, the session stops instead of continuing with no output (#135).
 - `tether run --worktree` no longer commits bytecode and tool caches (`__pycache__`, `*.pyc`, `.pytest_cache`, `.ruff_cache`, `.mypy_cache`, `.tether/`) (#278).
 - `tether diff` shows writes by `sed -i`, `perl -i`, `mv`, `cp`, `python -c`, and names files changed by commands it could not track instead of `no file changes recorded` (#280).
+- Masked secret files and `.git/config` now read as empty instead of "Permission denied", so `git status`, `git log` and `grep -r` work inside the sandbox (#124 item 1).
 ## v0.2.18 (2026-11-08)
 
 Small fixes from the v0.2.17 release check and the paasio labs: shell-style file writes work when only `edit` is enabled, `edit append` adds to a file instead of replacing it, a foreground run prints its session id at once, and a `cd` into a container path that does not exist no longer costs a step.
