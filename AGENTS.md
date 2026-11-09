@@ -66,8 +66,8 @@ Reviewers and the Team Leader cite the failing line when they reject a change.
 - Auto-generated `--help` output must remain ultra-compact (**≤ 60 tokens** per command).
 
 ### Rule 5: Ephemeral Observation Folding
-- Raw tool outputs (`bash` stdout/stderr, `web` page contents, `--help` outputs) are stored in full inside SQLite (`observations` table) and kept in the active LLM prompt for $K$ turns (default $K = 2$) once the history fills more than half of `max_context_tokens`; below that nothing is folded by age.
-- After $K$ turns, the `ContextAssembler` deterministically folds old observations into a 1-line tombstone:
+- Raw tool outputs (`bash` stdout/stderr, `web` page contents, `--help` outputs) are stored in full inside SQLite (`observations` table). While the history fits in half of `max_context_tokens` (the target) nothing is folded by age. Above it, by default (auto mode, #205) observations older than $K$ turns ($K = 2$) fold oldest-first only until the history is back under the target, so crossing it by a little folds a little. ANY unedited re-read of a file (not only a re-read of a folded observation) lengthens $K$ by one for the session, bounded by 8 (`AUTO_FOLD_MAX_K`). An explicit `--fold-after N` (or `fold_after` in providers.yaml/MCP) keeps the fixed rule: above the target every observation older than $N$ turns folds.
+- After $K$ turns, the `ContextAssembler` deterministically folds old observations (when selected by the rule above) into a 1-line tombstone:
   ```text
   [obs_3 folded: `web fetch https://...` (3,420 chars) | use `mem recall obs_3` to expand]
   ```
@@ -198,7 +198,7 @@ tether/
 
 ---
 - **Timeout/retry (#70):** `providers.yaml` `timeout` applies to every kind; HTTP providers retry timeouts/network errors/429/5xx twice (`post_with_retry` in `providers/base.py`) then raise `ProviderError` naming provider, model and timeout; each attempt is also bounded by a total `asyncio.wait_for(timeout)` deadline (#88).
-- **Context config (#54):** `max_context_tokens` / `fold_observations_after` resolve as explicit argument (`--context-tokens` / `--fold-after`, MCP `context_tokens` / `fold_after`) > `providers.yaml` entry keys `context_tokens` / `fold_after` > defaults 32768 / 2 (32k keeps `qwen3.5:9b` fully on an 8 GB GPU and passed 7 of 18 wall-capped Polyglot runs vs 2 at 8k, #173).
+- **Context config (#54):** `max_context_tokens` / `fold_observations_after` resolve as explicit argument (`--context-tokens` / `--fold-after`, MCP `context_tokens` / `fold_after`) > `providers.yaml` entry keys `context_tokens` / `fold_after` > defaults 32768 / auto (K=2, #205); any explicit value = fixed rule (32k keeps `qwen3.5:9b` fully on an 8 GB GPU and passed 7 of 18 wall-capped Polyglot runs vs 2 at 8k, #173).
 - **Ollama thinking (#183, #173):** `think=false` when under 3072 tokens of `num_ctx` are free; a thinking turn gets `num_predict` 2560 and, if cut there with no command or with a half tool call Ollama rejects (HTTP 500), is asked once more with `think=false` (tokens summed; a second rejection is the resend hint). A caller's `think`/`num_predict` param wins.
 
 ## 4. Development Workflow & Commands

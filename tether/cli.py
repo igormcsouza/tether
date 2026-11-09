@@ -116,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--fold-after",
         type=int,
         default=None,
-        help="Fold observations older than N turns (default 2)",
+        help="Fold older than N turns (default auto: K=2, up to 8 by re-reads; N = fixed rule)",
     )
     p_run.add_argument(
         "--db", type=str, default=None, help="SQLite DB path (default .tether/tether.db)"
@@ -211,7 +211,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--fold-after",
         type=int,
         default=None,
-        help="Fold observations older than N turns (default 2)",
+        help="Fold older than N turns (default auto: K=2, up to 8 by re-reads; N = fixed rule)",
     )
     p_pipe.add_argument(
         "--result-file", type=str, default=None, help="Write the deliverable here, not to stdout"
@@ -625,14 +625,18 @@ async def _async_main(argv: list[str]) -> int:
             web_allow=web_allow,
             allow_unsandboxed=ns.allow_unsandboxed,
         )
-        harness = Harness(
-            model=ns.model,
-            sandbox=sandbox,
-            db_path=ns.db,
-            max_steps=ns.max_steps,
-            max_context_tokens=ns.context_tokens,
-            fold_observations_after=ns.fold_after,
-        )
+        try:
+            harness = Harness(
+                model=ns.model,
+                sandbox=sandbox,
+                db_path=ns.db,
+                max_steps=ns.max_steps,
+                max_context_tokens=ns.context_tokens,
+                fold_observations_after=ns.fold_after,
+            )
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
         try:
             if ns.resume:
                 current = harness.store.get_session(ns.resume)

@@ -378,6 +378,10 @@ class Harness:
     ) -> None:
         if max_tokens is not None and max_tokens <= 0:
             raise ValueError(f"--max-tokens must be a positive integer (got {max_tokens}).")
+        if fold_observations_after is not None and fold_observations_after < 1:
+            raise ValueError(
+                f"--fold-after must be a positive integer (got {fold_observations_after})."
+            )
         self.model = model or os.environ.get("TETHER_MODEL") or "ollama/qwen3.5:9b"
         self.store = SQLiteStore(db_path=db_path)
         self.sandbox = sandbox or SandboxPolicy()
@@ -397,9 +401,18 @@ class Harness:
         self.max_context_tokens: int = int(
             max_context_tokens or declared.get("context_tokens") or DEFAULT_CONTEXT_TOKENS
         )
-        self.fold_observations_after: int = int(
-            fold_observations_after or declared.get("fold_after") or 2
+        # No explicit K (flag, providers.yaml or MCP): fold only as far as the window needs (#205).
+        explicit_fold = (
+            fold_observations_after
+            if fold_observations_after is not None
+            else declared.get("fold_after")
         )
+        self.auto_fold = explicit_fold is None
+        self.fold_observations_after: int = int(explicit_fold) if explicit_fold is not None else 2
+        if self.fold_observations_after < 1:
+            raise ValueError(
+                f"--fold-after must be a positive integer (got {self.fold_observations_after})."
+            )
         self._provider = provider
         self.skill_loader = SkillLoader(search_dirs=skill_search_dirs)
         self._worker_spawner = worker_spawner
@@ -1135,6 +1148,7 @@ class Harness:
             return failed
         assembler = ContextAssembler(
             fold_after_turns=self.fold_observations_after,
+            auto_fold=self.auto_fold,
             max_context_tokens=self.max_context_tokens,
             structured=bool(getattr(provider, "structured_history", False)),
             mem_enabled="mem" in mux.tool_names,

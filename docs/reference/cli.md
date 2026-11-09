@@ -41,7 +41,7 @@ tether run "your goal here" [flags]
 | `--max-steps` | Maximum reasoning steps |
 | `--max-tokens` | Token budget (prompt + completion); pauses as WAITING_INPUT (exit 2) when reached |
 | `--context-tokens` | Context token budget (default 32768) |
-| `--fold-after` | Fold observations older than N turns (default 2), once the history fills half the context; raise it for long tasks |
+| `--fold-after` | Fold observations older than N turns. Default is automatic: folds only as needed, oldest first, K=2 extended by re-reads up to 8 (#205); passing N switches to the fixed rule. Once the history fills half the context; raise it for long tasks |
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--param` | Model request parameter, repeatable (e.g., `--param temperature=0 --param think=false`) |
 | `--output-schema` | JSON Schema file; the `done` deliverable must validate or `done` is rejected |
@@ -77,7 +77,7 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 | `--max-steps` | Default max reasoning steps per stage |
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--context-tokens` | Context token budget (default 32768) |
-| `--fold-after` | Fold observations older than N turns (default 2), once the history fills half the context; raise it for long tasks |
+| `--fold-after` | Fold observations older than N turns. Default is automatic: folds only as needed, oldest first, K=2 extended by re-reads up to 8 (#205); passing N switches to the fixed rule. Once the history fills half the context; raise it for long tasks |
 | `--result-file` | Write the deliverable here, not to stdout |
 | `--json` | Machine-readable JSON output |
 
