@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from tether.providers.base import ActionCall, ModelResponse
+
+
+@pytest.fixture(autouse=True)
+def _container_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Write-session tests must pass on hosts without bwrap: the test env acts as a container."""
+    monkeypatch.setenv("TETHER_SANDBOX", "container")
 
 
 class FakeScriptedProvider:

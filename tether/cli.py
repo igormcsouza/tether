@@ -18,7 +18,7 @@ from tether.diff import render_diff
 from tether.harness import Harness, PipelineResumeError
 from tether.progress import watch
 from tether.providers.base import parse_params
-from tether.sandbox import SandboxPolicy, parse_web_allow
+from tether.sandbox import SandboxPolicy, SandboxUnavailableError, parse_web_allow
 from tether.store import SessionRecord, SQLiteStore
 from tether.worktree import WorktreeError
 
@@ -96,6 +96,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Comma list of domains the web tool may reach, e.g. python.org,*.github.com",
+    )
+    p_run.add_argument(
+        "--allow-unsandboxed",
+        action="store_true",
+        help="Run write sessions without bwrap (command checks only)",
     )
     p_run.add_argument("--max-steps", type=int, default=15, help="Max reasoning steps")
     p_run.add_argument(
@@ -187,6 +192,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Comma list of domains the web tool may reach (stages can only narrow)",
+    )
+    p_pipe.add_argument(
+        "--allow-unsandboxed",
+        action="store_true",
+        help="Run write sessions without bwrap (command checks only)",
     )
     p_pipe.add_argument(
         "--max-steps", type=int, default=15, help="Default max reasoning steps per stage"
@@ -533,6 +543,7 @@ async def _async_main(argv: list[str]) -> int:
             workspace_root=Path.cwd(),
             network=not ns.no_network,
             web_allow=web_allow,
+            allow_unsandboxed=ns.allow_unsandboxed,
         )
         try:
             schema = json.loads(Path(ns.output_schema).read_text()) if ns.output_schema else None
@@ -559,14 +570,14 @@ async def _async_main(argv: list[str]) -> int:
         if ns.headless:
             try:
                 sid = harness.spawn(goal)
-            except WorktreeError as exc:
+            except (WorktreeError, SandboxUnavailableError) as exc:
                 print(f"Error: {exc}", file=sys.stderr)
                 return api.EXIT_USAGE
             print(json.dumps({"v": api.SCHEMA_VERSION, "id": sid}) if ns.json else sid)
             return 0
         try:
             rec = harness.create_session(goal)
-        except WorktreeError as exc:
+        except (WorktreeError, SandboxUnavailableError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
         # #90: a caller that kills a foreground run on its own timeout still has the id
@@ -612,6 +623,7 @@ async def _async_main(argv: list[str]) -> int:
             workspace_root=Path.cwd(),
             network=not ns.no_network,
             web_allow=web_allow,
+            allow_unsandboxed=ns.allow_unsandboxed,
         )
         harness = Harness(
             model=ns.model,
@@ -635,7 +647,7 @@ async def _async_main(argv: list[str]) -> int:
                 return 0
             else:
                 rec = await harness.run_pipeline(Path(ns.pipeline_file), goal)
-        except PipelineResumeError as exc:
+        except (PipelineResumeError, SandboxUnavailableError) as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return api.EXIT_USAGE
         except (OSError, ValueError, yaml.YAMLError) as exc:
@@ -730,6 +742,8 @@ async def _async_main(argv: list[str]) -> int:
         wt_line = api.worktree_line(srec)
         if wt_line:
             print(wt_line)
+        if "sandbox_mode" in srec.sandbox_config:
+            print(f"sandbox: {srec.sandbox_config['sandbox_mode']}")
         return 0
 
     if cmd == "read":

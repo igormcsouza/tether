@@ -17,7 +17,7 @@ from mcp.server.stdio import stdio_server
 
 from tether import __version__, api
 from tether.harness import Harness
-from tether.sandbox import SandboxPolicy, parse_web_allow
+from tether.sandbox import SandboxPolicy, SandboxUnavailableError, parse_web_allow
 from tether.store import SQLiteStore
 from tether.worktree import WorktreeError
 
@@ -51,6 +51,10 @@ TOOLS: list[dict[str, Any]] = [
             "web_allow": {
                 "type": "string",
                 "description": "comma list of domains the web tool may reach, e.g. python.org",
+            },
+            "allow_unsandboxed": {
+                "type": "boolean",
+                "description": "run write sessions without bwrap",
             },
             "output_schema": {"type": "object", "description": "JSON Schema for the deliverable"},
             "params": {
@@ -186,6 +190,7 @@ class TetherMCP:
                 workspace_root=root,
                 network=not a.get("no_network"),
                 web_allow=parse_web_allow(a.get("web_allow")),
+                allow_unsandboxed=bool(a.get("allow_unsandboxed")),
             )
         except ValueError as exc:
             raise ToolError(str(exc)) from exc
@@ -212,7 +217,7 @@ class TetherMCP:
             if a.get("wait", True):
                 return api.session_dict(await harness.run(a["goal"]))
             return {"v": api.SCHEMA_VERSION, "id": harness.spawn(a["goal"])}
-        except WorktreeError as exc:
+        except (WorktreeError, SandboxUnavailableError) as exc:
             raise ToolError(str(exc)) from exc
 
     async def _wait(self, ids: list[str], timeout: float) -> Any:

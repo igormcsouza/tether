@@ -74,6 +74,8 @@ tether run --model ollama/qwen3.5:9b --tools bash,edit "create hello.txt contain
 tether run --worktree --setup "uv sync" --verify "uv run pytest -q" "fix the failing test"
 ```
 
+On Linux install `bubblewrap` for write sessions; on macOS/Windows pass `--allow-unsandboxed`, in Docker set `TETHER_SANDBOX=container`.
+
 An empty Ollama reply is resent once, unchanged; if three empty replies come in a row, the session stops and suggests `think=false`. See the [providers page](https://igormcsouza.github.io/tether/reference/providers/).
 Resume a failed pipeline from its first unfinished stage with `tether pipeline --resume <pipeline_session_id>`.
 
