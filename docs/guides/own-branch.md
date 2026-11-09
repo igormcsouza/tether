@@ -14,6 +14,8 @@ By default a run edits the directory you started it in, so two runs in the same 
 
 Your own checkout is left alone until you decide to merge.
 
+To run dependency installation with the network and the model's own commands without it, see [Install with the network, work without it](../tutorial/security-and-sandbox.md#install-with-the-network-work-without-it).
+
 ## The flags
 
 | Flag | Meaning |
@@ -31,6 +33,8 @@ tether run --worktree --setup "uv sync" --verify "uv run pytest -q" "fix the fai
 ```
 
 This creates a worktree, installs dependencies with `uv sync`, lets the model work, runs the verify gate before `done`, and commits the result on `tether/<id>`. Add `--headless` to start it in the background and get the session id back.
+
+To replay a session onto its own branch, run `tether replay <id> --worktree`. It takes the same `--worktree-from` and `--setup` flags, and the replay gets a worktree and branch of its own.
 
 ## Read the branch and commit
 

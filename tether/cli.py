@@ -340,10 +340,19 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor.add_argument("--db", type=str, default=".tether/tether.db")
     # `tether replay`
     p_replay = sub.add_parser("replay", help="Re-run a session's goal and compare the runs")
-    p_replay.add_argument("session_id", help="Session ID to replay (runs in the current directory)")
+    p_replay.add_argument(
+        "session_id", help="Session ID to replay (plain replay runs in the current directory)"
+    )
     p_replay.add_argument("--model", type=str, default=None, help="Model (default: original's)")
     p_replay.add_argument(
         "--max-steps", type=_positive_int, default=None, help="Step budget (default: original's)"
+    )
+    p_replay.add_argument(
+        "--worktree", action="store_true", help="Run in a git worktree on tether/<id>"
+    )
+    p_replay.add_argument("--worktree-from", help="Base ref for --worktree (default HEAD)")
+    p_replay.add_argument(
+        "--setup", help="Shell command run in the worktree before the model starts"
     )
     p_replay.add_argument("--db", type=str, default=None)
     _add_json(p_replay)
@@ -390,20 +399,32 @@ def _compare_row(rec: SessionRecord) -> dict[str, object]:
 
 
 def _format_compare(orig: dict[str, object], rep: dict[str, object]) -> str:
-    lines = [f"replay of {orig['id']} -> {rep['id']}", f"{'':<16}{'original':<11}replay"]
-    for label, key in (
-        ("model", "model"),
-        ("status", "status"),
-        ("steps", "steps"),
-        ("tokens", "tokens"),
-        ("wall_s (approx)", "wall_s"),
-    ):
-        lines.append(f"{label:<16}{str(orig[key]):<11}{rep[key]}")
+    rows = [
+        (label, str(orig[key]), str(rep[key]))
+        for label, key in (
+            ("model", "model"),
+            ("status", "status"),
+            ("steps", "steps"),
+            ("tokens", "tokens"),
+            ("wall_s (approx)", "wall_s"),
+        )
+    ]
+    # Size each column to its longest cell so long model ids never run into the next column.
+    label_w = max(len(label) for label, _, _ in rows) + 2
+    orig_w = max(len("original"), *(len(o) for _, o, _ in rows)) + 2
+    lines = [
+        f"replay of {orig['id']} -> {rep['id']}",
+        f"{'':<{label_w}}{'original':<{orig_w}}replay",
+    ]
+    lines.extend(f"{label:<{label_w}}{o:<{orig_w}}{r}" for label, o, r in rows)
     return "\n".join(lines)
 
 
 async def _replay(ns: argparse.Namespace) -> int:
-    """Re-run a session's goal in cwd with its saved setup and print a comparison."""
+    """Re-run a session's goal with its saved setup and print a comparison."""
+    if not ns.worktree and (ns.setup or ns.worktree_from):
+        print("Error: --setup and --worktree-from need --worktree", file=sys.stderr)
+        return 2
     if ns.model is not None and not ns.model.strip():
         print(
             "Error: --model must not be empty. Omit it to use the original's model.",
@@ -425,8 +446,19 @@ async def _replay(ns: argparse.Namespace) -> int:
         )
         return 1
     try:
-        harness = Harness.from_session(orig, db_path=ns.db, model=ns.model, max_steps=ns.max_steps)
+        harness = Harness.from_session(
+            orig,
+            db_path=ns.db,
+            model=ns.model,
+            max_steps=ns.max_steps,
+            worktree=ns.worktree,
+            worktree_from=ns.worktree_from,
+            setup=ns.setup,
+        )
         rep = await harness.run(orig.goal, parent_id=orig.id)
+    except WorktreeError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
     except Exception as exc:
         print(f"Error: replay failed: {exc}. Check --model and provider keys.", file=sys.stderr)
         return 1
@@ -846,10 +878,14 @@ async def _async_main(argv: list[str]) -> int:
         if not sessions:
             print("No sessions recorded.")
             return 0
-        print(f"{'ID':<14} {'STATUS':<10} {'MODEL':<22} {'STEP':<7} GOAL")
+        status_w = max(len("STATUS"), *(len(s.status) for s in sessions))
+        print(f"{'ID':<14} {'STATUS':<{status_w}} {'MODEL':<22} {'STEP':<7} GOAL")
         for s in sessions:
             g = s.goal.replace("\n", " ")[:48]
-            print(f"{s.id:<14} {s.status:<10} {s.model:<22} {s.step_count}/{s.max_steps:<4} {g}")
+            print(
+                f"{s.id:<14} {s.status:<{status_w}} {s.model:<22} "
+                f"{s.step_count}/{s.max_steps:<4} {g}"
+            )
         return 0
 
     if cmd == "stats":
