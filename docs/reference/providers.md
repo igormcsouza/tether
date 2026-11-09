@@ -123,6 +123,7 @@ A `command` entry wraps any program that takes a prompt and prints JSON.
 
 - **Placeholders**: `{model}`, `{system}`, `{conversation}` and `{schema}` (the act JSON schema, compact) are substituted in `argv` items and in the `stdin` template. If `stdin` is omitted it defaults to `{conversation}`.
 - **No shell**: `argv` is executed directly, never through a shell.
+- **Retries**: a timeout, or a non-zero exit with no output, is retried twice with 1 s then 2 s backoff; after the third failure Tether raises `ProviderError` naming the provider, model and timeout. A non-zero exit with output, or an unparsable reply, is not retried.
 - **Reply**: `reply` is a dotted path into the JSON the command prints (`result` in the example).
 - **Usage**: `usage.prompt` is a path or a list of paths (their values are summed); `usage.completion` is a path. Both are optional.
 - **Constrained output**: use `{schema}` to make the CLI constrain its reply to the act schema, for example `argv: [claude, -p, --json-schema, "{schema}", --output-format, json]`. The reply may then be an object with `cmd` and optional `stdin` instead of a string; if the `reply` path gives no string or object, a top-level `structured_output` object is used.
