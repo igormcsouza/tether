@@ -6,6 +6,17 @@ import shutil
 import subprocess
 from pathlib import Path
 
+# Paths that must never be committed, regardless of .gitignore.
+# These are git pathspec excludes used with `git add -A -- ... ':!<pathspec>'`.
+_NEVER_COMMIT: tuple[str, ...] = (
+    ":(exclude,glob)**/__pycache__/**",
+    ":(exclude,glob)**/*.pyc",
+    ":(exclude,glob)**/.pytest_cache/**",
+    ":(exclude,glob)**/.ruff_cache/**",
+    ":(exclude,glob)**/.mypy_cache/**",
+    ":(exclude,glob)**/.tether/**",
+)
+
 
 class WorktreeError(Exception):
     """A worktree could not be created. The message is user-facing."""
@@ -57,7 +68,8 @@ def run_setup(path: Path, cmd: str, timeout: float = 300) -> str | None:
 
 def commit_all(path: Path, session_id: str, goal: str) -> str | None:
     """Stage everything and commit if anything changed. Returns the full sha, or None."""
-    _git(path, "add", "-A")
+    # Exclude bytecode and caches from being committed.
+    _git(path, "add", "-A", "--", ".", *_NEVER_COMMIT)
     diff = _git(path, "diff", "--cached", "--quiet")
     if diff.returncode == 0:
         return None
