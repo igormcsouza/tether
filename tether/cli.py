@@ -37,6 +37,7 @@ _KNOWN_SUBCOMMANDS = {
     "read",
     "query",
     "send",
+    "allow",
     "wait",
     "stop",
     "list",
@@ -296,6 +297,13 @@ def build_parser() -> argparse.ArgumentParser:
     _add_json(p_send)
     p_send.add_argument("message", nargs="+", help="Follow-up instruction")
 
+    # `tether allow`: the same as `tether send <id> approve` (#59)
+    p_allow = sub.add_parser("allow", help="Approve a session's pending [APPROVAL NEEDED] command")
+    p_allow.add_argument("session_id", help="Session ID")
+    p_allow.add_argument("--headless", action="store_true", help="Resume in the background")
+    p_allow.add_argument("--db", type=str, default=None)
+    _add_json(p_allow)
+
     # `tether wait`
     p_wait = sub.add_parser("wait", help="Wait for one or more headless sessions to finish")
     p_wait.add_argument("session_ids", nargs="+", help="Session ID(s)")
@@ -415,6 +423,14 @@ def _finish(rec: SessionRecord, ns: argparse.Namespace) -> int:
         Path(ns.result_file).write_text(rec.result, encoding="utf-8")
     if ns.json:
         print(json.dumps(api.session_dict(rec)))
+    elif rec.status == "WAITING_INPUT" and rec.sandbox_config.get("approval"):
+        # A request for the caller, not a deliverable: stderr, so stdout stays clean (#59).
+        print(rec.result or "", file=sys.stderr)
+        print(
+            f"approve: tether send {rec.id} approve (or tether allow {rec.id}); "
+            f"refuse: tether send {rec.id} deny",
+            file=sys.stderr,
+        )
     elif rec.result and failed:
         print(rec.result, file=sys.stderr)
     elif rec.result and not getattr(ns, "result_file", None):
@@ -867,8 +883,8 @@ async def _async_main(argv: list[str]) -> int:
             print(f"[{h.session_id} {h.source_type}:{h.source_id}#{h.chunk_index}]\n{h.content}\n")
         return 0
 
-    if cmd == "send":
-        msg = " ".join(ns.message).strip()
+    if cmd in ("send", "allow"):
+        msg = "approve" if cmd == "allow" else " ".join(ns.message).strip()
         harness = Harness(db_path=ns.db)
         try:
             rec = await harness.send(ns.session_id, msg, headless=ns.headless)

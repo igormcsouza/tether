@@ -15,6 +15,7 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 
 - `result` is the deliverable, or the pending question when `WAITING_INPUT`. It is `null` on failure.
 - `failure` is `{"kind": "gate|stopped|worker_error", "gate": "<cmd>|output-schema|null", "message": "…"}`.
+- `approval` is `{"command": "…", "prefix": "…"}` only while a `WAITING_INPUT` session waits on `[APPROVAL NEEDED]` (#59); the key is absent otherwise. Answer with `tether send <id> approve` (or `tether allow <id>`, MCP `tether_send` `approve`); any other reply refuses.
 - Keys are stable; new keys may be added.
 
 `--json` is available on `run`, `pipeline`, `status`, `list`, `read` (also `--digest`, `--steps`, `--full`), `wait`, `send` and `stats`. With `--headless` it prints `{"v":1,"id":"ses_…"}`. A foreground `run` (with or without `--json`) writes `session ses_…` to stderr as soon as the session exists, before the first model call, so a caller that kills it on its own timeout can still `status`, `stop` or `send` it; stdout is unchanged.

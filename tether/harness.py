@@ -40,7 +40,14 @@ from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render
 from tether.providers import ModelProvider, resolve_provider
 from tether.providers.base import ProviderError
 from tether.providers.declarative import load_declared
-from tether.sandbox import SandboxPolicy, SandboxUnavailableError
+from tether.sandbox import (
+    ApprovalNeeded,
+    SandboxPolicy,
+    SandboxUnavailableError,
+    SandboxViolationError,
+    add_to_allow_file,
+    load_allow_file,
+)
 from tether.schema import validate_output
 from tether.skills import Skill, SkillLoader, make_skill_tool
 from tether.store import SessionRecord, SQLiteStore, sandbox_rule, worker_log_path
@@ -526,6 +533,7 @@ class Harness:
         enabled_tools: list[str],
         sandbox: SandboxPolicy,
         model: str,
+        on_approval: Callable[[ApprovalNeeded], None] | None = None,
     ) -> Multiplexer:
         """Construct the session Multiplexer with `done` + strictly opted-in tools."""
         mux = Multiplexer()
@@ -545,7 +553,7 @@ class Harness:
             if name in self._custom_tools:
                 mux.register(self._custom_tools[name])
             elif name == "bash":
-                mux.register(make_bash_tool(sandbox))
+                mux.register(make_bash_tool(sandbox, on_approval))
             elif name == "edit":
                 mux.register(make_edit_tool(sandbox))
             elif name == "web":
@@ -696,9 +704,15 @@ class Harness:
         session_id: str | None = None
         if self.worktree:
             session_id = f"ses_{uuid.uuid4().hex[:8]}"
-            path, branch = create_worktree(repo_root(Path.cwd()), session_id, self.worktree_from)
+            repo = repo_root(Path.cwd())
+            path, branch = create_worktree(repo, session_id, self.worktree_from)
+            # `repo` is where an approved prefix is remembered (#59), not the throwaway worktree.
             sbox_dict.update(
-                worktree=str(path), branch=branch, commit=None, workspace_root=str(path)
+                worktree=str(path),
+                branch=branch,
+                commit=None,
+                workspace_root=str(path),
+                repo=str(repo),
             )
         rec = self.store.create_session(
             goal=goal,
@@ -785,6 +799,13 @@ class Harness:
         self.store.enqueue_inbox(session_id, message)
         if rec.status == "RUNNING":
             return rec
+        approval = rec.sandbox_config.get("approval")
+        if rec.status == "WAITING_INPUT" and approval and message.strip().lower() == "approve":
+            # Only the caller reaches here; the model's `agent send` writes the inbox directly,
+            # so a parent model can never grant its child a command outside the jail.
+            cfg = dict(rec.sandbox_config)
+            cfg["approval"] = {**approval, "approved": True}
+            self.store.set_sandbox_config(session_id, cfg)
 
         # Session was WAITING_INPUT/IDLE/COMPLETED/FAILED -> resume it
         # Extend max_steps if the session exhausted its budget (step_count == max_steps).
@@ -804,6 +825,53 @@ class Harness:
             return updated
 
         return await self.execute_session(session_id)
+
+    async def _settle_approval(self, session_id: str, sandbox: SandboxPolicy) -> None:
+        """Act on the caller's reply to a pending [APPROVAL NEEDED] before the loop resumes."""
+        rec = self.store.get_session(session_id)
+        assert rec is not None
+        cfg = dict(rec.sandbox_config)
+        pending = cfg.pop("approval")
+        command, prefix = str(pending["command"]), str(pending["prefix"])
+        stdin = pending.get("stdin")
+        msgs = self.store.consume_inbox(session_id)
+        reply, rest = (msgs[0], msgs[1:]) if msgs else ("", [])
+        if pending.get("approved"):
+            # A worktree is thrown away; the prefix is remembered in the project it came from.
+            root = Path(str(cfg.get("repo") or sandbox.workspace_root))
+            # A bad allow file (ValueError) or a sandbox refusal of the command both mean nothing
+            # ran; either way the model is told why instead of the worker crashing.
+            prior = sandbox.allow_outside
+            try:
+                load_allow_file(root)  # a malformed file is refused before anything runs
+                sandbox.allow_outside = (*prior, prefix)  # the run needs the prefix live
+                out = await sandbox.execute_bash(command, stdin=stdin)
+            except (ValueError, SandboxViolationError) as exc:
+                sandbox.allow_outside = prior  # a refused command leaves no trace
+                note = f"approval failed, nothing ran: {exc}"
+            else:
+                # Saved only after the run: a refused command must not persist its prefix.
+                cfg["allow_outside"] = list(sandbox.allow_outside)
+                note = f"`{command}` ran outside the jail:\n{out}"
+                try:
+                    add_to_allow_file(root, prefix)
+                except OSError as exc:  # the run happened; say so rather than crash
+                    note += f"\nran, but the prefix could not be saved: {exc}"
+                else:
+                    note = f"approved; `{prefix}` added to .tether/allow.json. " + note
+        else:
+            note = (
+                f"the caller did not allow `{command}`; nothing ran. Do it another way or call "
+                f"done. Caller said: {reply}"
+            )
+        for text in [note, *rest]:
+            self.store.add_turn(
+                session_id=session_id,
+                step=rec.step_count,
+                role="user",
+                content=f"[Follow-up instruction]: {text}",
+            )
+        self.store.set_sandbox_config(session_id, cfg)
 
     async def _finished_by_harness(
         self,
@@ -1121,11 +1189,14 @@ class Harness:
 
         output_schema = rec.sandbox_config.get("output_schema") or None
 
+        # The bash tool reports an [APPROVAL NEEDED] request here; the loop pauses on it (#59).
+        approvals: list[ApprovalNeeded] = []
         mux = self.build_multiplexer(
             session_id=session_id,
             enabled_tools=enabled_tools,
             sandbox=sandbox,
             model=rec.model,
+            on_approval=approvals.append,
         )
 
         try:
@@ -1162,6 +1233,8 @@ class Harness:
         )
 
         self.store.update_session(session_id, status="RUNNING", pid=os.getpid())
+        if rec.sandbox_config.get("approval"):
+            await self._settle_approval(session_id, sandbox)
 
         step_start = rec.step_count
         step_limit = rec.max_steps
@@ -1639,6 +1712,36 @@ class Harness:
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)
+
+                if approvals:
+                    asked = approvals.pop()
+                    approvals.clear()
+                    text = (
+                        f"{dispatch.output}\nApproving adds `{asked.prefix}` to .tether/allow.json "
+                        "and runs the command outside the jail. Caller: "
+                        f"`tether send {session_id} approve` or `deny`."
+                    )
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=f"[WAITING_INPUT] {text}",
+                        duration_ms=tool_duration_ms,
+                    )
+                    current = self.store.get_session(session_id)
+                    assert current is not None
+                    cfg = dict(current.sandbox_config)
+                    record = {"command": asked.command, "prefix": asked.prefix}
+                    if asked.stdin is not None:
+                        record["stdin"] = asked.stdin  # approve must run it with the same stdin
+                    cfg["approval"] = record
+                    self.store.set_sandbox_config(session_id, cfg)
+                    self.store.update_session(
+                        session_id, status="WAITING_INPUT", result=text, step_count=step
+                    )
+                    asking = self.store.get_session(session_id)
+                    assert asking is not None
+                    return asking
 
                 if dispatch.is_waiting_input:
                     late_inbox = self.store.consume_inbox(session_id)

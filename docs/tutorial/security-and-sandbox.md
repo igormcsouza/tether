@@ -150,6 +150,38 @@ Some commands must reach things the jail hides, such as pushing a branch or open
 
 **Deliberate hole: a whole tool exposes its credentials.** The outside run uses your real `HOME`, so the tool sees `~/.gitconfig`, credential helpers and hooks. Allowing `gh` lets the model run `gh auth token`, which prints your token into the transcript. Prefer narrow prefixes such as `gh pr create` or `git push origin`, and never allow a whole tool you would not run yourself.
 
+## Let a session push a branch
+
+You do not have to list every prefix up front. When the model runs a command whose prefix is in the policy's `escalate` list and not yet allowed, the session pauses as `WAITING_INPUT` (exit 2) and asks its caller once (#59):
+
+```text
+$ tether run --tools bash "push the fix"
+session ses_127f99a5
+[APPROVAL NEEDED] git push origin main
+Approving adds `git push` to .tether/allow.json and runs the command outside the jail. Caller: `tether send ses_127f99a5 approve` or `deny`.
+$ echo $?
+2
+$ tether send ses_127f99a5 approve
+```
+
+The output of the approved run reaches the model as a follow-up turn. This one is from a real run in a directory that is not a git repository, so the push itself failed:
+
+```text
+[Follow-up instruction]: approved; `git push` added to .tether/allow.json. `git push origin main` ran outside the jail:
+[stderr]
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+[exit 128]
+```
+
+On `approve`, Tether adds the prefix to `.tether/allow.json`, runs the command outside the jail, gives the output to the model as a follow-up, and resumes. The prefix never asks again, in this session or a new one in the same project (a worktree session writes the project's file, not the worktree's). Any other reply (`deny`, or free text such as `no, open a PR`) tells the model the command was refused; nothing is added or run.
+
+- **Default `escalate` list:** `git push`, `git pull`, `git fetch`, `git clone`, `git worktree`, `git config`, `gh`, `docker`. Replace it with `SandboxPolicy(escalate=(...))`; `escalate=()` turns asking off. Read-only git (`git status`, `diff`, `log`, `show`) stays in the jail with no pause.
+- **The prefix is what the model asked with:** the first two words for `git`, the first word otherwise. Approving `gh` or `docker` grants the whole tool (see the hole above).
+- **Only the caller approves:** `tether send`/`tether allow`, MCP `tether_send`, or `Harness.send`. A parent model's `agent send approve` counts as a refusal. A child's request shows on the child; approve it with `tether send <child_id> approve`.
+- **Never offered:** commands with shell metacharacters (refused as above), git options such as `-c`/`-C`, and any command in read-only or `--no-network` sessions.
+- While pending, the session JSON and MCP `tether_status` carry `"approval": {"command": ..., "prefix": ...}`.
+
 ## Known limits
 - Commands run outside the jail (`--allow`) get your real `HOME`, credentials and git hooks, and git's `-c`/`--exec`/`--receive-pack` options are refused only when they appear as separate tokens or with `=`. Keep allowlisted prefixes narrow. A bare `git` entry never covers `git config`, `git remote add|set-url|set-head` or `git submodule`; those run outside only when the entry names that subcommand.
 - Network is on unless you pass `--no-network`; with it on, `curl` can reach localhost services and the internet.

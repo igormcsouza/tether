@@ -27,6 +27,35 @@ class SandboxViolationError(PermissionError):
     """Raised when a tool call violates the deterministic SandboxPolicy."""
 
 
+# Command prefixes that pause the session for the caller's approval instead of being jailed
+# (#59). A policy field, so a caller can replace the list.
+DEFAULT_ESCALATE = (
+    "git push",
+    "git pull",
+    "git fetch",
+    "git clone",
+    "git worktree",
+    "git config",
+    "gh",
+    "docker",
+)
+
+
+class ApprovalNeeded(SandboxViolationError):
+    """The command needs to run outside the jail; only the session's caller can approve it."""
+
+    def __init__(self, command: str, prefix: str, stdin: str | None = None) -> None:
+        self.command = command
+        self.prefix = prefix
+        self.stdin = stdin  # the bash call's stdin; approval runs the command with it
+        super().__init__(f"[APPROVAL NEEDED] {_clip(command, 200)}")
+
+
+def approval_prefix(head: list[str]) -> str:
+    """The prefix an approval grants: the first two words for git, the first word otherwise."""
+    return " ".join(head[:2] if head[:1] == ["git"] else head[:1])
+
+
 LIMIT_KEYS = ("cpu", "mem", "procs", "fsize")
 # Largest accepted value per key; bigger ones are refused before they reach setrlimit.
 LIMIT_MAX = 2**31 - 1
@@ -281,6 +310,30 @@ def load_allow_file(root: Path) -> tuple[str, ...]:
         return parse_allow_outside(entries)
     except ValueError as exc:
         raise bad(str(exc)) from exc
+
+
+def add_to_allow_file(root: Path, prefix: str) -> None:
+    """Append `prefix` to `<root>/.tether/allow.json`, keeping existing entries and their order.
+
+    A malformed file stays a loud ValueError and is left untouched. The write goes through a
+    temp file and `os.replace`, so a concurrent reader never sees half a file.
+    """
+    entries = list(load_allow_file(root))
+    (entry,) = parse_allow_outside([prefix])
+    if entry in entries:
+        return
+    entries.append(entry)
+    folder = root / ".tether"
+    folder.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(dir=folder, prefix="allow.json.", suffix=".tmp")
+    tmp = Path(name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps({"allow": entries}, indent=2) + "\n")
+        os.replace(tmp, folder / "allow.json")
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _narrow_allow_outside(parent: tuple[str, ...], child: Sequence[str] | None) -> tuple[str, ...]:
@@ -629,6 +682,8 @@ class SandboxPolicy:
     allow_unsandboxed: bool = False
     # Command prefixes that run outside bwrap (`--allow`); a child can only narrow this.
     allow_outside: tuple[str, ...] = ()
+    # Prefixes that pause for the caller's approval (#59) when not in allow_outside.
+    escalate: tuple[str, ...] = DEFAULT_ESCALATE
     # Optional rlimits (LIMIT_KEYS). Empty = off, the default.
     limits: dict[str, int] = field(default_factory=dict)
 
@@ -638,6 +693,7 @@ class SandboxPolicy:
             raise ValueError(f"Unsupported sandbox profile: {self.profile}")
         self.web_allow = parse_web_allow(self.web_allow)
         self.allow_outside = parse_allow_outside(self.allow_outside)
+        self.escalate = parse_allow_outside(self.escalate)
         self.limits = parse_limits(self.limits)
         if self.limits and sys.platform != "linux":
             key = next(iter(self.limits))
@@ -657,6 +713,7 @@ class SandboxPolicy:
             "web_allow": None if self.web_allow is None else list(self.web_allow),
             "allow_unsandboxed": self.allow_unsandboxed,
             "allow_outside": list(self.allow_outside),
+            "escalate": list(self.escalate),
         }
         if self.limits:
             data["limits"] = dict(self.limits)
@@ -678,6 +735,8 @@ class SandboxPolicy:
             web_allow=parse_web_allow(data.get("web_allow")),
             allow_unsandboxed=bool(data.get("allow_unsandboxed", False)),
             allow_outside=parse_allow_outside(data.get("allow_outside")),
+            # A row written before #59 has no key: it gets the default list.
+            escalate=parse_allow_outside(data.get("escalate", DEFAULT_ESCALATE)),
             limits=parse_limits(data.get("limits")),
         )
 
@@ -717,6 +776,7 @@ class SandboxPolicy:
             web_allow=_narrow_web_allow(self.web_allow, child_web_allow),
             allow_unsandboxed=self.allow_unsandboxed and child_allow_unsandboxed is not False,
             allow_outside=_narrow_allow_outside(self.allow_outside, child_allow_outside),
+            escalate=self.escalate,
             limits=limits,
         )
 
@@ -1067,6 +1127,16 @@ class SandboxPolicy:
         entry = self._outside_match(effective_cmd)
         if entry is not None and not _git_unsafe_option(effective_cmd):
             return await self._execute_outside(effective_cmd, entry, stdin)
+        prefix = None if entry is not None else self._escalation(effective_cmd)
+        if prefix is not None:
+            if _OUTSIDE_META_RE.search(effective_cmd):
+                # Never offer a shell line for approval: it would run more than the prefix.
+                raise _refusal(
+                    f"`{_clip(prefix)}` runs outside the jail, so shell metacharacters "
+                    "(`;`, `&&`, `||`, `|`, `$(`, backtick, `>`, `<`, newline) are refused",
+                    "run the command alone, one per call",
+                )
+            raise ApprovalNeeded(effective_cmd, prefix, stdin)
         self.validate_bash_command(effective_cmd)
         argv = self._build_exec_argv(effective_cmd)
         return await self._run_argv(argv, stdin, env=self.scrub_env(), cwd=str(self.workspace_root))
@@ -1085,6 +1155,19 @@ class SandboxPolicy:
             if head[: len(want)] == want and not _git_jailed(head, want):
                 return entry
         return None
+
+    def _escalation(self, cmd: str) -> str | None:
+        """The prefix to offer the caller for approval, or None when the command stays jailed."""
+        if self.profile == "read-only" or not self.network:
+            return None  # these sessions never run anything outside the jail
+        head = _OUTSIDE_META_RE.split(cmd, maxsplit=1)[0].split()
+        # `git push --receive-pack=x` runs code: it stays jailed and is never offered.
+        if not any(head[: len(e.split())] == e.split() for e in self.escalate) or (
+            _git_unsafe_option(cmd)
+        ):
+            return None
+        prefix = approval_prefix(head)
+        return None if _git_jailed(head, prefix.split()) else prefix
 
     async def _execute_outside(self, cmd: str, entry: str, stdin: str | None) -> tuple[int, str]:
         """Run an allowlisted command with no shell, no bwrap, and the scrubbed environment."""
