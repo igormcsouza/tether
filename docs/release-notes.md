@@ -4,6 +4,7 @@
 
 ### Added
 
+- Docs: install with the network, work without it (`--setup`, `--no-network`) (#124).
 - `tether export <id>` prints a session as a Markdown transcript (`--out FILE` to save it).
 - A `--verify` gate whose program does not exist (checked for every command in a `&&`/`||`/`;`/`|` chain) now fails the session before the first model call, as a misconfigured gate (#82).
 - `tether doctor` checks your setup (Ollama reachable, model pulled, bwrap, providers.yaml, session DB) and says what to fix; exit 1 when a check fails.
