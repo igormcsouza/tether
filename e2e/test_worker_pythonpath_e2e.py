@@ -1,4 +1,4 @@
-"""#283: a headless worker started with empty and relative PYTHONPATH entries still runs (scripted)."""
+"""#283: a headless worker with empty and relative PYTHONPATH entries still runs (scripted)."""
 
 from __future__ import annotations
 
