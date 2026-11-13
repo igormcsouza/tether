@@ -1,5 +1,10 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- `sed -n '45,90p file'` (the path typed inside the quotes) now runs as `sed -n '45,90p' file` instead of failing (#270).
 ## v0.3.0 (2026-11-09)
 
 ### Breaking changes

@@ -59,7 +59,23 @@ def _strip_tether_prefix(s: str) -> str:
     return s[len("tether ") :].strip() if s.startswith("tether ") else s
 
 
-NORMALIZERS: list[Callable[[str], str]] = [_strip_fences, _strip_prompt, _strip_tether_prefix]
+_SED_QUOTED_PATH_RE = re.compile(r"sed -n (['\"])([0-9]+(?:,[0-9]+)?p) ([\w./][\w./-]*)\1")
+
+
+def _sed_path_in_quotes(s: str) -> str:
+    """Move the path out of the quotes of `sed -n 'a,bp file'`; any other command is unchanged."""
+    m = _SED_QUOTED_PATH_RE.fullmatch(s)
+    if m is None:
+        return s
+    return f"sed -n '{m[2]}' {m[3]}"
+
+
+NORMALIZERS: list[Callable[[str], str]] = [
+    _strip_fences,
+    _strip_prompt,
+    _strip_tether_prefix,
+    _sed_path_in_quotes,
+]
 
 
 def register_normalizer(fn: Callable[[str], str]) -> Callable[[str], str]:
