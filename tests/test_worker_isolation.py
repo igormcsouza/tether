@@ -1,5 +1,6 @@
 """Headless workers must import the installed tether, never a workspace's own package (#273)."""
 
+import os
 import re
 import subprocess
 import sys
@@ -73,3 +74,77 @@ def test_no_other_unisolated_spawn() -> None:
                 f"{path} spawns tether without -P: {segment!r}"
             )
     assert hits, "no spawn sites found; the scan is broken"
+
+
+def _spawn_env(monkeypatch: pytest.MonkeyPatch, db_path: Path) -> dict[str, str]:
+    seen: list[dict[str, str]] = []
+
+    def fake_popen(argv: list[str], **kwargs: object) -> SimpleNamespace:
+        env = kwargs["env"]
+        assert isinstance(env, dict)
+        seen.append(dict(env))
+        return SimpleNamespace(pid=1)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(harness.subprocess, "Popen", fake_popen)
+        harness.spawn_detached_worker(db_path, "sid")
+    assert len(seen) == 1
+    return seen[0]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (".", None),
+        ("", None),
+        ("  ", None),
+        ("~/x", None),
+        (None, None),
+        (":/abs/x", "/abs/x"),
+        ("rel:/abs/x:", "/abs/x"),
+        ("/a::/b", "/a:/b"),
+        ("/a:/b", "/a:/b"),
+        ("/a:/a", "/a:/a"),
+    ],
+)
+def test_worker_pythonpath_keeps_only_absolute_entries(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, raw: str | None, expected: str | None
+) -> None:
+    if raw is None:
+        monkeypatch.delenv("PYTHONPATH", raising=False)
+    else:
+        monkeypatch.setenv("PYTHONPATH", raw)
+    env = _spawn_env(monkeypatch, tmp_path / "db")
+    if expected is None:
+        assert "PYTHONPATH" not in env, f"PYTHONPATH kept: {env.get('PYTHONPATH')!r}"
+    else:
+        assert env["PYTHONPATH"] == expected
+
+
+def test_spawn_does_not_mutate_caller_environ(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("PYTHONPATH", "rel:/abs/x:")
+    before = dict(os.environ)
+    _spawn_env(monkeypatch, tmp_path / "db")
+    assert dict(os.environ) == before
+
+
+def test_worker_probe_imports_installed_tether_not_workspace(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    ws = (tmp_path / "ws").resolve()
+    (ws / "tether").mkdir(parents=True)
+    (ws / "tether" / "__init__.py").write_text(SHADOW)
+    monkeypatch.setenv("PYTHONPATH", ".")
+    env = _spawn_env(monkeypatch, tmp_path / "db")
+    probe = subprocess.run(
+        [sys.executable, "-P", "-c", "import tether; print(tether.__file__)"],
+        cwd=ws,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert probe.returncode == 0, probe.stderr
+    assert not Path(probe.stdout.strip()).resolve().is_relative_to(ws)
