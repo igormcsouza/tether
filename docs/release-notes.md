@@ -4,6 +4,7 @@
 
 ### Fixed
 
+- A session whose only edits were refused (wrong command shape, sandbox refusal) is no longer ended as `COMPLETED` "Finished by the harness ... after its change": a refused command ran nothing, so it does not count as a change and the session is handed back as `WAITING_INPUT` (#318).
 - A headless worker no longer imports workspace code through a relative or empty `PYTHONPATH` entry: only absolute entries are passed on (#283).
 - The sandbox no longer fails every `bash` call with `bwrap: Can't create file at /run/...` when `/run` holds a symlink to a unix socket (e.g. `/run/php/php-fpm.sock`): the socket the link points to is masked, once.
 - `sed -n '45,90p file'` (the path typed inside the quotes) now runs as `sed -n '45,90p' file` instead of failing (#270).
