@@ -37,6 +37,8 @@ act(cmd="bash", stdin="python3 - << 'EOF'\nimport math\nprint(math.pi)\nEOF")
 
 A test run piped to `head` (`python3 -m unittest 2>&1 | head -50`) still shows how it ended: tether keeps the first lines, marks what it cut, and adds the last lines with the summary and the tests' own exit code.
 
+A command that times out after starting a background job (`server &`) gets one more line saying so, with the two fixes: run it in the foreground with `timeout N <cmd>`, or send its output away with `<cmd> >/dev/null 2>&1 &`.
+
 ## `edit` — Workspace-Jailed File Operations
 
 Provides deterministic line-numbered viewing and `stdin`-based writing/replacement without sed/awk quoting bugs:
@@ -62,7 +64,11 @@ Zero-config web search via DuckDuckGo Lite (or automatic override via `SEARXNG_U
 ```text
 act(cmd='web search "SQLite WAL concurrency" --max 5')
 act(cmd="web fetch https://www.sqlite.org/wal.html")
+act(cmd="web fetch https://docs.python.org/3/library/stdtypes.html#str.splitlines")
+act(cmd="web fetch https://www.sqlite.org/wal.html --from 'checkpoint'")
 ```
+
+`#anchor` starts the text at that element, `--from <text>` at the first match; a cut page prints the `--from` words to continue with.
 
 ## `mem` — Pinned Scratchpad & BM25 Observation Recall
 
