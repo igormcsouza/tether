@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Docs
+
+- New guide [Write tasks a small model can finish](guides/small-models.md): the task-writing rules, a re-runnable example, what each model was seen to do well and badly, and how to tell whose fault a failed task is.
+
 ## v0.3.0 (2026-11-09)
 
 ### Breaking changes
