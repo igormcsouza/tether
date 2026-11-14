@@ -179,7 +179,7 @@ class _Retryable(Exception):
 
 
 async def _run_command(
-    model_name: str, argv: list[str], stdin: str, timeout: float
+    model_name: str, argv: list[str], stdin: str, timeout: float, reply: str
 ) -> tuple[str, str]:
     """Run one attempt; a timeout or a silent failure raises `_Retryable`."""
     proc = await asyncio.create_subprocess_exec(
@@ -199,9 +199,12 @@ async def _run_command(
     if proc.returncode != 0:
         if not out_text and not err_text:
             raise _Retryable(f"exited {proc.returncode}")
-        raise RuntimeError(
-            f"command provider `{model_name}` exited with {proc.returncode}: "
-            f"{(err_text or out_text)[:300]}"
+        text = _provider_text(out_text, err_text, reply)
+        raise ProviderError(
+            f"command provider `{model_name}` failed (exit {proc.returncode}): "
+            f"{text}. If this is a usage or rate limit, wait for the "
+            f"reset or pass another --model.",
+            retryable=False,
         )
     return out_text, err_text
 
@@ -259,7 +262,9 @@ class CommandProvider:
             if attempt:
                 await asyncio.sleep(_BACKOFF[attempt - 1])
             try:
-                out_text, err_text = await _run_command(self.model_name, argv, stdin, self.timeout)
+                out_text, err_text = await _run_command(
+                    self.model_name, argv, stdin, self.timeout, self.reply
+                )
             except _Retryable as exc:
                 last_error = str(exc)
                 continue
@@ -338,3 +343,18 @@ def build_declared(
     return AnthropicProvider(
         model_name, api_key=api_key, base_url=cfg.get("base_url"), **key, **http_timeout
     )
+
+
+def _provider_text(out_text: str, err_text: str, reply: str) -> str:
+    """Return extracted text or fallback with truncation."""
+    try:
+        parsed = json.loads(out_text)
+        value = _lookup(parsed, reply)
+        if isinstance(value, str):
+            result = value
+        else:
+            result = out_text if out_text else err_text
+    except json.JSONDecodeError:
+        result = out_text if out_text else err_text
+
+    return result.strip()[:300]
