@@ -11,6 +11,8 @@
 - A `command` provider that hits a usage or rate limit now fails at once with the provider's own words and a next step (`wait for the reset or pass another --model`), instead of a raw JSON error after retries (#305).
 - A `bash` command that times out after starting a background job (`server &`) now says why and what to do: run it in the foreground with `timeout N <cmd>`, or send its output away with `<cmd> >/dev/null 2>&1 &` (#319).
 
+- `web search` now says when the search engine refuses (HTTP 202 or a bot-check page) instead of printing `No search results found.`, so a model stops retrying. `web fetch <url>#anchor` starts the returned text at that element, and `web fetch <url> --from <text>` starts it at the first match. A cut page names the `--from` words to continue with.
+
 ### Docs
 
 - New guide [Write tasks a small model can finish](guides/small-models.md): the task-writing rules, a re-runnable example, what each model was seen to do well and badly, and how to tell whose fault a failed task is.
