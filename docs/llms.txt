@@ -5,6 +5,7 @@
 ## Start here
 - [Home](https://igormcsouza.github.io/tether/): what tether is, install, first run.
 - [Fix a failing test with a local model](https://igormcsouza.github.io/tether/guides/fix-a-failing-test/): a verification gate decides when the job is done.
+- [Write tasks a small model can finish](https://igormcsouza.github.io/tether/guides/small-models/): task-writing rules, a re-runnable example, what each model does well and badly.
 - [Use tether from Claude Code, Codex or Cursor](https://igormcsouza.github.io/tether/guides/use-tether-from-your-agent/): MCP setup, the JSON result, exit codes.
 - [A pipeline where each stage has its own job](https://igormcsouza.github.io/tether/guides/a-pipeline-with-checks/): stages, per-stage model, tools and gate.
 - [Give the model a tool of your own](https://igormcsouza.github.io/tether/guides/add-your-own-tool/): turn a Python function into a command.
