@@ -123,6 +123,7 @@ A `command` entry wraps any program that takes a prompt and prints JSON.
 
 - **Placeholders**: `{model}`, `{system}`, `{conversation}` and `{schema}` (the act JSON schema, compact) are substituted in `argv` items and in the `stdin` template. If `stdin` is omitted it defaults to `{conversation}`.
 - **No shell**: `argv` is executed directly, never through a shell.
+- **Failures**: a non-zero exit with output fails the session at once with ``Worker error: ProviderError: command provider `<model>` failed (exit N): <text>``. The text is the provider's own words: the `reply` field when the output is JSON, else its stdout or stderr, at most 300 characters. It is not retried, so a usage or rate limit costs one call: wait for the reset or pass another `--model`.
 - **Retries**: a timeout, or a non-zero exit with no output, is retried twice with 1 s then 2 s backoff; after the third failure Tether raises `ProviderError` naming the provider, model and timeout. A non-zero exit with output, or an unparsable reply, is not retried.
 - **Reply**: `reply` is a dotted path into the JSON the command prints (`result` in the example).
 - **Usage**: `usage.prompt` is a path or a list of paths (their values are summed); `usage.completion` is a path. Both are optional.
