@@ -1914,6 +1914,8 @@ class Harness:
                 # Quiet nudge: track consecutive read-only/verification steps after a change
                 if is_quiet(cmd):
                     quiet_run += 1
+                elif dispatch.error_kind in ("syntax_error", "unknown_cmd", "sandbox_violation"):
+                    pass  # refused: nothing ran, so neither a quiet step nor a change (#318)
                 else:
                     changed = True
                     changes.append(cmd)

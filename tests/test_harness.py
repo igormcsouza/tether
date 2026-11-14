@@ -1119,3 +1119,24 @@ async def test_a_stuck_session_keeps_the_last_prose_answer(tmp_path: Path) -> No
     assert session.status == "WAITING_INPUT"
     assert (session.result or "").startswith("[STUCK at step")
     assert ANSWER in (session.result or "")
+
+
+async def test_refused_edits_are_not_a_change(tmp_path: Path) -> None:
+    # #318: a refused command ran nothing, so the harness must not finish "after its change"
+    from tether.sandbox import SandboxPolicy
+
+    target = tmp_path / "f.py"
+    target.write_text("x = 1\n")
+    refused = ActionCall(cmd="edit replace f.py --lines 1:1")
+    harness = Harness(
+        db_path=tmp_path / "t.db",
+        tools=["edit"],
+        provider=FakeScriptedProvider([ModelResponse(content="", action=refused)] * 40),
+        verify="true",
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+    )
+    session = await harness.execute_session(harness.create_session("goal").id)
+    assert target.read_text() == "x = 1\n"
+    assert session.status == "WAITING_INPUT"
+    assert "Finished by the harness" not in (session.result or "")
+    assert "No change was made" in (session.result or "")
