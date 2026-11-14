@@ -109,14 +109,37 @@ class _HTMLToTextParser(HTMLParser):
         return re.sub(r"\n{3,}", "\n\n", collapsed).strip()
 
 
-def html_to_markdown(raw_html: str, max_chars: int = 8000) -> str:
-    """Convert raw HTML into compact markdown-friendly text."""
+def html_to_text(raw_html: str) -> str:
+    """Convert raw HTML to compact text, uncut."""
     parser = _HTMLToTextParser()
     parser.feed(raw_html)
-    text = parser.get_text()
-    if len(text) > max_chars:
-        return f"{text[:max_chars]}\n... [truncated {len(text) - max_chars:,} chars]"
-    return text
+    return parser.get_text()
+
+
+def _clip(text: str, max_chars: int, url: str) -> str:
+    """Cut text to max_chars and say how to read on from a few words further down."""
+    if len(text) <= max_chars:
+        return text
+    # quotes are dropped so the hint stays one shell-style argument
+    hint = " ".join(text[max_chars:].split()[:4]).replace("'", "")
+    return (
+        f"{text[:max_chars]}\n... [cut {len(text) - max_chars:,} chars. "
+        f"Continue: web fetch {url} --from '{hint}']"
+    )
+
+
+def _anchor_start(raw_html: str, anchor: str) -> int | None:
+    """Offset of the tag carrying id=anchor or name=anchor, or None when absent."""
+    pattern = re.compile(
+        r"""<[^>]*\s(?:id|name)\s*=\s*["']?""" + re.escape(anchor) + r"""["'\s>/]"""
+    )
+    match = pattern.search(raw_html)
+    return match.start() if match else None
+
+
+def html_to_markdown(raw_html: str, max_chars: int = 8000, url: str = "<url>") -> str:
+    """Convert raw HTML into compact markdown-friendly text."""
+    return _clip(html_to_text(raw_html), max_chars, url)
 
 
 def _unwrap_ddg_url(href: str) -> str:
@@ -126,6 +149,13 @@ def _unwrap_ddg_url(href: str) -> str:
         if "uddg" in qs and qs["uddg"]:
             return urllib.parse.unquote(qs["uddg"][0])
     return href
+
+
+SEARCH_REFUSED = (
+    "Error: the search engine refused the request (rate limit or bot check). "
+    "Instead: wait a minute, fetch a URL you know with `web fetch`, "
+    "or set BRAVE_API_KEY, TAVILY_API_KEY or SEARXNG_URL."
+)
 
 
 async def search_web_backend(
@@ -190,6 +220,9 @@ async def search_web_backend(
             data={"q": query},
         )
         resp.raise_for_status()
+        # DDG answers 202 with a bot-check page once a client sends too many queries
+        if resp.status_code == 202:
+            return SEARCH_REFUSED
         body = resp.text
 
     link_re = re.compile(
@@ -201,6 +234,8 @@ async def search_web_backend(
         re.DOTALL,
     )
     links = link_re.findall(body)
+    if not links and re.search(r"anomaly|challenge", body, re.IGNORECASE):
+        return SEARCH_REFUSED
     snippets = snip_re.findall(body)
 
     results: list[tuple[str, str, str]] = []
@@ -269,7 +304,7 @@ def make_web_tool(
     max_fetch_chars: int = 8000, web_allow: tuple[str, ...] | None = None
 ) -> ToolSpec:
     help_str = (
-        "Usage: web search <query> [--max 5] | web fetch <url>\n"
+        "Usage: web search <query> [--max 5] | web fetch <url>[#anchor] [--from <text>]\n"
         "Desc : Search the web or fetch clean markdown text from a URL."
     )
 
@@ -299,9 +334,17 @@ def make_web_tool(
         if sub == "fetch":
             if len(args) < 2:
                 return f"Error: missing `<url>`.\n{help_str}"
-            url = args[1].strip()
+            url, _, anchor = args[1].strip().partition("#")
+            anchor = urllib.parse.unquote(anchor)
             if not url.startswith(("http://", "https://")):
                 return "Error: URL must start with http:// or https://."
+            rest = args[2:]
+            from_text: str | None = None
+            if "--from" in rest:
+                pos = rest.index("--from")
+                from_text = " ".join(rest[pos + 1 :]).strip()
+                if not from_text:
+                    return "Error: `--from` expects text."
             headers = {"User-Agent": "Tether-MicroHarness/0.1"}
             hooks: list[Any] = [assert_public_url]
             if web_allow is not None:
@@ -323,12 +366,26 @@ def make_web_tool(
                     return f"Error: {exc}"
                 resp.raise_for_status()
                 ctype = resp.headers.get("content-type", "")
-                if "html" in ctype.lower() or "<html" in resp.text[:500].lower():
-                    return html_to_markdown(resp.text, max_chars=max_fetch_chars)
-                text = resp.text.strip()
-                if len(text) > max_fetch_chars:
-                    return f"{text[:max_fetch_chars]}\n... [truncated]"
-                return text
+                is_html = "html" in ctype.lower() or "<html" in resp.text[:500].lower()
+                source, head = resp.text, ""
+                if is_html and anchor:
+                    start = _anchor_start(source, anchor)
+                    if start is None:
+                        head = f"[#{anchor} not found; page start shown]\n"
+                    else:
+                        source = source[start:]
+                        head = f"[from #{anchor}]\n"
+                full = html_to_text(source) if is_html else source.strip()
+                if from_text is not None:
+                    at = full.lower().find(from_text.lower())
+                    if at < 0:
+                        return (
+                            f"Error: `{from_text}` not found in the page "
+                            f"({len(full):,} chars). Instead: fetch without --from, "
+                            "or try another word."
+                        )
+                    full = full[at:]
+                return head + _clip(full, max_fetch_chars, url)
 
         return f"Error: unknown subcommand `{sub}`.\n{help_str}"
 
