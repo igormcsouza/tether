@@ -114,6 +114,12 @@ AUTO_FOLD_MAX_K = 8
 RESTART_AFTER_FAILS = 3
 MAX_RESTARTS = 2
 RESTART_MAX_CHARS = 6000
+# Said after a restart from a check that failed 3 times: whether the gate is wrong is
+# the user's call, so the model is asked to say so instead of fighting it
+WRONG_GATE_ASK = (
+    "If the test or gate itself is wrong, do not fight it: "
+    "call `done --ask` and say which one and why."
+)
 _RESTART_FILES_CHARS = 4000
 _RESTART_OUTPUT_CHARS = 1500
 _SKIP_DIRS = {"__pycache__", "node_modules"}
@@ -194,6 +200,7 @@ def restart_message(
             "",
             "Write a new implementation with a different approach; do not rebuild the "
             "one that failed. Read the tests first.",
+            *([WRONG_GATE_ASK] if check_cmd else []),
         ]
         return "\n".join(lines)[:RESTART_MAX_CHARS]
     if failing_output is not None:
@@ -209,6 +216,8 @@ def restart_message(
         if failing_output is not None
         else "Change your approach before you repeat anything."
     ]
+    if check_cmd and not handback:
+        lines.append(WRONG_GATE_ASK)
     return "\n".join(lines)[:RESTART_MAX_CHARS]
 
 

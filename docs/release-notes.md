@@ -9,6 +9,9 @@
 - The sandbox no longer fails every `bash` call with `bwrap: Can't create file at /run/...` when `/run` holds a symlink to a unix socket (e.g. `/run/php/php-fpm.sock`): the socket the link points to is masked, once.
 - `sed -n '45,90p file'` (the path typed inside the quotes) now runs as `sed -n '45,90p' file` instead of failing (#270).
 - A `command` provider that hits a usage or rate limit now fails at once with the provider's own words and a next step (`wait for the reset or pass another --model`), instead of a raw JSON error after retries (#305).
+- The harness tells a session that only looks things up to answer, not to edit: the step before the limit gets a `[LAST STEP]` notice, the 75% and 12-step nudges ask for an answer when neither `bash` nor `edit` is enabled, and a restart or failed `verify` gate after a check failed 3 times names `done --ask` as the way out of a wrong test.
+
+- A `bash` command that leaves a Python file unparsable is undone: the file goes back to its bytes from before the command, and the observation names it in a `[REVERTED]` line so the model redoes the change in smaller steps (F5).
 
 ### Docs
 

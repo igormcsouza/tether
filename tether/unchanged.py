@@ -150,6 +150,55 @@ def unchanged_note(before: dict[str, bytes], root: Path) -> str:
     return note[:NOTE_LIMIT]
 
 
+REVERT_FILES = 3  # files named in the revert notes of one command
+REVERT_MSG = 80  # chars of the SyntaxError message in a revert note
+REVERT_LINE = 300  # max chars of one revert line
+
+
+def _syntax_error(data: bytes) -> SyntaxError | None:
+    try:
+        ast.parse(data)
+    except (SyntaxError, ValueError) as err:
+        return err if isinstance(err, SyntaxError) else None
+    return None
+
+
+def broken_by_command(
+    cmd: str, before: dict[str, bytes], root: Path
+) -> list[tuple[str, bytes, SyntaxError]]:
+    """Python files that parsed before `cmd` and do not parse after it (F5).
+
+    Returns (path, old bytes, error) for each. Edit commands are left to `edit`, which warns on
+    its own. Not returned: a file that did not parse before, a file the command created or
+    deleted, a non-.py file, and a file that still parses.
+    """
+    if _EDIT.match(cmd.partition("\n")[0]):
+        return []
+    found: list[tuple[str, bytes, SyntaxError]] = []
+    for rel, old in before.items():
+        new = _current(rel, root)
+        if not rel.endswith(".py") or new is None or _syntax_error(old) is not None:
+            continue
+        if (err := _syntax_error(new)) is not None:
+            found.append((rel, old, err))
+    return found
+
+
+def revert_notes(found: list[tuple[str, bytes, SyntaxError]]) -> str:
+    """One [REVERTED] line per file (at most REVERT_FILES), each at most REVERT_LINE chars."""
+    lines = [
+        f"\n[REVERTED] `{rel}` no longer parsed after this command "
+        f"({err.msg[:REVERT_MSG]}, line {err.lineno}); it is back as it was before the command. "
+        f"Make the change again in smaller steps, e.g. `edit replace {rel} --lines a:b`."[
+            :REVERT_LINE
+        ]
+        for rel, _, err in found[:REVERT_FILES]
+    ]
+    if len(found) > REVERT_FILES:
+        lines.append(f"\n[REVERTED] {len(found) - REVERT_FILES} more file(s) reverted too.")
+    return "".join(lines)
+
+
 def whole_file_targets(cmd: str) -> list[str]:
     """Paths `cmd` rewrites whole: `edit write <p>` or a single `> p` on its first line."""
     head = cmd.partition("\n")[0]
@@ -195,3 +244,21 @@ def small_change_note(cmd: str, before: dict[str, bytes], root: Path, hinted: se
             )
             return note[:NOTE_LIMIT]
     return ""
+
+
+def named_python_files(cmd: str, root: Path) -> dict[str, bytes]:
+    """Find Python files mentioned in cmd and return their bytes."""
+    matches = re.findall(r"[\w./-]+\.py\b", cmd)
+    seen = set()
+    kept: list[str] = []
+    for m in matches:
+        if m not in seen:
+            seen.add(m)
+            if len(kept) < MAX_ARGS:
+                kept.append(m)
+    result: dict[str, bytes] = {}
+    for name in kept:
+        value = _current(name, root)
+        if value is not None:
+            result[name] = value
+    return result

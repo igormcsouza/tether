@@ -736,7 +736,7 @@ async def test_context_overflow_warns_once_on_stderr(
 async def test_explore_nudge_when_nothing_changes(tmp_path: Path) -> None:
     run = await _run_commands(tmp_path, [f"bash cat f{i}" for i in range(14)])  # no change at all
     obs = run.provider.store.list_observations(run.session.id)
-    steps = [o.step for o in obs.values() if "[NUDGE] No file changes in 12 steps" in o.raw_output]
+    steps = [o.step for o in obs.values() if "[NUDGE] 12 lookups and no answer yet" in o.raw_output]
     assert steps == [12]
 
 
@@ -747,7 +747,8 @@ async def test_explore_nudge_repeats_while_the_model_only_reads(
     monkeypatch.setattr("tether.harness.EXPLORE_NUDGE_EVERY", 3)
     run = await _run_commands(tmp_path, [f"bash cat f{i}" for i in range(9)])
     obs = run.provider.store.list_observations(run.session.id)
-    assert [o.step for o in obs.values() if "[NUDGE] No file changes" in o.raw_output] == [2, 5, 8]
+    lookups = "lookups and no answer yet"
+    assert [o.step for o in obs.values() if lookups in o.raw_output] == [2, 5, 8]
 
 
 async def test_explore_nudge_is_off_after_a_change(
