@@ -56,6 +56,10 @@ class ModelProvider(Protocol):
 class ProviderError(RuntimeError):
     """A provider call failed after retries; the message names provider, model and timeout."""
 
+    def __init__(self, message: str, *, retryable: bool = True) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+
 
 def auth_message(
     provider: str, key_env: str | None, status: int | None = None, body: str = ""
