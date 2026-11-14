@@ -62,7 +62,11 @@ Zero-config web search via DuckDuckGo Lite (or automatic override via `SEARXNG_U
 ```text
 act(cmd='web search "SQLite WAL concurrency" --max 5')
 act(cmd="web fetch https://www.sqlite.org/wal.html")
+act(cmd="web fetch https://docs.python.org/3/library/stdtypes.html#str.splitlines")
+act(cmd="web fetch https://www.sqlite.org/wal.html --from 'checkpoint'")
 ```
+
+`#anchor` starts the text at that element, `--from <text>` at the first match; a cut page prints the `--from` words to continue with.
 
 ## `mem` — Pinned Scratchpad & BM25 Observation Recall
 
