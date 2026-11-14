@@ -560,9 +560,13 @@ def _empty_mask_file() -> str:
 
 @functools.lru_cache(maxsize=1)
 def _host_socket_paths() -> tuple[str, ...]:
-    """Host unix sockets under /run (docker.sock, containerd, dbus...)."""
+    """Host unix sockets under /run (docker.sock, containerd, dbus...), as real paths.
+
+    A socket reached through a symlink is reported as the link's target: bwrap cannot bind over
+    an absolute symlink, and masking the target also hides it when it lies outside the globs.
+    """
     paths = [p for pat in ("/run/*", "/run/*/*") for p in sorted(glob.glob(pat))]
-    return tuple(p for p in paths if Path(p).is_socket())
+    return tuple(dict.fromkeys(os.path.realpath(p) for p in paths if Path(p).is_socket()))
 
 
 def _host_socket_masks() -> tuple[str, ...]:
