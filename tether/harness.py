@@ -321,6 +321,16 @@ def spawn_detached_worker(db_path: Path, session_id: str) -> int:
     """
     env = dict(os.environ)
     env["TETHER_DB"] = str(db_path)
+    pp = env.get("PYTHONPATH", "")
+    if pp:
+        parts = pp.split(os.pathsep)
+        kept = [p for p in parts if os.path.isabs(p)]
+        if kept:
+            env["PYTHONPATH"] = os.pathsep.join(kept)
+        else:
+            env.pop("PYTHONPATH", None)
+    elif "PYTHONPATH" in env:
+        env.pop("PYTHONPATH", None)
     log = worker_log_path(db_path, session_id)
     log.parent.mkdir(parents=True, exist_ok=True)
     # Keep the worker's output: a worker that dies before RUNNING leaves its cause here (#271)
