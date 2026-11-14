@@ -9,6 +9,7 @@
 - The sandbox no longer fails every `bash` call with `bwrap: Can't create file at /run/...` when `/run` holds a symlink to a unix socket (e.g. `/run/php/php-fpm.sock`): the socket the link points to is masked, once.
 - `sed -n '45,90p file'` (the path typed inside the quotes) now runs as `sed -n '45,90p' file` instead of failing (#270).
 - A `command` provider that hits a usage or rate limit now fails at once with the provider's own words and a next step (`wait for the reset or pass another --model`), instead of a raw JSON error after retries (#305).
+- A `bash` command that times out after starting a background job (`server &`) now says why and what to do: run it in the foreground with `timeout N <cmd>`, or send its output away with `<cmd> >/dev/null 2>&1 &` (#319).
 
 ### Docs
 
