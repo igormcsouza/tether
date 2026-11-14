@@ -1,5 +1,10 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- A headless worker no longer imports workspace code through a relative or empty `PYTHONPATH` entry: only absolute entries are passed on (#283).
 ## v0.3.0 (2026-11-09)
 
 ### Breaking changes
