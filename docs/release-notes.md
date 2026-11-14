@@ -9,6 +9,10 @@
 - `sed -n '45,90p file'` (the path typed inside the quotes) now runs as `sed -n '45,90p' file` instead of failing (#270).
 - A `command` provider that hits a usage or rate limit now fails at once with the provider's own words and a next step (`wait for the reset or pass another --model`), instead of a raw JSON error after retries (#305).
 
+### Docs
+
+- New guide [Write tasks a small model can finish](guides/small-models.md): the task-writing rules, a re-runnable example, what each model was seen to do well and badly, and how to tell whose fault a failed task is.
+
 ## v0.3.0 (2026-11-09)
 
 ### Breaking changes
