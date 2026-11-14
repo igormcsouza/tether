@@ -130,7 +130,7 @@ tether/
     ├── done.py          # Mandatory explicit completion command (`done`)
     ├── bash.py          # Kernel-sandboxed, env-scrubbed, workspace-bounded shell execution
     ├── web.py           # Zero-config DuckDuckGo Lite httpx search (+ Brave/Tavily/SearXNG env override) & reader
-    ├── edit.py          # Workspace-jailed file viewing (`view`) & stdin patching (`write`, `append`, `replace`)
+    ├── edit.py          # Workspace-jailed file viewing (`view`) & stdin patching (`write`, `append`, `insert`, `replace`)
     ├── mem.py           # Working scratchpad (`pin`/`unpin`), FTS5 search (`search`), & recall (`recall`)
     └── agent.py         # Async multi-agent orchestration (`spawn`, `status`, `wait`, `query`, `read`, `send`)
 ```

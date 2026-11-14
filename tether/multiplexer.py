@@ -182,6 +182,10 @@ _ACT_CALL_RE = re.compile(
 _HEREDOC_RE = re.compile(r"[ \t]*<<-?[ \t]*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n?\2[ \t]*$", re.DOTALL)
 
 
+# `edit ..., stdin="..."` typed inside cmd (#317); a real stdin argument still wins.
+_STDIN_TAIL_RE = re.compile(rf"(edit\b.*?),\s*stdin\s*=\s*({_QUOTED})\s*", re.DOTALL)
+
+
 def split_heredoc(cmd: str) -> tuple[str, str | None]:
     """Split a trailing shell heredoc off `cmd` into stdin (models write `edit ... <<'EOF'`)."""
     m = _HEREDOC_RE.search(cmd)
@@ -266,6 +270,9 @@ class Multiplexer:
                 error_kind="syntax_error",
             )
 
+        if tail := _STDIN_TAIL_RE.fullmatch(clean_cmd):  # models type stdin into cmd (#317)
+            clean_cmd = tail[1].strip()
+            stdin = _unquote(tail[2]) if stdin is None else stdin
         call = _ACT_CALL_RE.fullmatch(clean_cmd)
         if call:  # the model typed the act() call as text (#169)
             clean_cmd = call["cmd"].strip()

@@ -5,10 +5,15 @@
 ### Fixed
 
 - A session whose only edits were refused (wrong command shape, sandbox refusal) is no longer ended as `COMPLETED` "Finished by the harness ... after its change": a refused command ran nothing, so it does not count as a change and the session is handed back as `WAITING_INPUT` (#318).
+- `edit replace <path>` now applies a unified diff or bare `@@` hunks sent as stdin through the same applier as `edit <path>`; a `, stdin="..."` tail typed inside the command is moved into stdin; and `edit replace <path> --lines a:b` applies a marked `-`/`+` diff of exactly those lines, so a correct edit is no longer refused or mis-applied (#317).
 - A headless worker no longer imports workspace code through a relative or empty `PYTHONPATH` entry: only absolute entries are passed on (#283).
 - The sandbox no longer fails every `bash` call with `bwrap: Can't create file at /run/...` when `/run` holds a symlink to a unix socket (e.g. `/run/php/php-fpm.sock`): the socket the link points to is masked, once.
 - `sed -n '45,90p file'` (the path typed inside the quotes) now runs as `sed -n '45,90p' file` instead of failing (#270).
 - A `command` provider that hits a usage or rate limit now fails at once with the provider's own words and a next step (`wait for the reset or pass another --model`), instead of a raw JSON error after retries (#305).
+
+### Added
+
+- `edit insert <path> --line N` adds the stdin lines before line N and replaces nothing, so a small model no longer loses line N when it adds lines (#320). A bare `edit replace <path> --lines a:b` with empty stdin now says it deleted the lines (#321), and `edit append` and `insert` always end the file with a newline.
 
 ### Docs
 
