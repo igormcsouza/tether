@@ -1407,8 +1407,8 @@ class Harness:
                     try:
                         resp = await provider.generate(messages, [ACT_TOOL_SCHEMA])
                         break
-                    except ProviderError:
-                        if outage == OUTAGE_RETRIES:
+                    except ProviderError as exc:
+                        if outage == OUTAGE_RETRIES or not exc.retryable:
                             raise
                         await asyncio.sleep(
                             float(os.environ.get("TETHER_OUTAGE_BACKOFF", "10")) * 2**outage
