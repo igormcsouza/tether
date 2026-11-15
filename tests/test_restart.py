@@ -239,7 +239,8 @@ async def test_a_check_that_still_fails_after_every_restart_is_handed_back(tmp_p
     )
     session = await harness.run("make the test pass")
     assert session.status == "WAITING_INPUT"
-    assert (session.result or "").startswith("[STUCK at step 13 after 2 restarts")
+    # The final-answer turn may put its answer first, so the stuck summary is contained, not leading
+    assert "[STUCK at step 13 after 2 restarts" in (session.result or "")
     assert "X = 16" in (session.result or "") and "AssertionError" in (session.result or "")
     turns = harness.store.get_turns(session.id)
     assert [t.event_type for t in turns].count("restart") == 2

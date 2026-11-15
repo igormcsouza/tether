@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import asyncio
 import dataclasses
+import inspect
 import os
 import re
 import subprocess
@@ -39,7 +40,7 @@ from tether.gates import precheck as gates_precheck
 from tether.multiplexer import Multiplexer, normalize_cmd
 from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
 from tether.providers import ModelProvider, resolve_provider
-from tether.providers.base import ProviderError
+from tether.providers.base import ModelResponse, ProviderError
 from tether.providers.declarative import load_declared
 from tether.sandbox import (
     ApprovalNeeded,
@@ -51,7 +52,16 @@ from tether.sandbox import (
 )
 from tether.schema import validate_output
 from tether.skills import Skill, SkillLoader, make_skill_tool
-from tether.store import SessionRecord, SQLiteStore, sandbox_rule, worker_log_path
+from tether.store import (
+    TELL_EXPLORE,
+    TELL_GREEN,
+    TELL_QUIET,
+    TELL_WRAPUP,
+    SessionRecord,
+    SQLiteStore,
+    sandbox_rule,
+    worker_log_path,
+)
 from tether.tools import (
     ALL_BUILTIN_TOOLS,
     make_agent_tool,
@@ -68,11 +78,9 @@ from tether.unchanged import (
     missing_targets,
     named_python_files,
     revert_notes,
-    small_change_note,
     snapshot,
     snapshot_key,
     unchanged_note,
-    whole_file_targets,
 )
 from tether.worktree import commit_all, create_worktree, repo_root, run_setup
 
@@ -103,6 +111,41 @@ STALL_ABORT = 4
 # delivered (#173); a stuck hand-back carries the last one, bounded
 PROSE_ANSWER_CHARS = 80
 KEPT_REPLY_CHARS = 2000
+# The model call left once the steps run out (H1): its `done` or plain-text reply is the answer.
+# Plain imperative wording: qwen3.5:9b answered it at once, "Reply now ... Plain text is fine" got
+# another command from both qwen3.5:9b and nemotron
+FINAL_ANSWER_PROMPT = (
+    "[FINAL ANSWER] Stop: no steps are left and no command will run. Write your final answer "
+    "now as plain text, from what you already found or did, and say what is left."
+)
+FINAL_ANSWER_RETRY = "Not run: no steps are left. Write your final answer now as plain text."
+FINAL_NOT_RUN = "Not run: no steps are left."
+
+
+def _answer_of(resp: ModelResponse) -> str:
+    """The answer in a final-answer reply (H1): `done` stdin or the text after `done`, else the
+    plain text of a reply without a command. Any other command is not an answer."""
+    action = resp.action
+    if action is None:
+        return (resp.content or "").strip()
+    cmd = action.cmd.strip()
+    if cmd == "done" or cmd.startswith("done "):
+        return (action.stdin or cmd[4:]).strip().strip("'").strip()
+    return ""
+
+
+def _with_answer(answer: str, text: str) -> str:
+    """The answer leads the stuck summary, then a blank line (H1)."""
+
+    return f"{answer[:KEPT_REPLY_CHARS]}\n\n{text}"
+
+
+def _text_only(provider: ModelProvider) -> dict[str, bool]:
+    """`answer_only=True` for providers that take it (H1c); custom providers get the plain call."""
+    params = inspect.signature(provider.generate).parameters
+    return {"answer_only": True} if "answer_only" in params else {}
+
+
 _READERS = {"cat", "head", "tail", "grep", "rg", "sed", "wc", "awk", "gawk", "mawk"}
 
 
@@ -122,8 +165,6 @@ def read_target(cmd: str) -> str | None:
 # change, repeated every QUIET_NUDGE_EVERY quiet steps (#132)
 QUIET_NUDGE_STEPS = 6
 QUIET_NUDGE_EVERY = 8
-# Steps-left hint (#133): once, at 75% of the step limit, for limits of at least 8 steps
-STEPS_LEFT_MIN = 8
 # Exploration nudge (#127): same hint when nothing was changed yet, first at 12 quiet steps,
 # then every 8 more while the model keeps only reading.
 EXPLORE_NUDGE_STEPS = 12
@@ -256,34 +297,6 @@ _LOOKUPS = [
     ["mem", "recall"],
     *(["agent", v] for v in ("status", "wait", "read", "query")),
 ]
-
-
-def suite_for(rel: str, root: Path, since: float) -> str | None:
-    """The test file next to `rel` (`x_test.py` or `test_x.py`) when `rel` existed at `since`."""
-    path = root / rel
-    stem = path.stem
-    if stem.startswith("test_") or stem.endswith("_test"):
-        return None
-    try:
-        if path.stat().st_mtime >= since:
-            return None
-    except OSError:
-        return None
-    # ponytail: Python test names only; other languages are written at once
-    for name in (f"{stem}_test.py", f"test_{stem}.py"):
-        if (path.parent / name).is_file():
-            return os.path.normpath(str(Path(rel).parent / name))
-    return None
-
-
-def suite_read(cmd: str, root: Path, since: float) -> tuple[str, str] | None:
-    """(starting file, its test file) when `cmd` names the test file of a starting file."""
-    for word in re.findall(r"[\w./-]+\.py\b", cmd):
-        test = Path(word)
-        src = str(test.with_name(test.stem.removeprefix("test_").removesuffix("_test") + ".py"))
-        if src != word and suite_for(src, root, since) == os.path.normpath(word):
-            return os.path.normpath(src), os.path.normpath(word)
-    return None
 
 
 def is_quiet(cmd: str) -> bool:
@@ -1269,15 +1282,11 @@ class Harness:
         changes: list[str] = []
         green_cmd: str | None = None  # last passing test run, cleared by any later change
         green_nudged = False
-        small_hinted: set[str] = set()  # files already pointed to `edit replace`
         empty_streak = 0  # consecutive empty model replies (#135)
         last_run: tuple[int, frozenset[str]] | None = None  # outcome of the last test run
         edited_since_run = False  # a change since the last test run
         traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
         last_test: str | None = None  # last test command, re-run by the harness after each edit
-        near_hinted = False  # pointed once to a small edit when only a few tests fail
-        asked_tests = False  # asked once to state what the tests expect before the first rewrite
-        reasoning_due: str | None = None  # the file whose rewrite waits on that answer
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
         # Restart state: failing check runs per command (counted once per edit in between)
         fail_runs: dict[str, int] = {}
@@ -1288,7 +1297,6 @@ class Harness:
         # the run that failed fewest tests while passing most, and those files as they were then
         best: tuple[int, frozenset[str], dict[str, bytes]] | None = None
         quiet_run = 0
-        steps_hinted = False
         # A session with neither bash nor edit can only look things up: its nudges say so
         can_edit = "bash" in mux.tool_names or "edit" in mux.tool_names
         last_reply = ""  # the model's last plain-text answer, never confirmed with `done`
@@ -1301,6 +1309,56 @@ class Harness:
                 + last_reply[:KEPT_REPLY_CHARS]
             )
 
+        async def final_answer(step: int) -> str | None:
+            """The model calls left once no step is left (H1): a `done` or plain-text reply is the
+            answer. A command is not run; it is answered once with FINAL_ANSWER_RETRY."""
+            self.store.add_turn(
+                session_id=session_id, step=step, role="user", content=FINAL_ANSWER_PROMPT
+            )
+            answer = ""
+            for attempt in (0, 1):
+                messages = assembler.assemble(
+                    system_prompt=system_prompt,
+                    goal=rec.goal,
+                    turns=after_restart(self.store.get_turns(session_id)),
+                    observations=self.store.list_observations(session_id),
+                    pins=self.store.get_pins(session_id),
+                    current_step=step,
+                )
+                try:
+                    resp = await provider.generate(
+                        messages, [ACT_TOOL_SCHEMA], **_text_only(provider)
+                    )
+                except Exception:
+                    # The answer is a bonus: a failing provider ends the session as it would have
+                    return None
+                self.store.update_session(
+                    session_id,
+                    add_prompt_tokens=resp.prompt_tokens,
+                    add_completion_tokens=resp.completion_tokens,
+                )
+                answer = _answer_of(resp)
+                act = resp.action
+                self.store.add_turn(
+                    session_id=session_id,
+                    step=step,
+                    role="assistant",
+                    content=resp.content or "",
+                    tool_cmd=act.cmd if act else None,
+                    tool_stdin=act.stdin if act else None,
+                )
+                again = act is not None and not answer and not attempt
+                if act is not None:  # every replayed call keeps its result
+                    self.store.add_turn(
+                        session_id=session_id,
+                        step=step,
+                        role="tool",
+                        content=FINAL_ANSWER_RETRY if again else FINAL_NOT_RUN,
+                    )
+                if not again:
+                    break
+            return answer or None
+
         def reset_originals(files: dict[str, bytes]) -> list[str]:
             """Put the files the model changed back as in `files`; the names of those reset."""
             reset = []
@@ -1312,7 +1370,9 @@ class Harness:
                         reset.append(rel)
             return reset
 
-        def get_unstuck(step: int, check: str | None, out: str | None) -> SessionRecord | None:
+        async def get_unstuck(
+            step: int, check: str | None, out: str | None
+        ) -> SessionRecord | None:
             """Stuck, however it showed (the same check failing after edits, or stalls the
             wrap-up did not end): restart from a described state, and once restarts are used
             up hand the task back to the caller (WAITING_INPUT) instead of burning steps."""
@@ -1341,7 +1401,8 @@ class Harness:
                 failing=sorted(last_run[1])[:5] if last_run else None,
             )
             if handback:
-                text += reply_note()
+                answer = await final_answer(step)
+                text = _with_answer(answer, text) if answer else text + reply_note()
                 self.store.add_turn(
                     session_id=session_id, step=step, role="tool", content=f"[WAITING_INPUT] {text}"
                 )
@@ -1450,31 +1511,6 @@ class Harness:
                     add_completion_tokens=completion_tokens,
                 )
                 # 3. If the model emitted plain text without calling `act`, nudge it (Rule 3)
-                if (
-                    resp.action is None
-                    and reasoning_due
-                    and (resp.content or "").strip()
-                    and not resp.empty
-                ):
-                    # #173: the plain-words answer to [BEFORE WRITING] is the expected reply
-                    self.store.add_turn(
-                        session_id=session_id,
-                        step=step,
-                        role="assistant",
-                        content=resp.content,
-                        prompt_tokens=prompt_tokens,
-                        completion_tokens=completion_tokens,
-                        duration_ms=llm_duration_ms,
-                    )
-                    self.store.add_turn(
-                        session_id=session_id,
-                        step=step,
-                        role="user",
-                        content=f"Now write `{reasoning_due}` so it gives exactly those results.",
-                    )
-                    empty_streak = 0
-                    reasoning_due = None
-                    continue
                 if resp.action is None:
                     prose = (resp.content or "").strip()
                     if len(prose) >= PROSE_ANSWER_CHARS:
@@ -1527,7 +1563,6 @@ class Harness:
                     continue
 
                 empty_streak = 0
-                reasoning_due = None
                 cmd = normalize_cmd(resp.action.cmd)
                 stdin = resp.action.stdin
                 action_sig = (cmd.strip(), stdin)
@@ -1581,6 +1616,7 @@ class Harness:
                                 session_id=session_id,
                                 step=step,
                                 role="tool",
+                                rule=TELL_WRAPUP,
                                 content=(
                                     "[WRAP UP] You keep repeating a command. If the task is "
                                     'complete, call `act("done", stdin="<what is done and what '
@@ -1599,7 +1635,7 @@ class Harness:
                             done_rec = self.store.get_session(session_id)
                             assert done_rec is not None
                             return done_rec
-                        if (handed := get_unstuck(step, None, None)) is not None:
+                        if (handed := await get_unstuck(step, None, None)) is not None:
                             return handed
                         continue
                 if range_stall:
@@ -1669,34 +1705,6 @@ class Harness:
                         content=(
                             f"[{live_obs} unchanged] `{cmd.strip()}` was already read and the "
                             "file has not changed since; its output is above. Use it."
-                        ),
-                    )
-                    continue
-
-                rewrites = [os.path.normpath(p) for p in whole_file_targets(cmd)]
-
-                # #173: before the first rewrite of a starting file, state what its tests expect
-                # (AlphaCodium, Ridnik et al. 2024: test reasoning before code); asked once
-                root = Path(sandbox.workspace_root)
-                suite = (
-                    None
-                    if asked_tests or not rewrites
-                    else suite_for(rewrites[0], root, rec.created_at)
-                )
-                if suite:
-                    asked_tests, reasoning_due = True, rewrites[0]
-                    last_action_sig = None  # sending the same write again is not a loop
-                    action_history.pop()
-                    self.store.update_turn_telemetry(assistant_turn_id, event_type="nudge")
-                    self.store.add_turn(
-                        session_id=session_id,
-                        step=step,
-                        role="tool",
-                        content=(
-                            f"[BEFORE WRITING] `{reasoning_due}` was not written yet. First reply "
-                            f"in plain words, with no command: for the 3 tests in `{suite}` that "
-                            "look hardest, what each one calls, the exact result it expects, and "
-                            f"how your design gives it. Then write `{reasoning_due}`."
                         ),
                     )
                     continue
@@ -1935,6 +1943,7 @@ class Harness:
                     edited_since_run = True
 
                 out = dispatch.output
+                tells: list[str] = []  # ids of the notices this turn carries (H3)
                 # F5: a bash command that left a Python file unparsable is undone first, so the
                 # auto-test and the notes below see the file as it was before the command
                 broken: list[tuple[str, bytes, SyntaxError]] = []
@@ -1958,21 +1967,6 @@ class Harness:
                     and not tests_green(tcmd, tout)
                 ):
                     out += failing_test_source(tout, Path(sandbox.workspace_root))
-                elif (
-                    is_quiet(cmd)
-                    and not asked_tests
-                    and not _TEST_CMD.search(cmd)
-                    and (pair := suite_read(cmd, Path(sandbox.workspace_root), rec.created_at))
-                ):
-                    # #173: test reasoning (AlphaCodium) asked with the test file, so no
-                    # typed version is held back for it
-                    asked_tests, reasoning_due = True, pair[0]
-                    out += (
-                        f"\n[BEFORE WRITING] Before you write `{pair[0]}`, reply in plain words, "
-                        f"with no command: for the 3 tests in `{pair[1]}` that look hardest, what "
-                        "each one calls, the exact result it expects, and how your design gives "
-                        f"it. Then write `{pair[0]}`."
-                    )
                 if _TEST_CMD.search(tcmd) and (outcome := run_outcome(tout)):
                     if last_run:
                         out += regression_note(last_run, outcome)
@@ -1987,15 +1981,6 @@ class Harness:
                         root = Path(sandbox.workspace_root)
                         smallest = smallest_failing(test_id, outcome[1], root)
                         out += await runtime_trace(sandbox, smallest)
-                    if near and outcome[0] > 2 * n_failed and not near_hinted:
-                        # #173: paasio at 22/25 spent its last 100 s on 103-line rewrites
-                        near_hinted = True
-                        target = f"`edit replace {min(originals)}`" if originals else "a small edit"
-                        out += (
-                            f"\n[NUDGE] {n_failed} of {outcome[0]} tests still fail. Fix the code "
-                            f"they call with {target}; a whole-file rewrite is slow and can break "
-                            "what passes."
-                        )
                     last_run = outcome
                     edited_since_run = False
                     if outcome[0] > 2 * n_failed and (best is None or n_failed < best[0]):
@@ -2009,12 +1994,11 @@ class Harness:
                 # a reverted file is the old code again: no "unchanged" note about it
                 if before and not broken and not dispatch.is_error:
                     root = Path(sandbox.workspace_root)
-                    out += unchanged_note(before, root) or small_change_note(
-                        cmd, before, root, small_hinted
-                    )
+                    out += unchanged_note(before, root)
                 if changed and not dispatch.is_error and tests_green(tcmd, tout):
                     green_cmd = tcmd
                     if not green_nudged:
+                        tells.append(TELL_GREEN)
                         out += (
                             "\n[NUDGE] Tests pass after your last change. If the task is complete "
                             'call `act("done", stdin="...")` now.'
@@ -2027,6 +2011,7 @@ class Harness:
                     and quiet_run >= QUIET_NUDGE_STEPS
                     and (quiet_run - QUIET_NUDGE_STEPS) % QUIET_NUDGE_EVERY == 0
                 ):
+                    tells.append(TELL_QUIET)
                     out += (
                         f"\n[NUDGE] No file changes for {quiet_run} steps. If the task is "
                         "complete call `done`; otherwise make your next edit."
@@ -2036,6 +2021,7 @@ class Harness:
                     and quiet_run >= EXPLORE_NUDGE_STEPS
                     and (quiet_run - EXPLORE_NUDGE_STEPS) % EXPLORE_NUDGE_EVERY == 0
                 ):
+                    tells.append(TELL_EXPLORE)
                     if can_edit:
                         out += (
                             f"\n[NUDGE] No file changes in {quiet_run} steps. Make your edit now, "
@@ -2046,26 +2032,6 @@ class Harness:
                             f"\n[NUDGE] {quiet_run} lookups and no answer yet. Call `done` with "
                             "what you found, or do one more lookup."
                         )
-
-                # The step before the last: the one call left is for the answer (once per session)
-                if step_limit >= STEPS_LEFT_MIN and step == step_limit - 1:
-                    out += (
-                        "\n[LAST STEP] Your next call is the last one. Call `done` now with your "
-                        "answer: what you found or did, and what is left."
-                    )
-                if not steps_hinted and step_limit >= STEPS_LEFT_MIN and step >= step_limit * 0.75:
-                    left = step_limit - step
-                    if changed:
-                        out += (
-                            f"\n[NUDGE] {left} steps left. Finish the current edit, then "
-                            "call `done` with what is done and what is left."
-                        )
-                    else:
-                        out += (
-                            f"\n[NUDGE] {left} steps left. Call `done` with your answer "
-                            "before they run out."
-                        )
-                    steps_hinted = True
 
                 # The same check failed again after another edit (counted once per edit between)
                 check = tcmd.strip()
@@ -2108,12 +2074,13 @@ class Harness:
                     content=out,
                     obs_id=obs.id,
                     duration_ms=tool_duration_ms,
+                    rule=",".join(tells),
                 )
 
                 # Restart: continue from a fresh history that describes the state instead of
                 # replaying the failed attempts.
                 if red and fail_runs.get(check, 0) >= RESTART_AFTER_FAILS:
-                    if (handed := get_unstuck(step, check, tout)) is not None:
+                    if (handed := await get_unstuck(step, check, tout)) is not None:
                         return handed
 
             # Max steps reached without explicit `done`
@@ -2123,13 +2090,14 @@ class Harness:
             else:
                 # Out of steps without `done` is stuck too: hand back what is known (`send`
                 # extends the budget) instead of failing
+                answer = await final_answer(step_limit)
                 text = await self._unfinished_result(
                     f"[STUCK: out of steps ({rec.max_steps}) without calling `done`.]",
                     sandbox,
                     verify_commands,
                     changes,
                 )
-                text += reply_note()
+                text = _with_answer(answer, text) if answer else text + reply_note()
                 self.store.add_turn(
                     session_id=session_id,
                     step=step_limit,

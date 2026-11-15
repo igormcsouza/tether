@@ -700,7 +700,7 @@ async def test_range_shifting_reads_warn_then_hand_back(
     cmds = [f"edit view a.py --lines {i}:{i + 9}" for i in range(1, 60)]
     run = await _run_commands(tmp_path, cmds, max_steps=60)
     assert run.session.status == "WAITING_INPUT"
-    assert (run.session.result or "").startswith("[STUCK")  # after both restarts, handed back
+    assert "[STUCK" in (run.session.result or "")  # after both restarts, handed back
     assert run.session.step_count < 60
     warn = "\n".join(m["content"] for m in run.provider.recorded_calls[3])
     assert "3 reads of `a.py`" in warn
@@ -780,15 +780,6 @@ async def test_quiet_nudge_restarts_after_the_next_change(tmp_path: Path) -> Non
     obs = run.provider.store.list_observations(run.session.id)
     nudges = [o.step for o in obs.values() if "[NUDGE] No file changes for" in o.raw_output]
     assert nudges == [7, 14]
-
-
-async def test_steps_left_hint_once_at_three_quarters(tmp_path: Path) -> None:
-    # #133: max_steps=12, hint exactly once at step 9 (3 steps left)
-    run = await _run_commands(tmp_path, [f"ping h{i}.com" for i in range(11)], max_steps=12)
-    obs = run.provider.store.list_observations(run.session.id)
-    hints = [o for o in obs.values() if "steps left" in o.raw_output]
-    assert [o.step for o in hints] == [9]
-    assert "3 steps left" in hints[0].raw_output and "call `done`" in hints[0].raw_output
 
 
 async def test_no_steps_left_hint_for_tiny_budgets(tmp_path: Path) -> None:
@@ -922,7 +913,7 @@ async def test_max_steps_result_reports_changes_and_gate(tmp_path: Path) -> None
     """#171 floor: a session that never calls done still ends with something usable."""
     write = "edit write a.py\nprint(1)"
     res = await _unfinished(tmp_path, [write], ["false"])
-    assert res.startswith("[STUCK: out of steps (1) without calling `done`.]")
+    assert "[STUCK: out of steps (1) without calling `done`.]" in res
     assert "Changed: `edit write a.py" in res and "Gate `false` fails (exit 1)" in res
     (tmp_path / "ok").mkdir()
     assert "Finished by the harness" in await _unfinished(tmp_path / "ok", [write], ["true"])
@@ -982,7 +973,7 @@ async def test_unfinished_session_with_green_last_test_is_completed(tmp_path: Pa
 async def test_a_change_after_the_green_run_cancels_it(tmp_path: Path) -> None:
     session, _ = await _green_run(tmp_path, [WRITE, TEST, "edit write b.txt\ny"])
     assert session.status == "WAITING_INPUT"
-    assert (session.result or "").startswith("[STUCK: out of steps")
+    assert "[STUCK: out of steps" in (session.result or "")
 
 
 async def test_green_run_that_now_fails_stays_failed(tmp_path: Path) -> None:
@@ -1006,7 +997,7 @@ async def test_green_run_that_now_fails_stays_failed(tmp_path: Path) -> None:
     )
     session = await h.run("goal")
     assert session.status == "WAITING_INPUT"
-    assert (session.result or "").startswith("[STUCK: out of steps")
+    assert "[STUCK: out of steps" in (session.result or "")
 
 
 async def test_green_rerun_that_crashes_leaves_the_session_failed(
@@ -1039,7 +1030,7 @@ async def test_green_rerun_that_crashes_leaves_the_session_failed(
     )
     session = await h.run("goal")
     assert session.status == "WAITING_INPUT"
-    assert (session.result or "").startswith("[STUCK: out of steps")
+    assert "[STUCK: out of steps" in (session.result or "")
 
 
 async def test_read_only_stall_gets_one_wrap_up_turn_and_can_finish(tmp_path: Path) -> None:
@@ -1053,7 +1044,7 @@ async def test_read_only_stall_gets_one_wrap_up_turn_and_can_finish(tmp_path: Pa
 async def test_ignoring_the_wrap_up_restarts_twice_then_hands_back(tmp_path: Path) -> None:
     run = await _run_commands(tmp_path, ["ls"] * 45, max_steps=60)
     assert run.session.status == "WAITING_INPUT"
-    assert (run.session.result or "").startswith("[STUCK at step")
+    assert "[STUCK at step" in (run.session.result or "")
     assert "after 2 restarts" in (run.session.result or "")
     sent = "\n".join(m["content"] for c in run.provider.recorded_calls for m in c)
     assert "[WRAP UP]" in sent and "[RESTART at step" in sent
@@ -1072,7 +1063,7 @@ async def test_ignoring_the_wrap_up_after_a_change_hands_back_what_was_tried(
 ) -> None:
     run = await _run_commands(tmp_path, ["ping a.com", *["ls"] * 45], max_steps=60)
     assert run.session.status == "WAITING_INPUT"
-    assert (run.session.result or "").startswith("[STUCK at step")
+    assert "[STUCK at step" in (run.session.result or "")
     assert "What was tried so far:" in (run.session.result or "")
 
 
@@ -1080,6 +1071,16 @@ ANSWER = (
     "Yes, there is news: after losing the election he left the country by land, then flew "
     "to the United States, according to several reports."
 )
+
+
+class _NoFinalAnswer(FakeScriptedProvider):
+    """Empty reply on the final-answer turn: the prose kept earlier is the answer."""
+
+    async def generate(self, messages, tools):
+        if any("[FINAL ANSWER]" in str(m.get("content") or "") for m in messages):
+            self.recorded_calls.append(list(messages))
+            return ModelResponse(content="")
+        return await super().generate(messages, tools)
 
 
 async def _prose_then(tmp_path: Path, cmds: list[str], prose: str, max_steps: int) -> Any:
@@ -1090,7 +1091,7 @@ async def _prose_then(tmp_path: Path, cmds: list[str], prose: str, max_steps: in
     script = [ModelResponse(content="", action=ActionCall(cmd="ping a"))]
     script += [ModelResponse(content=prose)]
     script += [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
-    provider = FakeScriptedProvider(script)
+    provider = _NoFinalAnswer(script)
     h = Harness(db_path=tmp_path / "t.db", tools=[ping], provider=provider, max_steps=max_steps)
     return await h.run("goal"), provider
 
@@ -1118,7 +1119,7 @@ async def test_a_session_out_of_steps_keeps_the_last_prose_answer(tmp_path: Path
 async def test_a_stuck_session_keeps_the_last_prose_answer(tmp_path: Path) -> None:
     session, _ = await _prose_then(tmp_path, ["ping b"] * 45, ANSWER, 60)
     assert session.status == "WAITING_INPUT"
-    assert (session.result or "").startswith("[STUCK at step")
+    assert "[STUCK at step" in (session.result or "")
     assert ANSWER in (session.result or "")
 
 

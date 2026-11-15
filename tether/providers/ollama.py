@@ -147,13 +147,15 @@ class OllamaProvider:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
+        *,
+        answer_only: bool = False,
     ) -> ModelResponse:
         payload: dict[str, Any] = {
             "model": self.model_name,
             "messages": [
                 {**m, "tool_name": "act"} if m.get("role") == "tool" else m for m in messages
             ],
-            "tools": tools,
+            **({} if answer_only else {"tools": tools}),
             "stream": False,
             "keep_alive": self.keep_alive,
             "options": {"num_ctx": self.num_ctx},  # sampling is the model's own (#173)

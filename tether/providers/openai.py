@@ -72,6 +72,8 @@ class OpenAIProvider:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
+        *,
+        answer_only: bool = False,
     ) -> ModelResponse:
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self.api_key:
@@ -81,6 +83,7 @@ class OpenAIProvider:
             "model": self.model_name,
             "messages": [_to_openai(m) for m in messages],
             "tools": tools,
+            **({"tool_choice": "none"} if answer_only else {}),
             **self.params,
         }
         client = self._get_client()

@@ -213,13 +213,6 @@ def test_quiet_stretch_nudge_repeats_while_the_model_keeps_reading(tether: Tethe
     assert len(nudged) == 2 and r["status"] == "COMPLETED"
 
 
-def test_model_is_told_once_how_many_steps_are_left(tether: Tether, chaos) -> None:
-    chaos.script(*[f"bash echo {i}" for i in range(9)], ("done", "ok"))
-    r = tether.run("budget", "--tools", "bash", "--max-steps", "12")  # #133: hint at step 9
-    left = [o for o in tether.tool_outputs(r["id"]) if "steps left" in o]
-    assert len(left) == 1 and "3 steps left" in left[0]
-
-
 def test_old_observations_fold_to_a_recallable_tombstone(tether: Tether, chaos) -> None:
     big = "python3 -c \"print('x'*3000)\""
     chaos.script(f"bash {big}", "bash echo 1", "bash echo 2", "bash echo 3", ("done", "ok"))

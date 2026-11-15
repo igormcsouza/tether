@@ -64,6 +64,8 @@ class AnthropicProvider:
         self,
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]],
+        *,
+        answer_only: bool = False,
     ) -> ModelResponse:
         system_text = ""
         chat_msgs: list[dict[str, Any]] = []
@@ -134,6 +136,7 @@ class AnthropicProvider:
             "max_tokens": self.max_tokens,
             "messages": chat_msgs,
             "tools": anthropic_tools,
+            **({"tool_choice": {"type": "none"}} if answer_only else {}),
             **self.params,
         }
         if system_text:

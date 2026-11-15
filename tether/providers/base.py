@@ -293,8 +293,13 @@ def action_from_tool_call(name: object, raw_args: str | dict[str, Any]) -> Actio
     return ActionCall(cmd=fn)
 
 
-_PARAM_CMD_RE = re.compile(r'<parameter\s+name="cmd"\s*>(?P<value>.*?)</parameter>', re.DOTALL)
-_PARAM_STDIN_RE = re.compile(r'<parameter\s+name="stdin"\s*>(?P<value>.*?)</parameter>', re.DOTALL)
+# `<parameter name="cmd">` and the Qwen3 XML form `<parameter=cmd>`
+_PARAM_CMD_RE = re.compile(
+    r'<parameter(?:\s+name="cmd"|=cmd)\s*>(?P<value>.*?)</parameter>', re.DOTALL
+)
+_PARAM_STDIN_RE = re.compile(
+    r'<parameter(?:\s+name="stdin"|=stdin)\s*>(?P<value>.*?)</parameter>', re.DOTALL
+)
 
 Dialect = Callable[[str], "ActionCall | None"]
 

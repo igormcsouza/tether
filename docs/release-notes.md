@@ -2,9 +2,19 @@
 
 ## Unreleased
 
+### Changed
+
+- A session that runs out of steps (or is handed back stuck) gets one final answer-only model call (Ollama gets no tools, OpenAI-compatible and Anthropic get `tool_choice: none`): a plain-text or `done` reply leads the `[STUCK ...]` summary, and a command in it is not run but answered once. On the probe tasks nemotron and qwen3.5:9b now hand back their review or research answer instead of nothing. The `[LAST STEP]` notice and the 75% `steps left` notice are removed: models ignored them 4 of 4 times.
+- The Qwen3 XML tool-call form written as text (`<function=act><parameter=cmd>...`) is parsed as a command.
+- `tether stats` shows `notices followed:`: for each notice that asks the model to act, how often it fired and how often the next step did what it asked.
+
 ### Fixed
 
 - A failed tool now says what happened and what to do next. `web fetch` names the HTTP status and a next step for 429, 401/403, 404/410 and 5xx, or the unreachable host; a page with no readable text is an error, not an empty reply. A tool that raises shows one `Error: <tool> failed:` line and the hint `Instead: run <tool> --help`. `web fetch` reads only the `main` or `article` element (or the role=main element) when the page has one, so site navigation no longer fills the reply.
+
+### Removed
+
+- The `[BEFORE WRITING]` question after the first read of a test file, and the notices that point to `edit replace` after a small whole-file rewrite or a near pass: on the v0.2.18 bench qwen3.5:9b followed them 0 of 68 and 1 of 50 times (#272).
 
 ## v0.3.1 (2026-11-14)
 
