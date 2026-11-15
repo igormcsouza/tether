@@ -116,6 +116,72 @@ def html_to_text(raw_html: str) -> str:
     return parser.get_text()
 
 
+# Void elements never get an end tag, so they must not stay on the open-element stack.
+_VOID_TAGS = frozenset(
+    {
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    }
+)
+
+
+class _MainContentParser(_HTMLToTextParser):
+    """Keeps only the text inside <main>, <article> or [role=main] elements."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Open elements as (tag, is_main); a stack keeps nested divs
+        # from closing a main region early.
+        self._stack: list[tuple[str, bool]] = []
+        self._found_main = False
+
+    def _main_open(self) -> bool:
+        return any(is_main for _, is_main in self._stack)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        t = tag.lower()
+        if t not in _VOID_TAGS:
+            is_main = t in ("main", "article") or ("role", "main") in attrs
+            self._stack.append((t, is_main))
+            self._found_main = self._found_main or is_main
+        super().handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag: str) -> None:
+        t = tag.lower()
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i][0] == t:
+                del self._stack[i:]
+                break
+        super().handle_endtag(tag)
+
+    def handle_data(self, data: str) -> None:
+        if self._main_open():
+            super().handle_data(data)
+
+
+def extract_main_content(raw_html: str) -> str | None:
+    """Extract text from <main>, <article>, or [role=main] if present.
+    Returns None if no main content element found.
+    """
+    parser = _MainContentParser()
+    parser.feed(raw_html)
+    if parser._found_main:
+        return parser.get_text()
+    return None
+
+
 def _clip(text: str, max_chars: int, url: str) -> str:
     """Cut text to max_chars and say how to read on from a few words further down."""
     if len(text) <= max_chars:
@@ -149,6 +215,39 @@ def _unwrap_ddg_url(href: str) -> str:
         if "uddg" in qs and qs["uddg"]:
             return urllib.parse.unquote(qs["uddg"][0])
     return href
+
+
+def _format_http_error_from_response(resp: httpx.Response, url: str) -> str:
+    """Format an HTTP error from a response with a helpful hint."""
+    status = resp.status_code
+    reason = resp.reason_phrase or ""
+    return _format_http_error_status(url, status, reason)
+
+
+def _format_http_error_status(url: str, status: int, reason: str) -> str:
+    """Format an HTTP error with a helpful hint based on status code."""
+    hints = {
+        429: "wait a minute or fetch another source",
+        401: "the page needs a login; fetch another source",
+        403: "the page needs a login; fetch another source",
+        404: "the page does not exist; search for the right URL",
+        410: "the page does not exist; search for the right URL",
+    }
+    # 5xx errors
+    if 500 <= status < 600:
+        hint = "the site failed; try again later or fetch another source"
+    else:
+        hint = hints.get(status, "try again or fetch another source")
+
+    reason_str = f" {reason}" if reason else ""
+    return f"Error: {url} answered {status}{reason_str}. Instead: {hint}"
+
+
+def _format_network_error(host: str, reason: str) -> str:
+    """Format a network error with a helpful hint."""
+    return (
+        f"Error: could not reach {host} ({reason}). Instead: check the URL or fetch another source."
+    )
 
 
 SEARCH_REFUSED = (
@@ -364,7 +463,19 @@ def make_web_tool(
                     resp = await client.get(url)
                 except (PrivateAddressError, HostNotAllowedError) as exc:
                     return f"Error: {exc}"
-                resp.raise_for_status()
+                except httpx.RequestError as exc:
+                    host = urllib.parse.urlparse(url).hostname or "unknown"
+                    reason = (
+                        "timeout"
+                        if isinstance(exc, httpx.TimeoutException)
+                        else (str(exc).splitlines() or [type(exc).__name__])[0][:120]
+                    )
+                    return _format_network_error(host, reason)
+
+                # Check for HTTP error status
+                if resp.status_code >= 400:
+                    return _format_http_error_from_response(resp, url)
+
                 ctype = resp.headers.get("content-type", "")
                 is_html = "html" in ctype.lower() or "<html" in resp.text[:500].lower()
                 source, head = resp.text, ""
@@ -375,7 +486,24 @@ def make_web_tool(
                     else:
                         source = source[start:]
                         head = f"[from #{anchor}]\n"
-                full = html_to_text(source) if is_html else source.strip()
+
+                # Extract main content if HTML
+                if is_html:
+                    main_text = extract_main_content(source)
+                    if main_text is not None:
+                        full = main_text
+                    else:
+                        full = html_to_text(source)
+                else:
+                    full = source.strip()
+
+                # Check for empty content
+                if not full:
+                    return (
+                        f"Error: {url} has no readable text (maybe built by JavaScript). "
+                        "Instead: fetch another source."
+                    )
+
                 if from_text is not None:
                     at = full.lower().find(from_text.lower())
                     if at < 0:

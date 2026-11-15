@@ -361,8 +361,10 @@ class Multiplexer:
         except SandboxViolationError as exc:
             return DispatchResult(output=str(exc), is_error=True, error_kind="sandbox_violation")
         except Exception as exc:
+            # Honest failure: one line with first line of exception, plus hint to run --help
+            first_line = (str(exc).splitlines() or ["unknown error"])[0][:200]
             return DispatchResult(
-                output=f"Error executing `{name}`: {exc}\n{spec.help_text()}",
+                output=f"Error: {name} failed: {first_line}\nInstead: run `{name} --help`",
                 is_error=True,
                 error_kind="runtime_error",
             )

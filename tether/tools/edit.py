@@ -48,7 +48,7 @@ def _replace_with_blocks(sandbox: SandboxPolicy, path: str, stdin: str) -> str:
     """Apply SEARCH/REPLACE blocks to `path`; shared by `edit replace` and `edit write`."""
     target = sandbox.resolve_safe_path(path, write=True)
     if not target.is_file():
-        return f"Error: file `{path}` not found."
+        return f"Error: file `{path}` not found. Instead: check the path with `ls`."
     old_text = target.read_text(encoding="utf-8", errors="replace")
     res = _apply_blocks(old_text, stdin)
     if isinstance(res, str):
@@ -140,7 +140,10 @@ def _apply_patch(sandbox: SandboxPolicy, patch: str) -> str:
             staged.append((name, verb, "\n".join(ln[1:] for ln in body) + "\n"))
         else:
             if not target.is_file():
-                return f"Error: file `{name}` not found; nothing changed."
+                return (
+                    f"Error: file `{name}` not found; nothing changed. "
+                    "Instead: check the path with `ls`."
+                )
             text = target.read_text(encoding="utf-8", errors="replace")
             for i, (old_lines, new_lines) in enumerate(_patch_hunks(body), 1):
                 old_s, new_s = "\n".join(old_lines), "\n".join(new_lines)
@@ -241,6 +244,11 @@ def _parse_line_range(spec: str, total_lines: int) -> tuple[int, int] | str:
         return f"invalid line range `{spec}` (expected integers `start:end`)."
     start = max(1, start)
     end = min(max(start, end), max(1, total_lines))
+    if total_lines and start > total_lines:
+        return (
+            f"line range `{spec}` is outside the file ({total_lines} lines). "
+            "Instead: view the file and use a range inside it."
+        )
     return start, end
 
 
@@ -267,7 +275,7 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
                 return f"Error: missing `<path>`.\n{help_str}"
             target = sandbox.resolve_safe_path(args[1], write=False)
             if not target.is_file():
-                return f"Error: file `{args[1]}` not found."
+                return f"Error: file `{args[1]}` not found. Instead: check the path with `ls`."
             lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
             start, end = 1, min(len(lines), 100)
             if "--lines" in args:
@@ -345,7 +353,7 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
                 return f"Error: `edit insert` needs `--line N` after the path.\n{help_str}"
             target = sandbox.resolve_safe_path(args[1], write=True)
             if not target.is_file():
-                return f"Error: file `{args[1]}` not found."
+                return f"Error: file `{args[1]}` not found. Instead: check the path with `ls`."
             idx = args.index("--line")
             if idx + 1 >= len(args):
                 return f"Error: `--line` needs a number, e.g. `--line 3`.\n{help_str}"
@@ -386,7 +394,7 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
                 return f"Error: `edit replace` requires replacement block in `stdin`.\n{help_str}"
             target = sandbox.resolve_safe_path(args[1], write=True)
             if not target.is_file():
-                return f"Error: file `{args[1]}` not found."
+                return f"Error: file `{args[1]}` not found. Instead: check the path with `ls`."
             idx = args.index("--lines")
             if idx + 1 >= len(args):
                 return f"Error: `--lines` requires `start:end`.\n{help_str}"
