@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- A failed tool now says what happened and what to do next. `web fetch` names the HTTP status and a next step for 429, 401/403, 404/410 and 5xx, or the unreachable host; a page with no readable text is an error, not an empty reply. A tool that raises shows one `Error: <tool> failed:` line and the hint `Instead: run <tool> --help`. `web fetch` reads only the `main` or `article` element (or the role=main element) when the page has one, so site navigation no longer fills the reply.
+
 ## v0.3.1 (2026-11-14)
 
 ### Added
