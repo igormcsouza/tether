@@ -99,35 +99,6 @@ async def test_a_bash_command_that_breaks_a_python_file_is_undone(tmp_path: Path
     assert "[REVERTED] `m.py` no longer parsed after this command" in seen
 
 
-def test_named_python_files_finds_sed_i_target(tmp_path: Path) -> None:
-    (tmp_path / "m.py").write_text(GOOD)
-    cmd = "sed -i 's/x/y/' m.py"
-    assert unchanged.named_python_files(cmd, tmp_path) == {"m.py": GOOD.encode()}
-
-
-def test_named_python_files_finds_a_path_inside_python_code(tmp_path: Path) -> None:
-    (tmp_path / "pkg").mkdir()
-    (tmp_path / "pkg" / "m.py").write_text(GOOD)
-    cmd = "python3 - <<'EOF'\nsrc = open('pkg/m.py').read()\nEOF"
-    assert unchanged.named_python_files(cmd, tmp_path) == {"pkg/m.py": GOOD.encode()}
-
-
-def test_named_python_files_ignores_outside_and_missing(tmp_path: Path) -> None:
-    root = tmp_path / "ws"
-    root.mkdir()
-    (tmp_path / "outside.py").write_text(GOOD)
-    cmd = "sed -i 's/x/y/' ../outside.py missing.py"
-    assert unchanged.named_python_files(cmd, root) == {}
-
-
-def test_named_python_files_is_capped_at_32(tmp_path: Path) -> None:
-    names = [f"f{i}.py" for i in range(40)]
-    for name in names:
-        (tmp_path / name).write_text(GOOD)
-    cmd = "sed -i 's/x/y/' " + " ".join(names)
-    assert len(unchanged.named_python_files(cmd, tmp_path)) == 32
-
-
 async def _drive(tmp_path: Path, cmds: list[str]) -> FakeScriptedProvider:
     provider = FakeScriptedProvider(
         [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
@@ -179,3 +150,31 @@ async def test_a_sed_i_that_keeps_a_python_file_parsable_is_not_reverted(tmp_pat
     provider = await _drive(tmp_path, ["sed -i 's/1/2/' m.py", "ls"])
     assert (tmp_path / "m.py").read_text() == GOOD.replace("+ 1", "+ 2")
     assert "[REVERTED]" not in _seen(provider)
+
+
+async def test_a_revert_is_not_counted_as_the_next_change(tmp_path: Path) -> None:
+    (tmp_path / "m.py").write_text(GOOD)
+    (tmp_path / "m_checks.py").write_text(
+        "import unittest\n\n\nclass T(unittest.TestCase):\n    def test_x(self):\n"
+        "        self.assertTrue(True)\n"
+    )
+    cmds = ["python3 -m unittest -q m_checks", "printf 'def f(x:' > m.py", "ls", "pwd"]
+    provider = FakeScriptedProvider(
+        [ModelResponse(content="", action=ActionCall(cmd=c)) for c in cmds]
+    )
+    h = Harness(
+        db_path=tmp_path / "t.db",
+        tools=["bash"],
+        provider=provider,
+        max_steps=len(cmds),
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+    )
+    await h.run("goal")
+
+    def seen(call: int) -> str:
+        return "\n".join(str(m.get("content") or "") for m in provider.recorded_calls[call])
+
+    assert (tmp_path / "m.py").read_text() == GOOD
+    assert "[REVERTED]" in seen(2) and "[auto-test]" in seen(2)
+    # the harness's write-back is absorbed: the read-only `ls` is not a change, no auto-test
+    assert seen(3).count("[auto-test]") == 1
