@@ -43,7 +43,7 @@ async def test_multiplexer_normalization_and_dispatch() -> None:
         raise RuntimeError("kaboom")
 
     mux.register(boom)
-    assert "Error executing `boom`: kaboom" in (await mux.execute("boom")).output
+    assert "Error: boom failed: kaboom" in (await mux.execute("boom")).output
 
 
 async def test_literal_newline_stdin_normalized(tmp_path: Path) -> None:
