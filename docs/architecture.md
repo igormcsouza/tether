@@ -106,7 +106,6 @@ Iterative LLM repair often breaks code that already worked: across six models, 4
 On a small local model most of the time goes into typing code: a whole-file rewrite of a 100-line module costs `qwen3.5:9b` 30 to 100 seconds, while running the tests takes under one. So the harness spends its own (free) time around each test run, and never the model's:
 
 - **Tests after every edit.** Once the model has run a recognised test command, the harness re-runs it after each command that writes an existing workspace file and appends the result under `[auto-test]`. The model sees whether a version works before it types the next one.
-- **Say what the tests expect, first.** When the model reads the test file of a file it is about to write (`paasio_test.py` next to `paasio.py`), one `[BEFORE WRITING]` line asks it to state in plain words what the 3 hardest tests call and expect, then write. Reasoning about the tests before the code raised GPT-4 from 19% to 44% on CodeContests in AlphaCodium.
 - **Show what the code did.** When the same tests fail again after a change, or only a few still fail, the harness runs the smallest failing test once more under a tracer and appends the calls into workspace code, with their arguments and results (2 levels deep, at most 30 lines):
 
   ```text

@@ -46,7 +46,11 @@ def _harness(tmp_path: Path) -> Harness:
 async def _fail_first_run(tmp_path: Path, scripted: dict[str, Any]) -> tuple[Harness, Path, str]:
     manifest = tmp_path / "pipe.yaml"
     manifest.write_text(MANIFEST, encoding="utf-8")
-    scripted["p"] = FakeScriptedProvider([_respond("done", "first"), _respond("bash", "echo hi")])
+    # The last reply is the empty final-answer turn: no answer, so the stage stays WAITING_INPUT
+    empty = ModelResponse(content="", action=None)
+    scripted["p"] = FakeScriptedProvider(
+        [_respond("done", "first"), _respond("bash", "echo hi"), empty]
+    )
     harness = _harness(tmp_path)
     failed = await harness.run_pipeline(manifest, "Root goal")
     assert failed.status == "WAITING_INPUT"

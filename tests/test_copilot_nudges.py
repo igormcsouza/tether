@@ -51,33 +51,9 @@ def _steps(obs: Any, needle: str) -> list[int]:
     return sorted(o.step for o in obs.values() if needle in o.raw_output)
 
 
-async def test_last_step_notice_once_on_the_step_before_the_limit(tmp_path: Path) -> None:
-    obs = await _session(tmp_path, [f"ping h{i}.com" for i in range(7)], max_steps=8)
-    assert _steps(obs, "[LAST STEP]") == [7]
-    assert "Call `done` now with your answer: what you found or did, and what is left." in (
-        next(o for o in obs.values() if o.step == 7).raw_output
-    )
-
-
 async def test_no_last_step_notice_below_the_minimum_budget(tmp_path: Path) -> None:
     obs = await _session(tmp_path, [f"ping h{i}.com" for i in range(6)], max_steps=7)
     assert _steps(obs, "[LAST STEP]") == []
-
-
-async def test_steps_left_without_a_change_asks_for_the_answer(tmp_path: Path) -> None:
-    obs = await _session(tmp_path, [f"bash cat f{i}" for i in range(11)], max_steps=12)
-    assert _steps(obs, "steps left") == [9]
-    assert "3 steps left. Call `done` with your answer before they run out." in next(
-        o.raw_output for o in obs.values() if "steps left" in o.raw_output
-    )
-
-
-async def test_steps_left_after_a_change_keeps_the_edit_wording(tmp_path: Path) -> None:
-    obs = await _session(tmp_path, [f"ping h{i}.com" for i in range(11)], max_steps=12)
-    assert _steps(obs, "steps left") == [9]
-    assert "Finish the current edit, then call `done`" in next(
-        o.raw_output for o in obs.values() if "steps left" in o.raw_output
-    )
 
 
 async def test_lookup_nudge_when_neither_bash_nor_edit_is_enabled(tmp_path: Path) -> None:

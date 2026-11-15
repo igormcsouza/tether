@@ -126,11 +126,20 @@ class ToolOffender:
     total_friction: int
 
 
+# Notices that ask the model to act; the harness tags the tool turn that carries one (H3)
+TELL_QUIET = "tell:quiet"
+TELL_EXPLORE = "tell:explore"
+TELL_GREEN = "tell:green"
+TELL_WRAPUP = "tell:wrapup"
+TELL_IDS = (TELL_QUIET, TELL_EXPLORE, TELL_GREEN, TELL_WRAPUP)
+
+
 @dataclass(slots=True)
 class StatsReport:
     models: list[ModelStats]
     offenders: list[ToolOffender]
     sandbox_refusals: list[tuple[str, int]] = field(default_factory=list)
+    notices: list[tuple[str, int, int]] = field(default_factory=list)  # (id, fired, followed)
 
 
 _SUBCOMMAND_TOOLS: dict[str, set[str]] = {
@@ -1107,6 +1116,27 @@ class SQLiteStore:
         for t in turns:
             turns_by_session[t.session_id].append(t)
 
+        # H3: a notice is followed when the next command is `done`, or for tell:explore when it is
+        # not read-only. Imported here because the harness imports this module.
+        from tether.harness import is_quiet
+
+        counts: dict[str, list[int]] = {tid: [0, 0] for tid in TELL_IDS}
+        for session_turns in turns_by_session.values():
+            for i, t in enumerate(session_turns):
+                ids = [x for x in t.rule.split(",") if x in counts]
+                if t.role != "tool" or not ids:
+                    continue
+                nxt = next((u for u in session_turns[i + 1 :] if u.role == "assistant"), None)
+                cmd = (nxt.tool_cmd or "").strip() if nxt else ""
+                for tid in ids:
+                    counts[tid][0] += 1
+                    if tid == TELL_EXPLORE:
+                        followed = bool(cmd) and not is_quiet(cmd)
+                    else:
+                        followed = cmd.startswith("done")
+                    counts[tid][1] += int(followed)
+        notices = [(tid, fired, ok) for tid, (fired, ok) in counts.items() if fired]
+
         sessions_by_model: dict[str, list[SessionRecord]] = {}
         for s in sessions:
             sessions_by_model.setdefault(s.model, []).append(s)
@@ -1203,7 +1233,9 @@ class SQLiteStore:
             offenders_by_cmd.values(),
             key=lambda o: (-o.total_friction, -o.syntax_errors, -o.loop_stalls, o.command),
         )
-        return StatsReport(models=model_stats, offenders=offenders, sandbox_refusals=top)
+        return StatsReport(
+            models=model_stats, offenders=offenders, sandbox_refusals=top, notices=notices
+        )
 
     def format_stats_report(
         self,
@@ -1248,4 +1280,11 @@ class SQLiteStore:
             lines.append("")
             lines.append("sandbox refusals:")
             lines.extend(f"{rule}: {count}" for rule, count in report.sandbox_refusals)
+        if report.notices:
+            lines.append("")
+            lines.append("notices followed:")
+            lines.extend(
+                f"{tid}: fired {fired}, followed {ok} ({ok / fired * 100:.0f}%)"
+                for tid, fired, ok in report.notices
+            )
         return "\n".join(lines)

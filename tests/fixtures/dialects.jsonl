@@ -10,3 +10,4 @@
 {"reply": "{\"name\": \"Bob\", \"age\": 3}", "cmd": null, "stdin": null}
 {"reply": "{\"name\": \"edit\", \"arguments\": \"oops\"}", "cmd": null, "stdin": null}
 {"reply": "see {this} and {that}", "cmd": null, "stdin": null}
+{"reply": "<tool_call>\n<function=act>\n<parameter=cmd>\nweb search x\n</parameter>\n<parameter=stdin>\na\n</parameter>\n</function>\n</tool_call>", "cmd": "web search x", "stdin": "\na\n"}
