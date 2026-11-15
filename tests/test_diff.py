@@ -10,7 +10,6 @@ from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse, SQLiteStore
 from tether.cli import _async_main
 from tether.sandbox import SandboxPolicy
-from tether.unchanged import missing_targets
 
 
 def _step(cmd: str, stdin: str | None = None) -> ModelResponse:
@@ -19,7 +18,13 @@ def _step(cmd: str, stdin: str | None = None) -> ModelResponse:
 
 async def _session(root: Path, db: Path, steps: list[ModelResponse] | None = None) -> str:
     sandbox = SandboxPolicy(workspace_root=root, use_kernel_sandbox=False)
-    h = Harness(db_path=db, provider=FakeScriptedProvider(steps or []), sandbox=sandbox)
+    # edit and bash must be enabled: a snapshot now comes from a file that really changed
+    h = Harness(
+        db_path=db,
+        tools=["bash", "edit"],
+        provider=FakeScriptedProvider(steps or []),
+        sandbox=sandbox,
+    )
     return (await h.run("goal")).id
 
 
@@ -177,12 +182,3 @@ async def test_diff_skips_file_over_size_cap(
     code, out, _ = await _diff(capsys, sid, "--db", str(db))
     assert code == 0
     assert out == "skipped big.txt: larger than 4 bytes\n"
-
-
-def test_missing_targets_lists_new_files_only(tmp_path: Path) -> None:
-    ws = tmp_path / "ws"
-    ws.mkdir()
-    os.symlink(tmp_path / "outside.txt", ws / "link.txt")
-    assert missing_targets("edit write ../outside.txt", ws) == []
-    assert missing_targets("edit write link.txt", ws) == []
-    assert missing_targets("edit write new.txt", ws) == ["new.txt"]

@@ -8,29 +8,15 @@ can say so instead of leaving the model to run the same failing tests again.
 from __future__ import annotations
 
 import ast
-import os
 import re
-import shlex
-from collections.abc import Collection
 from contextlib import suppress
 from pathlib import Path
 
 NOTE_LIMIT = 200  # max chars of the note
 MAX_BYTES = 256_000  # files larger than this are not compared
 
+# `edit` warns about a file that stops parsing on its own, so it is not reverted here
 _EDIT = re.compile(r"^(?:bash\s+)?edit\s+(?:write|replace|append)\s+(\S+)")
-_REDIRECT = re.compile(r">>?\s*([\w./-]+)")
-_TEE = re.compile(r"\btee\b([^|;&<>\n]*)")
-MAX_ARGS = 32  # candidate paths named on a command line that are snapshotted
-_QUOTED = re.compile(r"['\"]([\w./-]+)['\"]")  # path literals inside python -c code
-
-
-def _targets(cmd: str) -> list[str]:
-    """Paths `cmd` writes to, as written in it (they may be missing or outside the workspace)."""
-    head = cmd.partition("\n")[0]  # a heredoc body's `a > b` is code, not a redirect
-    args = [word for group in _TEE.findall(head) for word in group.split()]
-    tee = [word for word in args if not word.startswith("-")]
-    return _EDIT.findall(head) + _REDIRECT.findall(head) + tee
 
 
 def _current(rel: str, root: Path) -> bytes | None:
@@ -41,15 +27,6 @@ def _current(rel: str, root: Path) -> bytes | None:
         if path.is_file() and path.is_relative_to(base) and path.stat().st_size <= MAX_BYTES:
             return path.read_bytes()
     return None
-
-
-def snapshot_key(rel: str, root: Path) -> str:
-    """The key a snapshot is stored under: `rel` relative to `root`; absolute paths too.
-
-    Only called for paths that already resolved inside `root` (see `_current`).
-    """
-    base = root.resolve()
-    return os.path.relpath((base / rel).resolve(), base)
 
 
 def _same_code(old: bytes, new: bytes) -> bool:
@@ -64,61 +41,6 @@ def _same(rel: str, old: bytes, new: bytes) -> bool:
     if old == new:
         return True
     return rel.endswith(".py") and _same_code(old, new)
-
-
-def snapshot(cmd: str, root: Path) -> dict[str, bytes]:
-    """Current bytes of the existing workspace files `cmd` writes.
-
-    Keyed by the path as written in cmd. Write targets: `edit write <p>` / `edit replace <p>`
-    (argv[1:3] after an optional leading `bash`), shell redirects `> p` / `>> p`, and
-    `tee [-a] p...` arguments. Only regular files that exist now, resolve inside `root` and are
-    at most MAX_BYTES are kept; anything else (run, read, new file, outside root) is left out.
-    Never raises.
-    """
-    return {rel: data for rel in _targets(cmd) if (data := _current(rel, root)) is not None}
-
-
-def _words(head: str) -> list[str]:
-    # shell words, plus quoted path literals inside each word; an unterminated quote falls back
-    try:
-        words = shlex.split(head)
-    except ValueError:
-        words = head.split()
-    out: list[str] = []
-    for word in words:
-        out.append(word)
-        out.extend(_QUOTED.findall(word))
-    return out
-
-
-def arg_snapshot(cmd: str, root: Path, skip: Collection[str]) -> dict[str, bytes]:
-    """Current bytes of the existing files that the first line of `cmd` names as arguments.
-
-    Covers writes that are not redirects or `edit`: `sed -i`, `perl -i`, `mv new f`, `cp new f`,
-    `python -c "open('f','w')"`. Words in `skip` (already snapshotted) and in `_targets(cmd)` are
-    left out; so are options. At most MAX_ARGS candidates, in order. Never raises.
-    """
-    head = cmd.partition("\n")[0]  # a heredoc body is code, not arguments
-    seen = set(skip) | set(_targets(cmd))
-    candidates: list[str] = []
-    for word in _words(head):
-        if word.startswith("-") or word in seen:
-            continue
-        seen.add(word)
-        candidates.append(word)
-    return {rel: data for rel in candidates[:MAX_ARGS] if (data := _current(rel, root)) is not None}
-
-
-def missing_targets(cmd: str, root: Path) -> list[str]:
-    # write targets of cmd that do not exist yet and resolve inside root (new files)
-    out: list[str] = []
-    for rel in _targets(cmd):
-        with suppress(OSError, RuntimeError, ValueError):
-            base = root.resolve()
-            path = (base / rel).resolve()
-            if not path.exists() and path.is_relative_to(base):
-                out.append(rel)
-    return out
 
 
 def unchanged_note(before: dict[str, bytes], root: Path) -> str:
@@ -192,21 +114,3 @@ def revert_notes(found: list[tuple[str, bytes, SyntaxError]]) -> str:
     if len(found) > REVERT_FILES:
         lines.append(f"\n[REVERTED] {len(found) - REVERT_FILES} more file(s) reverted too.")
     return "".join(lines)
-
-
-def named_python_files(cmd: str, root: Path) -> dict[str, bytes]:
-    """Find Python files mentioned in cmd and return their bytes."""
-    matches = re.findall(r"[\w./-]+\.py\b", cmd)
-    seen = set()
-    kept: list[str] = []
-    for m in matches:
-        if m not in seen:
-            seen.add(m)
-            if len(kept) < MAX_ARGS:
-                kept.append(m)
-    result: dict[str, bytes] = {}
-    for name in kept:
-        value = _current(name, root)
-        if value is not None:
-            result[name] = value
-    return result

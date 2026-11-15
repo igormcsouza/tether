@@ -37,7 +37,7 @@ from tether.context import (
 )
 from tether.decorator import ToolSpec, build_tool_spec
 from tether.gates import precheck as gates_precheck
-from tether.multiplexer import Multiplexer, normalize_cmd
+from tether.multiplexer import Multiplexer, normalize_cmd, split_cli
 from tether.pipeline import Pipeline, load_pipeline, parse_pipeline_yaml, render_stage_goal
 from tether.providers import ModelProvider, resolve_provider
 from tether.providers.base import ModelResponse, ProviderError
@@ -72,16 +72,8 @@ from tether.tools import (
     make_web_tool,
 )
 from tether.trace import NEAR_PASS, failing_test_id, runtime_trace, smallest_failing
-from tether.unchanged import (
-    arg_snapshot,
-    broken_by_command,
-    missing_targets,
-    named_python_files,
-    revert_notes,
-    snapshot,
-    snapshot_key,
-    unchanged_note,
-)
+from tether.unchanged import broken_by_command, revert_notes, unchanged_note
+from tether.workspace import Tracker
 from tether.worktree import commit_all, create_worktree, repo_root, run_setup
 
 
@@ -297,6 +289,18 @@ _LOOKUPS = [
     ["mem", "recall"],
     *(["agent", v] for v in ("status", "wait", "read", "query")),
 ]
+
+
+def _is_test_file(rel: str) -> bool:
+    """A test file: editing it is the model writing a check, not changing the code under test."""
+    parts = rel.split(os.sep)
+    name = parts[-1]
+    return (
+        name.startswith("test_")
+        or name.endswith("_test.py")
+        or name == "conftest.py"
+        or "tests" in parts[:-1]
+    )
 
 
 def is_quiet(cmd: str) -> bool:
@@ -1294,6 +1298,10 @@ class Harness:
         read_counts: Counter[str] = Counter()
         restarts = 0
         originals: dict[str, bytes] = {}  # existing files as they were before the model wrote them
+        created_here: set[str] = set()  # files this session made: they have no original
+        # H2: the files before and after each command say what it changed, not its text
+        tracker = Tracker(sandbox.workspace_root, ignore=str(self.store.db_path))
+        tracker.scan()
         # the run that failed fewest tests while passing most, and those files as they were then
         best: tuple[int, frozenset[str], dict[str, bytes]] | None = None
         quiet_run = 0
@@ -1368,6 +1376,7 @@ class Harness:
                     if path.read_bytes() != data:
                         path.write_bytes(data)
                         reset.append(rel)
+            tracker.refresh(reset)  # the harness's own write is not the model's next change
             return reset
 
         async def get_unstuck(
@@ -1709,31 +1718,8 @@ class Harness:
                     )
                     continue
 
-                quiet = is_quiet(cmd)
-                before = {} if quiet else snapshot(cmd, Path(sandbox.workspace_root))
-                py_before = {} if quiet else named_python_files(cmd, Path(sandbox.workspace_root))
-                for rel, data in before.items():  # untouched since the session started
-                    with suppress(OSError):
-                        path = Path(sandbox.workspace_root) / rel
-                        if path.stat().st_mtime < rec.created_at:
-                            key = snapshot_key(rel, Path(sandbox.workspace_root))
-                            if key not in originals:
-                                originals[key] = data
-                                self.store.record_snapshot(session_id, key, data)
-                # a file the command creates has no bytes yet: its snapshot is NULL
-                for rel in missing_targets(cmd, Path(sandbox.workspace_root)):
-                    self.store.record_snapshot(
-                        session_id, snapshot_key(rel, Path(sandbox.workspace_root)), None
-                    )
-                # named arguments (sed -i f, mv new f) are kept for `tether diff` only
-                arg_bytes = (
-                    {} if quiet else arg_snapshot(cmd, Path(sandbox.workspace_root), skip=before)
-                )
-                for rel, data in arg_bytes.items():  # not added to `originals`
-                    with suppress(OSError):
-                        if (Path(sandbox.workspace_root) / rel).stat().st_mtime < rec.created_at:
-                            key = snapshot_key(rel, Path(sandbox.workspace_root))
-                            self.store.record_snapshot(session_id, key, data)
+                # what changed since the last command (a restore, an auto-test) is not this one's
+                tracker.step()
                 t_tool_start = time.perf_counter()
                 dispatch = await mux.execute(cmd, stdin=stdin)
                 tool_duration_ms = int((time.perf_counter() - t_tool_start) * 1000)
@@ -1928,10 +1914,26 @@ class Harness:
                     self.store.update_turn_telemetry(assistant_turn_id, event_type="tool_error")
 
                 # Quiet nudge: track consecutive read-only/verification steps after a change
-                if is_quiet(cmd):
-                    quiet_run += 1
-                elif dispatch.error_kind in ("syntax_error", "unknown_cmd", "sandbox_violation"):
+                delta = tracker.step()
+                was_refused = dispatch.error_kind in (
+                    "syntax_error",
+                    "unknown_cmd",
+                    "sandbox_violation",
+                )
+                head = (split_cli(cmd) or [""])[0]
+                # only bash/edit are known to act on the workspace alone; any other tool may
+                # have effects the tracker cannot see, so it keeps the command-text rule
+                workspace_only = head in ("bash", "edit", "apply_patch") or (
+                    head not in mux.tool_names
+                )
+                if tracker.disabled or not workspace_only:
+                    made = not is_quiet(cmd) and not was_refused
+                else:
+                    made = bool(delta.created or delta.modified or delta.deleted)
+                if was_refused and not is_quiet(cmd):
                     pass  # refused: nothing ran, so neither a quiet step nor a change (#318)
+                elif not made:
+                    quiet_run += 1
                 else:
                     changed = True
                     changes.append(cmd)
@@ -1942,21 +1944,42 @@ class Harness:
                     stale.update(fail_runs)
                     edited_since_run = True
 
+                # the first change to a file that was there before the session keeps its bytes;
+                # a file this session creates has none (NULL)
+                for rel in delta.created:
+                    created_here.add(rel)
+                    self.store.record_snapshot(session_id, rel, None)
+                for rel in (*delta.modified, *delta.deleted):
+                    if (
+                        (old := tracker.old(rel)) is not None
+                        and rel not in originals
+                        and rel not in created_here
+                    ):
+                        originals[rel] = old
+                        self.store.record_snapshot(session_id, rel, old)
+
                 out = dispatch.output
                 tells: list[str] = []  # ids of the notices this turn carries (H3)
-                # F5: a bash command that left a Python file unparsable is undone first, so the
+                # F5: a command that left a Python file unparsable is undone first, so the
                 # auto-test and the notes below see the file as it was before the command
-                broken: list[tuple[str, bytes, SyntaxError]] = []
-                if before or py_before:
-                    root = Path(sandbox.workspace_root)
-                    broken = broken_by_command(cmd, {**py_before, **before}, root)
-                    for rel, old, _ in broken:
-                        (root / rel).write_bytes(old)
-                    out += revert_notes(broken)
+                root = Path(sandbox.workspace_root)
+                prior = {
+                    rel: old for rel in delta.modified if (old := tracker.old(rel)) is not None
+                }
+                broken = broken_by_command(cmd, prior, root)
+                for rel, old, _ in broken:
+                    (root / rel).write_bytes(old)
+                # the write-back is the harness's, not the model's: the next step must not count it
+                tracker.refresh([rel for rel, _, _ in broken])
+                out += revert_notes(broken)
                 tcmd, tout = cmd, dispatch.output  # the test run this step, if any
                 if _TEST_CMD.search(cmd) and is_quiet(cmd):
                     last_test = cmd.strip()
-                elif last_test and before and not dispatch.is_error:
+                elif (
+                    last_test
+                    and any(not _is_test_file(rel) for rel in (*delta.created, *delta.modified))
+                    and not dispatch.is_error
+                ):
                     # #173 (Aider's auto-test): run the tests after each edit, so a weak model
                     # never types a second version blind (each rewrite costs it 30-100 s)
                     tcmd, tout = last_test, (await mux.execute(last_test)).output
@@ -1992,11 +2015,19 @@ class Harness:
                         }
                         best = (n_failed, outcome[1], files)
                 # a reverted file is the old code again: no "unchanged" note about it
-                if before and not broken and not dispatch.is_error:
-                    root = Path(sandbox.workspace_root)
-                    out += unchanged_note(before, root)
+                if not (broken or delta.created or delta.deleted or dispatch.is_error):
+                    kept = {
+                        rel: data
+                        for rel in (*delta.touched, *delta.modified)
+                        if (data := tracker.old(rel)) is not None
+                    }
+                    if len(kept) == len(delta.touched) + len(delta.modified):
+                        out += unchanged_note(kept, root)
                 if changed and not dispatch.is_error and tests_green(tcmd, tout):
-                    green_cmd = tcmd
+                    # only a run the model asked for is its own gate: an auto-test after a
+                    # later change must not re-arm the harness's "finished" verdict
+                    if tcmd == cmd:
+                        green_cmd = tcmd
                     if not green_nudged:
                         tells.append(TELL_GREEN)
                         out += (

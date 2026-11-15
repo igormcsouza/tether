@@ -11,31 +11,18 @@ from pathlib import Path
 from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse
 from tether.sandbox import SandboxPolicy
-from tether.unchanged import NOTE_LIMIT, snapshot, unchanged_note
+from tether.unchanged import NOTE_LIMIT, unchanged_note
 
 CODE = "def f(x):\n    return x + 1\n"
 
 
-def test_only_write_targets_are_snapshotted(tmp_path: Path) -> None:
-    (tmp_path / "m.py").write_text(CODE)
-    (tmp_path / "gen.py").write_text(CODE)
-    assert set(snapshot("cat > m.py << 'EOF'\nx\nEOF", tmp_path)) == {"m.py"}
-    assert set(snapshot("echo x >> m.py", tmp_path)) == {"m.py"}
-    assert set(snapshot("edit write m.py", tmp_path)) == {"m.py"}
-    assert set(snapshot("edit replace m.py", tmp_path)) == {"m.py"}
-    assert set(snapshot("tee m.py", tmp_path)) == {"m.py"}
-    # running or reading a file is not writing it
-    assert snapshot("python3 gen.py", tmp_path) == {}
-    assert snapshot("cat m.py", tmp_path) == {}
-    # a new file has nothing to compare with
-    assert snapshot("cat > new.py << 'EOF'\nx\nEOF", tmp_path) == {}
-    # never outside the workspace
-    assert snapshot("cat > ../m.py << 'EOF'\nx\nEOF", tmp_path / "sub") == {}
+def _before(rel: str, root: Path) -> dict[str, bytes]:
+    return {rel: (root / rel).read_bytes()}
 
 
 def test_identical_bytes_are_named(tmp_path: Path) -> None:
     (tmp_path / "m.py").write_text(CODE)
-    before = snapshot("edit write m.py", tmp_path)
+    before = _before("m.py", tmp_path)
     note = unchanged_note(before, tmp_path)
     assert "[NUDGE]" in note and "m.py" in note and "unchanged" in note
     assert len(note) <= NOTE_LIMIT
@@ -43,7 +30,7 @@ def test_identical_bytes_are_named(tmp_path: Path) -> None:
 
 def test_comment_and_spacing_changes_in_python_are_the_same_code(tmp_path: Path) -> None:
     (tmp_path / "m.py").write_text(CODE)
-    before = snapshot("edit write m.py", tmp_path)
+    before = _before("m.py", tmp_path)
     (tmp_path / "m.py").write_text("# add one\ndef f(x):\n\n    return x+1  # same\n")
     note = unchanged_note(before, tmp_path)
     assert "m.py" in note and "comments" in note
@@ -53,18 +40,18 @@ def test_comment_and_spacing_changes_in_python_are_the_same_code(tmp_path: Path)
 def test_a_real_change_has_no_note(tmp_path: Path) -> None:
     (tmp_path / "m.py").write_text(CODE)
     (tmp_path / "notes.txt").write_text("a b\n")
-    before = snapshot("edit write m.py", tmp_path)
+    before = _before("m.py", tmp_path)
     (tmp_path / "m.py").write_text(CODE.replace("+ 1", "+ 2"))
     assert unchanged_note(before, tmp_path) == ""
     # outside Python only bytes count: spacing is a change
-    before = snapshot("edit write notes.txt", tmp_path)
+    before = _before("notes.txt", tmp_path)
     (tmp_path / "notes.txt").write_text("a  b\n")
     assert unchanged_note(before, tmp_path) == ""
 
 
 def test_a_deleted_or_broken_file_has_no_note(tmp_path: Path) -> None:
     (tmp_path / "m.py").write_text(CODE)
-    before = snapshot("edit write m.py", tmp_path)
+    before = _before("m.py", tmp_path)
     (tmp_path / "m.py").write_text("def f(x:\n")  # syntax error: a change
     assert unchanged_note(before, tmp_path) == ""
     (tmp_path / "m.py").unlink()

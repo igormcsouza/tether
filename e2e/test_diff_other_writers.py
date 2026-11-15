@@ -32,10 +32,10 @@ def test_sed_mv_and_untracked_python_are_all_visible(tether: Tether, chaos) -> N
     assert p.returncode == 0, p.stderr
     assert "-a\n" in p.stdout and "+b\n" in p.stdout, p.stdout
     assert "-old\n" in p.stdout and "+new\n" in p.stdout, p.stdout
-    assert "could not track: out.txt" in p.stdout, p.stdout
+    assert "+++ b/out.txt" in p.stdout and "could not track" not in p.stdout, p.stdout
     assert "no file changes" not in p.stdout
     s = tether.cli("diff", "--stat", r["id"])
-    assert s.returncode == 0 and "could not track: out.txt" in s.stdout, s.stdout
+    assert s.returncode == 0 and "out.txt" in s.stdout, s.stdout
 
 
 def test_read_only_session_still_says_no_file_changes(tether: Tether, chaos) -> None:
