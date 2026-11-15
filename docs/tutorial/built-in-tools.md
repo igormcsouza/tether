@@ -37,6 +37,8 @@ act(cmd="bash", stdin="python3 - << 'EOF'\nimport math\nprint(math.pi)\nEOF")
 
 A test run piped to `head` (`python3 -m unittest 2>&1 | head -50`) still shows how it ended: tether keeps the first lines, marks what it cut, and adds the last lines with the summary and the tests' own exit code.
 
+A command that times out after starting a background job (`server &`) gets one more line saying so, with the two fixes: run it in the foreground with `timeout N <cmd>`, or send its output away with `<cmd> >/dev/null 2>&1 &`.
+
 ## `edit` — Workspace-Jailed File Operations
 
 Provides deterministic line-numbered viewing and `stdin`-based writing/replacement without sed/awk quoting bugs:
@@ -62,7 +64,11 @@ Zero-config web search via DuckDuckGo Lite (or automatic override via `SEARXNG_U
 ```text
 act(cmd='web search "SQLite WAL concurrency" --max 5')
 act(cmd="web fetch https://www.sqlite.org/wal.html")
+act(cmd="web fetch https://docs.python.org/3/library/stdtypes.html#str.splitlines")
+act(cmd="web fetch https://www.sqlite.org/wal.html --from 'checkpoint'")
 ```
+
+`#anchor` starts the text at that element, `--from <text>` at the first match; a cut page prints the `--from` words to continue with.
 
 ## `mem` — Pinned Scratchpad & BM25 Observation Recall
 
@@ -89,7 +95,7 @@ act(cmd="mem recall obs_3")
 
 The [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) uses `edit` and custom tools to turn a plan into a course. Three limits shaped it:
 
-- **`edit write` replaces the whole file.** Overwriting an existing file now reports `Replaced N lines with M (X removed, Y added; first removed: ...)` and, when the file shrank, points to `edit replace --lines a:b` ([#40](https://github.com/igormcsouza/tether/issues/40)). Small models assume it appends and silently lose earlier content. To build a file in parts, use `edit append <path>` with the next part in `stdin`; it creates the file if needed and adds a newline when the file does not end with one.
+- **`edit write` replaces the whole file.** Overwriting an existing file now reports `Replaced N lines with M (X removed, Y added; first removed: ...)` and, when the file shrank, points to `edit replace --lines a:b` ([#40](https://github.com/igormcsouza/tether/issues/40)). Small models assume it appends and silently lose earlier content. To build a file in parts, use `edit append <path>` with the next part in `stdin`; it creates the file if needed and adds a newline when the file does not end with one. To add lines in the middle, use `edit insert <path> --line N` with the lines in `stdin`: they go before line N and nothing is replaced (N = lines + 1 appends).
 - **`web search` cannot reliably find a specific YouTube video.** Use a [custom tool](sdk-and-custom-tools.md#pattern-numbered-candidates) that returns numbered candidates instead.
 - **Tools are opt-in.** The searcher skill lists `tools: [yt-todo, yt-candidates, yt-save]` and nothing else; `edit` is only loaded by the stages that write files.
 

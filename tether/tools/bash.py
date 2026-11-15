@@ -45,6 +45,40 @@ def _keep_summary(out: str, n: int) -> str:
     return "\n".join([*lines[:n], marker, *lines[-HEAD_TAIL_LINES:]])
 
 
+TIMEOUT_PREFIX = "Error: command timed out"
+# A timed-out `server &` looks like a hang; the model repeated it 16 times without this (#319).
+BACKGROUND_HINT = (
+    "A background job (`&`) keeps the command open. Instead: run it in the foreground with "
+    "`timeout N <cmd>`, or send its output away: `<cmd> >/dev/null 2>&1 &`."
+)
+
+
+def _has_background_job(script: str) -> bool:
+    """True when an unquoted `&` backgrounds a job; `&&`, `&>`, `>&` and escaped `&` do not."""
+    quote = ""
+    i = 0
+    while i < len(script):
+        c = script[i]
+        if quote:
+            if c == quote:
+                quote = ""
+            elif c == "\\" and quote == '"':
+                i += 1
+        elif c == "\\":
+            i += 1
+        elif c in "'\"":
+            quote = c
+        elif c == "&":
+            if script[i + 1 : i + 2] == "&":
+                i += 2
+                continue
+            before = script[i - 1 : i] if i else ""
+            if script[i + 1 : i + 2] != ">" and before != ">":
+                return True
+        i += 1
+    return False
+
+
 def make_bash_tool(
     sandbox: SandboxPolicy, on_approval: Callable[[ApprovalNeeded], None] | None = None
 ) -> ToolSpec:
@@ -68,13 +102,19 @@ def make_bash_tool(
             note = f"[`cd {cd[0]}` skipped: no such directory; commands run in the workspace]\n"
         try:
             if stdin is None and (head := _test_head(cmd_str)):
-                return note + _keep_summary(await sandbox.execute_bash(head[0]), head[1])
-            return note + await sandbox.execute_bash(cmd_str, stdin=stdin)
+                out = _keep_summary(await sandbox.execute_bash(head[0]), head[1])
+            else:
+                out = await sandbox.execute_bash(cmd_str, stdin=stdin)
         except ApprovalNeeded as exc:
             if on_approval is None:
                 raise
             on_approval(exc)
             return str(exc)
+        if out.startswith(TIMEOUT_PREFIX) and _has_background_job(
+            cmd_str if stdin is None else stdin
+        ):
+            out = f"{out.rstrip()}\n{BACKGROUND_HINT}"
+        return note + out
 
     return build_tool_spec(
         _bash,

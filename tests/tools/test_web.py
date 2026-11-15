@@ -18,7 +18,7 @@ async def test_web_tool(monkeypatch: pytest.MonkeyPatch) -> None:
         "<ul><li>Item 1</li></ul></body></html>",
         max_chars=20,
     )
-    assert "truncated" in md
+    assert "cut 10 chars" in md
     assert _unwrap_ddg_url("https://duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com") == (
         "https://example.com"
     )
@@ -101,6 +101,6 @@ async def test_web_tool(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "Error: missing `<url>`" in await wspec.invoke(["fetch"])
     assert "Error: URL must start" in await wspec.invoke(["fetch", "ftp://bad"])
     assert "## Heading" in await wspec.invoke(["fetch", "https://example.com/page.html"])
-    assert "truncated" in await wspec.invoke(["fetch", "https://example.com/plain.txt"])
+    assert "cut 70 chars" in await wspec.invoke(["fetch", "https://example.com/plain.txt"])
     assert await wspec.invoke(["fetch", "https://example.com/short.txt"]) == "short_ok"
     assert "Error: unknown subcommand" in await wspec.invoke(["bogus"])

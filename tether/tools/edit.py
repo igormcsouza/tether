@@ -170,7 +170,7 @@ def _apply_patch(sandbox: SandboxPolicy, patch: str) -> str:
     return f"Patched: {done}." + "".join(notes)
 
 
-_VERBS = ("view", "write", "append", "replace", "apply_patch")
+_VERBS = ("view", "write", "append", "insert", "replace", "apply_patch")
 
 
 def _infer_verb(args: list[str], stdin: str | None) -> list[str]:
@@ -197,6 +197,35 @@ def _infer_verb(args: list[str], stdin: str | None) -> list[str]:
     return ["replace" if "<<<<<<< SEARCH" in stdin else "write", *args]
 
 
+def _is_diff(stdin: str) -> bool:
+    """A unified diff or bare `@@` hunks: models send both to `edit replace` (#317)."""
+    stripped = stdin.lstrip()
+    return stripped.startswith("@@ ") or bool(_UNIFIED_RE.match(stripped))
+
+
+def _with_headers(path: str, diff: str) -> str:
+    """Headerless hunks get the `---`/`+++` lines `_apply_patch` needs, naming `path`."""
+    stripped = diff.lstrip()
+    if _UNIFIED_RE.match(stripped):
+        return stripped
+    return f"--- {path}\n+++ {path}\n{stripped}"
+
+
+def _marked_diff_lines(stdin: str, current: list[str]) -> list[str] | None:
+    """The `+` lines when the `-` lines are exactly `current` (#317); else None.
+
+    A markdown list (`- item`) has no `+` lines, so it stays literal.
+    """
+    body = [ln for ln in stdin.splitlines() if ln.strip()]
+    if not body or not all(ln.startswith(("-", "+")) for ln in body):
+        return None
+    minus = [ln[1:] for ln in body if ln.startswith("-")]
+    plus = [ln[1:] for ln in body if ln.startswith("+")]
+    if not minus or not plus or minus != current:
+        return None
+    return plus
+
+
 def _parse_line_range(spec: str, total_lines: int) -> tuple[int, int] | str:
     if ":" not in spec:
         try:
@@ -216,11 +245,13 @@ def _parse_line_range(spec: str, total_lines: int) -> tuple[int, int] | str:
 
 
 def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
+    # Markers are built from repeated characters: this source holds no literal marker lines.
+    markers = f"{'<' * 7} SEARCH, {'=' * 7}, {'>' * 7} REPLACE"
     help_str = (
-        "Usage: edit view <path> [--lines a:b] | edit write|append <path> [stdin] | "
-        "edit replace <path> --lines a:b [stdin]\n"
-        "Desc : write replaces the file. Or stdin "
-        "`<<<<<<< SEARCH`/`=======`/`>>>>>>> REPLACE` blocks (exact text; no --lines)."
+        "Usage: edit view <path> [--lines a:b] | write|append|insert <path> [--line N] | "
+        "replace <path> [--lines a:b]\n"
+        "Desc : write replaces the file; insert --line N adds lines; "
+        f"stdin SEARCH/REPLACE blocks: {markers}"
     )
 
     def _edit(args: list[str], stdin: str | None = None) -> str:
@@ -301,14 +332,51 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
                 target.read_text(encoding="utf-8", errors="replace") if target.is_file() else ""
             )
             sep = "\n" if old_text and not old_text.endswith("\n") else ""
+            # a missing final newline would make the next append run into this line
+            tail = stdin if not stdin or stdin.endswith("\n") else stdin + "\n"
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(old_text + sep + stdin, encoding="utf-8")
-            total = len((old_text + sep + stdin).splitlines())
+            target.write_text(old_text + sep + tail, encoding="utf-8")
+            total = len((old_text + sep + tail).splitlines())
             return f"Appended {len(stdin.splitlines())} lines to `{args[1]}` ({total} lines now)."
 
+        if sub == "insert":
+            # #320: small models replaced line N with "new + line N" and lost the kept line
+            if len(args) < 2 or "--line" not in args:
+                return f"Error: `edit insert` needs `--line N` after the path.\n{help_str}"
+            target = sandbox.resolve_safe_path(args[1], write=True)
+            if not target.is_file():
+                return f"Error: file `{args[1]}` not found."
+            idx = args.index("--line")
+            if idx + 1 >= len(args):
+                return f"Error: `--line` needs a number, e.g. `--line 3`.\n{help_str}"
+            got = args[idx + 1]
+            try:
+                at = int(got)
+            except ValueError:
+                return f"Error: `--line` must be an integer, got `{got}`.\n{help_str}"
+            lines = target.read_text(encoding="utf-8", errors="replace").splitlines()
+            if not 1 <= at <= len(lines) + 1:
+                return (
+                    f"Error: line {at} is out of range; use a line between 1 and "
+                    f"{len(lines) + 1} (the last one appends)."
+                )
+            if stdin is None:
+                return f"Error: `edit insert` needs the lines to add in `stdin`.\n{help_str}"
+            new_lines = stdin.splitlines()
+            updated = lines[: at - 1] + new_lines + lines[at - 1 :]
+            old_text = "\n".join(lines)
+            new_text = "".join(f"{ln}\n" for ln in updated)
+            target.write_text(new_text, encoding="utf-8")
+            return (
+                f"Inserted {len(new_lines)} lines before line {at} in `{args[1]}` "
+                f"({len(updated)} lines now)." + _syntax_warning(args[1], old_text, new_text)
+            )
         if sub == "replace":
             if len(args) >= 2 and "--lines" not in args and stdin and "<<<<<<< SEARCH" in stdin:
                 return _replace_with_blocks(sandbox, args[1], stdin)
+            if len(args) >= 2 and "--lines" not in args and stdin and _is_diff(stdin):
+                # #317: a diff sent to `replace` goes through the same applier as `edit <path>`
+                return _apply_patch(sandbox, _with_headers(args[1], stdin))
             if len(args) < 2 or "--lines" not in args:
                 return (
                     f"Error: `edit replace` requires `<path> --lines start:end` "
@@ -327,15 +395,23 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
             if isinstance(rng, str):
                 return f"Error: {rng}"
             start, end = rng
-            replacement_lines = stdin.splitlines()
+            marked = _marked_diff_lines(stdin, lines[start - 1 : end])
+            replacement_lines = stdin.splitlines() if marked is None else marked
             updated = lines[: start - 1] + replacement_lines + lines[end:]
             new_text = "\n".join(updated) + ("\n" if stdin.endswith("\n") or lines else "")
             old_text = "\n".join(lines)
             target.write_text(new_text, encoding="utf-8")
-            return (
-                f"Replaced lines {start}:{end} in `{args[1]}` with {len(replacement_lines)} lines."
-                + _syntax_warning(args[1], old_text, new_text)
-            )
+            if stdin:
+                summary = (
+                    f"Replaced lines {start}:{end} in `{args[1]}` "
+                    f"with {len(replacement_lines)} lines."
+                )
+            else:  # #321: a bare --lines a:b deletes; say so, so it is not taken for a typo
+                summary = (
+                    f"Deleted lines {start}:{end} in `{args[1]}` (empty stdin). "
+                    "To replace them, send the new text in stdin."
+                )
+            return summary + _syntax_warning(args[1], old_text, new_text)
 
         return f"Error: unknown subcommand `{sub}`.\n{help_str}"
 
