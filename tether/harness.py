@@ -25,6 +25,7 @@ from tether.context import (
     DEFAULT_CONTEXT_TOKENS,
     MAX_RESTARTS,
     RESTART_AFTER_FAILS,
+    WRONG_GATE_ASK,
     ContextAssembler,
     after_restart,
     describe_attempts,
@@ -63,7 +64,10 @@ from tether.tools import (
 from tether.trace import NEAR_PASS, failing_test_id, runtime_trace, smallest_failing
 from tether.unchanged import (
     arg_snapshot,
+    broken_by_command,
     missing_targets,
+    named_python_files,
+    revert_notes,
     small_change_note,
     snapshot,
     snapshot_key,
@@ -1285,6 +1289,8 @@ class Harness:
         best: tuple[int, frozenset[str], dict[str, bytes]] | None = None
         quiet_run = 0
         steps_hinted = False
+        # A session with neither bash nor edit can only look things up: its nudges say so
+        can_edit = "bash" in mux.tool_names or "edit" in mux.tool_names
         last_reply = ""  # the model's last plain-text answer, never confirmed with `done`
 
         def reply_note() -> str:
@@ -1697,6 +1703,7 @@ class Harness:
 
                 quiet = is_quiet(cmd)
                 before = {} if quiet else snapshot(cmd, Path(sandbox.workspace_root))
+                py_before = {} if quiet else named_python_files(cmd, Path(sandbox.workspace_root))
                 for rel, data in before.items():  # untouched since the session started
                     with suppress(OSError):
                         path = Path(sandbox.workspace_root) / rel
@@ -1847,7 +1854,8 @@ class Harness:
                             gate_msg = (
                                 f"[VERIFICATION GATE FAILED: `{failed_cmd}` (exit {exit_code})]\n"
                                 f"{gate_out}\n"
-                                "Fix the reported issues before calling `done` again."
+                                "Fix the reported issues before calling `done` again.\n"
+                                f"{WRONG_GATE_ASK}"
                             )
                             obs = self.store.add_observation(
                                 session_id=session_id,
@@ -1927,6 +1935,15 @@ class Harness:
                     edited_since_run = True
 
                 out = dispatch.output
+                # F5: a bash command that left a Python file unparsable is undone first, so the
+                # auto-test and the notes below see the file as it was before the command
+                broken: list[tuple[str, bytes, SyntaxError]] = []
+                if before or py_before:
+                    root = Path(sandbox.workspace_root)
+                    broken = broken_by_command(cmd, {**py_before, **before}, root)
+                    for rel, old, _ in broken:
+                        (root / rel).write_bytes(old)
+                    out += revert_notes(broken)
                 tcmd, tout = cmd, dispatch.output  # the test run this step, if any
                 if _TEST_CMD.search(cmd) and is_quiet(cmd):
                     last_test = cmd.strip()
@@ -1989,7 +2006,8 @@ class Harness:
                             if (root / rel).is_file()
                         }
                         best = (n_failed, outcome[1], files)
-                if before and not dispatch.is_error:
+                # a reverted file is the old code again: no "unchanged" note about it
+                if before and not broken and not dispatch.is_error:
                     root = Path(sandbox.workspace_root)
                     out += unchanged_note(before, root) or small_change_note(
                         cmd, before, root, small_hinted
@@ -2018,16 +2036,35 @@ class Harness:
                     and quiet_run >= EXPLORE_NUDGE_STEPS
                     and (quiet_run - EXPLORE_NUDGE_STEPS) % EXPLORE_NUDGE_EVERY == 0
                 ):
-                    out += (
-                        f"\n[NUDGE] No file changes in {quiet_run} steps. Make your edit now, or "
-                        "call `done` with what you found."
-                    )
+                    if can_edit:
+                        out += (
+                            f"\n[NUDGE] No file changes in {quiet_run} steps. Make your edit now, "
+                            "or call `done` with what you found."
+                        )
+                    else:
+                        out += (
+                            f"\n[NUDGE] {quiet_run} lookups and no answer yet. Call `done` with "
+                            "what you found, or do one more lookup."
+                        )
 
-                if not steps_hinted and step_limit >= STEPS_LEFT_MIN and step >= step_limit * 0.75:
+                # The step before the last: the one call left is for the answer (once per session)
+                if step_limit >= STEPS_LEFT_MIN and step == step_limit - 1:
                     out += (
-                        f"\n[NUDGE] {step_limit - step} steps left. Finish the current edit, then "
-                        "call `done` with what is done and what is left."
+                        "\n[LAST STEP] Your next call is the last one. Call `done` now with your "
+                        "answer: what you found or did, and what is left."
                     )
+                if not steps_hinted and step_limit >= STEPS_LEFT_MIN and step >= step_limit * 0.75:
+                    left = step_limit - step
+                    if changed:
+                        out += (
+                            f"\n[NUDGE] {left} steps left. Finish the current edit, then "
+                            "call `done` with what is done and what is left."
+                        )
+                    else:
+                        out += (
+                            f"\n[NUDGE] {left} steps left. Call `done` with your answer "
+                            "before they run out."
+                        )
                     steps_hinted = True
 
                 # The same check failed again after another edit (counted once per edit between)
