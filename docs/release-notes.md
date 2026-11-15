@@ -9,6 +9,10 @@
 - `tether stats` shows `notices followed:`: for each notice that asks the model to act, how often it fired and how often the next step did what it asked.
 - What a command changed is found by comparing the workspace files before and after it, not by parsing the command text. `tether diff` snapshots, the `[REVERTED]` check, the unchanged-code note and the `[auto-test]` trigger all use it, so writes by `perl -pi`, scripts and any other shell form are tracked, and refused commands, no-op edits and writes outside the workspace are not changes. Workspaces over 50,000 files fall back to the old rule.
 
+### Fixed
+
+- A failed tool now says what happened and what to do next. `web fetch` names the HTTP status and a next step for 429, 401/403, 404/410 and 5xx, or the unreachable host; a page with no readable text is an error, not an empty reply. A tool that raises shows one `Error: <tool> failed:` line and the hint `Instead: run <tool> --help`. `web fetch` reads only the `main` or `article` element (or the role=main element) when the page has one, so site navigation no longer fills the reply.
+
 ### Removed
 
 - The `[BEFORE WRITING]` question after the first read of a test file, and the notices that point to `edit replace` after a small whole-file rewrite or a near pass: on the v0.2.18 bench qwen3.5:9b followed them 0 of 68 and 1 of 50 times (#272).

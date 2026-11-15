@@ -51,6 +51,9 @@ BACKGROUND_HINT = (
     "A background job (`&`) keeps the command open. Instead: run it in the foreground with "
     "`timeout N <cmd>`, or send its output away: `<cmd> >/dev/null 2>&1 &`."
 )
+TIMEOUT_HINT = (
+    "Instead: run a shorter command, or start a long job in the background with a timeout."
+)
 
 
 def _has_background_job(script: str) -> bool:
@@ -110,10 +113,9 @@ def make_bash_tool(
                 raise
             on_approval(exc)
             return str(exc)
-        if out.startswith(TIMEOUT_PREFIX) and _has_background_job(
-            cmd_str if stdin is None else stdin
-        ):
-            out = f"{out.rstrip()}\n{BACKGROUND_HINT}"
+        if out.startswith(TIMEOUT_PREFIX):
+            bg = _has_background_job(cmd_str if stdin is None else stdin)
+            out = f"{out.rstrip()}\n{BACKGROUND_HINT if bg else TIMEOUT_HINT}"
         return note + out
 
     return build_tool_spec(
