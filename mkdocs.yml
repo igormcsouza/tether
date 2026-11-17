@@ -93,6 +93,7 @@ extra_javascript:
 nav:
   - Start here: index.md
   - Guides:
+      - 'Choose a model: what to expect': guides/choose-a-model.md
       - Fix a failing test with a local model: guides/fix-a-failing-test.md
       - Use tether from Claude Code, Codex or Cursor: guides/use-tether-from-your-agent.md
       - A pipeline where each stage has its own job: guides/a-pipeline-with-checks.md
