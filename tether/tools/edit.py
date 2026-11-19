@@ -45,7 +45,7 @@ def _has_only_closed_blocks(stdin: str) -> bool:
 
 
 def _replace_with_blocks(sandbox: SandboxPolicy, path: str, stdin: str) -> str:
-    """Apply SEARCH/REPLACE blocks to `path`; shared by `edit replace` and `edit write`."""
+    """Apply SEARCH/REPLACE blocks to `path`; shared by every writing verb."""
     target = sandbox.resolve_safe_path(path, write=True)
     if not target.is_file():
         return f"Error: file `{path}` not found. Instead: check the path with `ls`."
@@ -268,6 +268,23 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
 
         args = _infer_verb(args, stdin)
         sub = args[0]
+        # Guard: SEARCH/REPLACE blocks on an existing file -> apply as replace for all writing verbs
+        is_writing_verb = sub in ("write", "append", "insert") or (
+            sub == "replace" and "--lines" in args
+        )
+        if (
+            is_writing_verb
+            and len(args) >= 2
+            and stdin
+            and _has_only_closed_blocks(stdin)
+            and sandbox.resolve_safe_path(args[1], write=True).is_file()
+        ):
+            out = _replace_with_blocks(sandbox, args[1], stdin)
+            return (
+                out
+                if out.startswith("Error: ")
+                else out + " (applied as replace: SEARCH/REPLACE blocks on an existing file)"
+            )
         if sub == "apply_patch":
             return _apply_patch(sandbox, stdin or "")
         if sub == "view":
@@ -299,11 +316,6 @@ def make_edit_tool(sandbox: SandboxPolicy) -> ToolSpec:
             old_text = (
                 target.read_text(encoding="utf-8", errors="replace") if target.is_file() else None
             )
-            if target.is_file() and _has_only_closed_blocks(stdin):
-                out = _replace_with_blocks(sandbox, args[1], stdin)
-                if out.startswith("Error: "):
-                    return out
-                return out + " (applied as replace: SEARCH/REPLACE blocks on an existing file)"
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(stdin, encoding="utf-8")
             if old_text is None:
