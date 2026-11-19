@@ -64,7 +64,7 @@ The session took 4 of its 8 steps. `--verify` ran `check.py` again before `done`
 | `ollama/qwen3.5:9b` | Follows numbered steps exactly. Writes a short function body from a contract. Writes a test from a described case. Fixes its own code when the check fails. | Counting lines after an edit. Long tasks with several goals. Side rules such as a line-length limit. It follows a wrong task as faithfully as a right one. |
 | `ollama/qwen3.5:4b` | Single one-line edits. | Leaves the steps and does something else often enough that we do not rely on it. |
 | Claude Haiku | Plans, tests written before the code, QA and review of a finished change. | Writing tasks for a smaller model: wrong line counts, checks that could not fail. Its tests need a second look. |
-| Claude Sonnet, Claude Opus | No data yet for this way of working. | No data yet. |
+| Claude Sonnet, Claude Opus | See [Choose a model](choose-a-model.md). | Not measured on micro-cards yet. |
 
 This table changes as tether and the models change. A row is added only from runs we looked at.
 

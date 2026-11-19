@@ -17,6 +17,10 @@
 
 - The `[BEFORE WRITING]` question after the first read of a test file, and the notices that point to `edit replace` after a small whole-file rewrite or a near pass: on the v0.2.18 bench qwen3.5:9b followed them 0 of 68 and 1 of 50 times (#272).
 
+### Docs
+
+- New guide [Choose a model: what to expect](guides/choose-a-model.md): what each model does through tether, where it fails, and the same five tasks run on qwen3.5:9b, nemotron, Haiku, Sonnet and Opus.
+
 ## v0.3.1 (2026-11-14)
 
 ### Added

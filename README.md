@@ -79,7 +79,7 @@ On Linux install `bubblewrap` for write sessions; on macOS/Windows pass `--allow
 An empty Ollama reply is resent once, unchanged; if three empty replies come in a row, the session stops and suggests `think=false`. See the [providers page](https://igormcsouza.github.io/tether/reference/providers/).
 Resume a failed pipeline from its first unfinished stage with `tether pipeline --resume <pipeline_session_id>`.
 
-Everything else (headless sessions, skills, pipelines, MCP, the CLI reference, writing your own tool or provider) is in the docs: **[igormcsouza.github.io/tether](https://igormcsouza.github.io/tether/)**. Start with the guides: [fix a failing test](https://igormcsouza.github.io/tether/guides/fix-a-failing-test/), [use it from Claude Code or Codex](https://igormcsouza.github.io/tether/guides/use-tether-from-your-agent/).
+Everything else (headless sessions, skills, pipelines, MCP, the CLI reference, writing your own tool or provider) is in the docs: **[igormcsouza.github.io/tether](https://igormcsouza.github.io/tether/)**. Start with the guides: [choose a model](https://igormcsouza.github.io/tether/guides/choose-a-model/), [fix a failing test](https://igormcsouza.github.io/tether/guides/fix-a-failing-test/), [use it from Claude Code or Codex](https://igormcsouza.github.io/tether/guides/use-tether-from-your-agent/).
 
 ## Build on it
 
