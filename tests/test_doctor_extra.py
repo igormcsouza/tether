@@ -9,6 +9,7 @@ import httpx
 import pytest
 
 from tether import doctor
+from tether.sandbox import BwrapProbe
 
 
 class _Resp:
@@ -44,7 +45,7 @@ def test_model_without_tag_is_ok_with_latest_tag(
     """A model without a tag (e.g. qwen3.5) is listed by Ollama as qwen3.5:latest."""
     monkeypatch.setenv("TETHER_PROVIDERS", str(tmp_path / "none.yaml"))
     monkeypatch.setattr(httpx, "get", _tags(["qwen3.5:latest"]))
-    monkeypatch.setattr(doctor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(doctor, "bwrap_probe", lambda: BwrapProbe("ok", "/usr/bin/bwrap", ""))
     checks = doctor.run_checks("ollama/qwen3.5", "http://h:1", tmp_path / "t.db")
     by = _by_name(checks)
     assert by["model"].ok, f"model check failed: {by['model']}"
@@ -63,7 +64,7 @@ def test_host_without_protocol_prefixes_http(
         return _Resp(["qwen3.5:latest"])
 
     monkeypatch.setattr(httpx, "get", track_get)
-    monkeypatch.setattr(doctor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(doctor, "bwrap_probe", lambda: BwrapProbe("ok", "/usr/bin/bwrap", ""))
 
     doctor.run_checks("ollama/qwen3.5", "h:1", tmp_path / "t.db")
     assert len(called_urls) == 1

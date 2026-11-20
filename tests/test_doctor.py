@@ -10,6 +10,7 @@ import pytest
 
 from tether import doctor
 from tether.cli import _async_main
+from tether.sandbox import BwrapProbe
 
 
 class _Resp:
@@ -42,7 +43,7 @@ def _by_name(checks: list[doctor.Check]) -> dict[str, doctor.Check]:
 def test_all_checks_pass(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TETHER_PROVIDERS", str(tmp_path / "none.yaml"))
     monkeypatch.setattr(httpx, "get", _tags(["qwen3.5:9b"]))
-    monkeypatch.setattr(doctor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(doctor, "bwrap_probe", lambda: BwrapProbe("ok", "/usr/bin/bwrap", ""))
     checks = doctor.run_checks("ollama/qwen3.5:9b", "http://h:1", tmp_path / "t.db")
     by = _by_name(checks)
     assert set(by) == {"ollama", "model", "bwrap", "providers", "db"}
@@ -76,7 +77,7 @@ def test_non_ollama_model_skips_the_ollama_checks(
 
 def test_missing_bwrap_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(httpx, "get", _tags(["qwen3.5:9b"]))
-    monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+    monkeypatch.setattr(doctor, "bwrap_probe", lambda: BwrapProbe("missing", "", ""))
     by = _by_name(doctor.run_checks("ollama/qwen3.5:9b", "http://h:1", tmp_path / "t.db"))
     assert not by["bwrap"].ok and "bubblewrap" in by["bwrap"].detail
 
@@ -105,7 +106,7 @@ async def test_cli_exit_code_and_output(
 ) -> None:
     monkeypatch.setenv("TETHER_PROVIDERS", str(tmp_path / "none.yaml"))
     monkeypatch.setattr(httpx, "get", _tags(["qwen3.5:9b"]))
-    monkeypatch.setattr(doctor.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(doctor, "bwrap_probe", lambda: BwrapProbe("ok", "/usr/bin/bwrap", ""))
     db = str(tmp_path / "t.db")
     assert await _async_main(["doctor", "--model", "ollama/qwen3.5:9b", "--db", db]) == 0
     out = capsys.readouterr().out

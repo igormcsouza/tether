@@ -15,6 +15,14 @@ def _container_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TETHER_SANDBOX", "container")
 
 
+@pytest.fixture(autouse=True)
+def _fresh_bwrap_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A probe cached by an earlier test must not colour the refusal text of a later one (#311)."""
+    import tether.sandbox as sandbox
+
+    monkeypatch.setattr(sandbox, "_BWRAP_PROBE", None)
+
+
 class FakeScriptedProvider:
     """Deterministic scripted provider for testing the Harness loop."""
 

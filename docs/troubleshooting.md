@@ -104,6 +104,18 @@ A session whose last test run passed after its final change ends `COMPLETED` ins
 
 **Fix.** `pip install "tether-sdk[mcp]"`. See [Use Tether Inside Your Harness](tutorial/agent-interface.md).
 
+### bwrap is installed but blocked (Ubuntu 24.04+)
+
+**Symptom.** `tether doctor` shows `FAIL bwrap ... cannot create namespaces`, and a write session refuses to start with `Sandbox unavailable: bwrap is installed (...) but the kernel refuses it`.
+
+**Cause.** AppArmor restricts unprivileged user namespaces on Ubuntu 24.04+, so `bwrap` is present but the kernel will not let it create the sandbox.
+
+**Fix.** Any one of:
+
+- Lift the restriction: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, and persist it in `/etc/sysctl.d/`.
+- Run inside a container and set `TETHER_SANDBOX=container`.
+- Pass `--allow-unsandboxed` (SDK/MCP: `allow_unsandboxed=True`) to run with command checks only.
+
 ## Tools and skills
 
 ### `Error: bash is disabled` or `unknown command`
