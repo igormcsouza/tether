@@ -376,6 +376,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_mcp.add_argument(
         "--workspace", type=str, default=None, help="Workspace root (default: current directory)"
     )
+    p_mcp.add_argument(
+        "--permit-widen",
+        action="store_true",
+        help="let tether_run callers widen the sandbox with allow / allow_unsandboxed",
+    )
 
     # `tether export`
     p_export = sub.add_parser("export", help="Print a session as a Markdown transcript")
@@ -751,7 +756,9 @@ async def _async_main(argv: list[str]) -> int:
             )
             return api.EXIT_USAGE
 
-        await serve(db_path=ns.db, workspace=Path(ns.workspace or Path.cwd()))
+        await serve(
+            db_path=ns.db, workspace=Path(ns.workspace or Path.cwd()), permit_widen=ns.permit_widen
+        )
         return 0
 
     if cmd == "diff":
