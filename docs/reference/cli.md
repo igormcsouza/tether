@@ -33,7 +33,7 @@ tether run "your goal here" [flags]
 | `--model` | Model identifier (e.g., `ollama/qwen3.5:9b`, `openai/gpt-4o-mini`) |
 | `--skill` | Skill name from `./skills/` or `~/.tether/skills/` |
 | `--tools` | Comma-separated tools (e.g., `web,mem,bash` or `all`) |
-| `--verify` | Deterministic verification gate command to run before `done` (repeatable) |
+| `--verify` | Deterministic verification gate command to run before `done` (repeatable). A gate runs under its own timeout, 300 s by default (`TETHER_GATE_TIMEOUT` seconds overrides it) |
 | `--sandbox` | Deterministic sandbox profile |
 | `--web-allow` | Comma list of domains the `web` tool may reach, e.g. `python.org,*.github.com`; other hosts and IP literals are refused |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
