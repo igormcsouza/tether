@@ -30,8 +30,9 @@ Machine-readable surface for calling Tether from another agent. Setup per harnes
 | 3 | verification gate failed or misconfigured (including `--output-schema`) |
 | 5 | worker or provider error, or `tether stop` |
 | 6 | `wait` timed out with sessions still `RUNNING` or `PENDING` (message on stderr) |
+| 130 | interrupted by Ctrl+C: one line on stderr, session left `WAITING_INPUT`, resume with `tether send` |
 
-In plain mode the failure reason goes to **stderr**; stdout only ever holds a deliverable. `wait` returns the highest code among its sessions.
+In plain mode the failure reason goes to **stderr**; stdout only ever holds a deliverable. `wait` returns the highest code among its sessions. A headless worker stopped by `tether stop` stays `FAILED` with "Stopped by user."
 
 With `tether run --worktree`, the session JSON carries `worktree` (the worktree path), `branch` (`tether/<id>`) and `commit` (the full sha, or `null` when nothing changed) at the top level of the session JSON. The MCP run tool accepts a `worktree` argument to request the same isolation; it cannot pass a setup command.
 

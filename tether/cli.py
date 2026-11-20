@@ -668,6 +668,13 @@ async def _async_main(argv: list[str]) -> int:
         await asyncio.sleep(0)  # let the watcher start so cancel reaches its cleanup
         try:
             rec = await harness.execute_session(rec.id)
+        except asyncio.CancelledError:
+            print(
+                f"interrupted; session {rec.id} left WAITING_INPUT, "
+                f'resume with: tether send {rec.id} "..."',
+                file=sys.stderr,
+            )
+            return api.EXIT_INTERRUPTED
         finally:
             watcher.cancel()
             await watcher
@@ -1000,7 +1007,11 @@ async def _async_main(argv: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     args = sys.argv[1:] if argv is None else argv
-    code = asyncio.run(_async_main(args))
+    try:
+        code = asyncio.run(_async_main(args))
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        code = api.EXIT_INTERRUPTED
     if argv is None:
         raise SystemExit(code)
     return code

@@ -1197,6 +1197,15 @@ class SandboxPolicy:
         env["HOME"] = os.path.expanduser("~")  # git and gh read ~/.gitconfig and credentials
         return await self._run_argv(argv, stdin, env=env, cwd=str(self.workspace_root))
 
+    @staticmethod
+    async def _kill_group(proc: asyncio.subprocess.Process) -> None:
+        """SIGKILL the child's process group and reap it."""
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        await proc.wait()
+
     async def _run_argv(
         self, argv: list[str], stdin: str | None, *, env: dict[str, str], cwd: str
     ) -> tuple[int, str]:
@@ -1223,12 +1232,11 @@ class SandboxPolicy:
                 proc.communicate(input=stdin_bytes),
                 timeout=self.timeout_seconds,
             )
+        except asyncio.CancelledError:
+            await self._kill_group(proc)
+            raise
         except TimeoutError:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            await proc.wait()
+            await self._kill_group(proc)
             return (
                 124,
                 f"Error: command timed out after {self.timeout_seconds:.1f}s (SIGKILL).",

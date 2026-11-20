@@ -1132,7 +1132,20 @@ class Harness:
         rec = self.store.get_session(session_id)
         if rec is not None and rec.sandbox_config.get("setup_failed"):
             return rec
-        out = await self._execute_session_body(session_id)
+        try:
+            out = await self._execute_session_body(session_id)
+        except asyncio.CancelledError:
+            cur = self.store.get_session(session_id)
+            step = getattr(cur, "step_count", 0) if cur is not None else 0
+            self.store.update_session(
+                session_id,
+                status="WAITING_INPUT",
+                result=(
+                    f"[INTERRUPTED] Stopped by Ctrl+C at step {step}. "
+                    f'Resume with: tether send {session_id} "<message>"'
+                ),
+            )
+            raise
         if "worktree" not in out.sandbox_config or out.status not in (
             "COMPLETED",
             "FAILED",
