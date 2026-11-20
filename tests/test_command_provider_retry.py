@@ -19,7 +19,7 @@ import tether.providers.declarative as declarative
 from tether.providers.base import ProviderError
 from tether.providers.declarative import CommandProvider
 
-TIMEOUT = 0.3
+TIMEOUT = 2  # must outlast interpreter start-up on a loaded machine (#308)
 MESSAGES = [{"role": "user", "content": "test"}]
 TOOLS = [{"name": "test", "description": "test", "input_schema": {"type": "object"}}]
 
@@ -77,6 +77,7 @@ def run_dir(tmp_path: Path) -> Path:
 def _provider(run_dir: Path, plan: list[str]) -> CommandProvider:
     argv = [
         sys.executable,
+        "-S",  # skip site import: faster start-up, fewer ways to be late
         str(run_dir / "fake.py"),
         str(run_dir / "counter"),
         json.dumps(plan),
@@ -116,7 +117,7 @@ async def test_gives_up_with_provider_error(run_dir: Path, sleeps: list[float]) 
         await _generate(_provider(run_dir, ["hang"]))
     message = str(info.value)
     assert "test-model" in message
-    assert "timeout 0.3s" in message
+    assert f"timeout {TIMEOUT}s" in message
     assert "command" in message
     assert _spawns(run_dir) == 3
     assert sleeps == [1.0, 2.0]
