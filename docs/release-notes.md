@@ -1,5 +1,19 @@
 # Release Notes
 
+## v0.3.3 (2026-11-20)
+
+### Security
+
+- A shared `tether mcp` server refuses `allow` and `allow_unsandboxed` from `tether_run` callers unless it was started with `tether mcp --permit-widen`. Before, any caller could widen the sandbox for every later session of the workspace. MCP clients that pass either argument must now run against a server started with the flag (#306).
+
+### Fixed
+
+- Ctrl+C during `tether run` prints one line, exits 130 and hands the session back as `WAITING_INPUT` (resume with `tether send`); the running bash command is killed. It used to print a 70-line traceback and leave the session `RUNNING` with a dead pid (#309).
+- A `--verify` gate runs under its own timeout, 300 s by default, `TETHER_GATE_TIMEOUT` seconds to change it, instead of the 30 s bash timeout. A gate that runs out says so and names the variable (#304).
+- `tether doctor` and the `Sandbox unavailable` error tell `bwrap` installed but refused by the kernel (AppArmor user namespaces on Ubuntu 24.04+) from `bwrap` missing, show the kernel's message and give the fix, instead of saying to install what is installed (#311).
+- With `--limit cpu`, only the kernel's cpu signal is reported as a cpu hit. A `kill -9` is no longer labeled `[limit hit: cpu ...]` because another command used CPU at the same time (#303).
+- The command-provider retry test no longer fails on a loaded machine (#308).
+
 ## v0.3.2 (2026-11-20)
 
 ### Changed
