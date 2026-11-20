@@ -77,6 +77,23 @@ from tether.workspace import Tracker
 from tether.worktree import commit_all, create_worktree, repo_root, run_setup
 
 
+def _gate_timeout(sandbox: SandboxPolicy) -> float:
+    """Return the timeout (seconds) to use for verification gates.
+
+    If env TETHER_GATE_TIMEOUT parses as a positive float, return it.
+    Otherwise return max(sandbox.timeout_seconds, 300.0).
+    """
+    env_val = os.getenv("TETHER_GATE_TIMEOUT")
+    if env_val is not None:
+        try:
+            val = float(env_val)
+            if val > 0:
+                return val
+        except ValueError:
+            pass
+    return max(sandbox.timeout_seconds, 300.0)
+
+
 def detect_cycle(history: list[tuple[str, str | None]], window: int = 8) -> list[str] | None:
     """Repeated n-gram at the tail of the last `window` actions, else None.
 
@@ -969,14 +986,21 @@ class Harness:
         `is_error` means the gate itself is broken (sandbox violation, command not found,
         timeout), not that the agent's work was rejected.
         """
+        timeout = _gate_timeout(sandbox)
+        gate_sandbox = dataclasses.replace(sandbox, timeout_seconds=timeout)
         for vcmd in verify_commands:
             is_error = False
             try:
-                code, out = await sandbox.execute_bash_with_code(vcmd)
+                code, out = await gate_sandbox.execute_bash_with_code(vcmd)
                 is_error = code in (124, 126, 127)
             except Exception as exc:
                 code, out, is_error = 1, str(exc), True
 
+            if code == 124 and out.startswith("Error: command timed out"):
+                out = (
+                    f"gate timed out after {timeout:g}s; "
+                    "raise it with TETHER_GATE_TIMEOUT=<seconds>"
+                )
             if code != 0:
                 compact_out = out.strip()
                 if len(compact_out) > max_gate_output_chars:
