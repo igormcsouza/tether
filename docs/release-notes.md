@@ -12,6 +12,7 @@
 ### Fixed
 
 - A failed tool now says what happened and what to do next. `web fetch` names the HTTP status and a next step for 429, 401/403, 404/410 and 5xx, or the unreachable host; a page with no readable text is an error, not an empty reply. A tool that raises shows one `Error: <tool> failed:` line and the hint `Instead: run <tool> --help`. `web fetch` reads only the `main` or `article` element (or the role=main element) when the page has one, so site navigation no longer fills the reply.
+- `edit replace --lines`, `edit append` and `edit insert` apply a stdin made of SEARCH/REPLACE blocks on an existing file, like `edit write`, instead of writing the markers into the file. nemotron corrupted a 400-line file this way while writing the model guide (#332).
 
 ### Removed
 
