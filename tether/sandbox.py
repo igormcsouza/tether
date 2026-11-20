@@ -129,14 +129,6 @@ def _set_rlimit(resource: Any, which: int, soft: int, hard: int | None = None) -
     resource.setrlimit(which, (soft, want_hard))
 
 
-def _children_cpu_seconds() -> float:
-    """User+system CPU seconds of all reaped children of this process (Linux only)."""
-    import resource
-
-    usage = resource.getrusage(resource.RUSAGE_CHILDREN)
-    return float(usage.ru_utime + usage.ru_stime)
-
-
 def parse_web_allow(raw: str | Sequence[str] | None) -> tuple[str, ...] | None:
     """Normalise a `web_allow` domain list; None means unset, () means deny every host."""
     if raw is None:
@@ -784,22 +776,22 @@ class SandboxPolicy:
             limits=limits,
         )
 
-    def _limit_hit(self, rc: int, output: str, cpu_used: float | None = None) -> str | None:
+    def _limit_hit(self, rc: int, output: str) -> str | None:
         """Name the first configured limit that explains a failed command, else None.
 
-        `cpu_used` is the child's CPU seconds; a SIGKILL counts as a cpu hit only when that
-        time reached the limit (RLIMIT_CPU's hard kill), so `kill -9` or the OOM killer do not.
+        SIGXCPU is the cpu limit (the kernel sends it at the soft limit, before the hard-limit
+        SIGKILL); a SIGKILL is never attributed, a plain kill -9 and the OOM killer look the same.
         """
         if not self.limits:
             return None
         checks: list[tuple[str, bool, str, str]] = []
+        # ponytail: a command that traps SIGXCPU dies by the hard-limit SIGKILL unlabeled;
+        # per-child rusage would need our own wait4, add when that shows up.
         if "cpu" in self.limits:
-            killed = rc in {-signal.SIGKILL, 128 + signal.SIGKILL}
-            cpu_reached = cpu_used is not None and cpu_used >= self.limits["cpu"] - 0.05
             checks.append(
                 (
                     "cpu",
-                    rc in {-signal.SIGXCPU, 128 + signal.SIGXCPU} or (killed and cpu_reached),
+                    rc in {-signal.SIGXCPU, 128 + signal.SIGXCPU},
                     f"cpu {self.limits['cpu']}s",
                     "do less work per command (smaller input, fewer iterations) or split it into "
                     "steps.",
@@ -1205,7 +1197,7 @@ class SandboxPolicy:
         if self.limits:
             # preexec_fn is unsafe with threads; tether spawns from the asyncio loop only.
             extra["preexec_fn"] = _limit_setter(self.limits)
-        cpu_before = _children_cpu_seconds() if "cpu" in self.limits else None
+
         proc = await asyncio.create_subprocess_exec(
             *argv,
             stdin=asyncio.subprocess.PIPE if stdin is not None else asyncio.subprocess.DEVNULL,
@@ -1257,8 +1249,7 @@ class SandboxPolicy:
                 f"... [truncated {omitted:,} chars by sandbox cap] ...\n"
                 f"{combined[-half:]}"
             )
-        cpu_used = None if cpu_before is None else _children_cpu_seconds() - cpu_before
-        hit = self._limit_hit(returncode, combined, cpu_used)
+        hit = self._limit_hit(returncode, combined)
         if hit:
             combined = f"{combined}\n{hit}"
         return returncode, combined

@@ -137,12 +137,13 @@ def test_limit_hit_procs_and_mem_branches(tmp_path: Path) -> None:
 
 
 @LINUX_ONLY
-def test_limit_hit_sigkill_needs_cpu_time(tmp_path: Path) -> None:
+def test_limit_hit_cpu_is_the_xcpu_signal_only(tmp_path: Path) -> None:
+    """SIGXCPU names the cpu limit; a SIGKILL never does (#303: no cross-command rusage)."""
     policy = SandboxPolicy(workspace_root=tmp_path, limits={"cpu": 30})
-    assert policy._limit_hit(-9, "", cpu_used=0.01) is None
+    assert policy._limit_hit(-9, "") is None
     assert policy._limit_hit(137, "") is None
-    assert (policy._limit_hit(-9, "", cpu_used=30.0) or "").startswith("[limit hit: cpu 30s]")
     assert (policy._limit_hit(-24, "") or "").startswith("[limit hit: cpu 30s]")
+    assert (policy._limit_hit(152, "") or "").startswith("[limit hit: cpu 30s]")
 
 
 @LINUX_ONLY
