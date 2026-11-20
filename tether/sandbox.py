@@ -20,7 +20,7 @@ import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 
 class SandboxViolationError(PermissionError):
@@ -507,6 +507,7 @@ _PRIVATE_DIR_NAMES = frozenset({".ssh", ".gnupg", ".aws", ".kube", ".docker", ".
 _MAX_PATH_MOUNTS = 16
 
 _BWRAP_USABLE: bool | None = None
+_BWRAP_PROBE: BwrapProbe | None = None
 
 
 _EMPTY_LOCK = threading.Lock()
@@ -589,37 +590,67 @@ def _is_env_secret(name: str) -> bool:
     )
 
 
-def _can_use_bwrap() -> bool:
-    """Probe once whether `bwrap` is installed and permitted by host kernel namespaces."""
-    global _BWRAP_USABLE
-    if _BWRAP_USABLE is not None:
-        return _BWRAP_USABLE
+class BwrapProbe(NamedTuple):
+    state: str  # "missing", "blocked" or "ok"
+    path: str
+    error: str
 
+
+def bwrap_probe() -> BwrapProbe:
+    """Probe (uncached) whether `bwrap` is installed and permitted by host kernel namespaces."""
     bwrap_bin = shutil.which("bwrap")
     if not bwrap_bin:
-        _BWRAP_USABLE = False
-        return False
-
+        return BwrapProbe("missing", "", "")
     try:
         proc = subprocess.run(
             [bwrap_bin, "--ro-bind", "/", "/", "--unshare-all", "--", "true"],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             timeout=2.0,
             check=False,
         )
-        _BWRAP_USABLE = proc.returncode == 0
-    except Exception:
-        _BWRAP_USABLE = False
+        if proc.returncode == 0:
+            return BwrapProbe("ok", bwrap_bin, "")
+        lines = [
+            line.strip()
+            for line in (proc.stderr or b"").decode(errors="replace").splitlines()
+            if line.strip()
+        ]
+        return BwrapProbe("blocked", bwrap_bin, lines[-1] if lines else "")
+    except Exception as exc:
+        return BwrapProbe("blocked", bwrap_bin, str(exc))
+
+
+def _can_use_bwrap() -> bool:
+    """Probe once whether `bwrap` is installed and permitted by host kernel namespaces."""
+    global _BWRAP_USABLE, _BWRAP_PROBE
+    if _BWRAP_USABLE is not None:
+        return _BWRAP_USABLE
+    probe = bwrap_probe()
+    _BWRAP_PROBE = probe
+    _BWRAP_USABLE = probe.state == "ok"
     return _BWRAP_USABLE
 
 
-_ISOLATION_MSG = (
+_ISOLATION_MSG_DEFAULT = (
     "Sandbox unavailable: workspace-write needs bwrap (Linux kernel sandbox), which is not "
     "available here. Install bubblewrap (e.g. apt install bubblewrap, then tether doctor), run "
     "inside a container with TETHER_SANDBOX=container, or pass --allow-unsandboxed (SDK/MCP: "
     "allow_unsandboxed=True) to run with command checks only."
 )
+
+
+def _isolation_message() -> str:
+    probe = _BWRAP_PROBE
+    if probe is None or probe.state != "blocked":
+        return _ISOLATION_MSG_DEFAULT
+    return (
+        f"Sandbox unavailable: bwrap is installed ({probe.path}) but the kernel refuses it: "
+        f"{probe.error}. On Ubuntu 24.04+ run: sudo sysctl -w "
+        "kernel.apparmor_restrict_unprivileged_userns=0 (persist it in /etc/sysctl.d/), or run "
+        "inside a container with TETHER_SANDBOX=container, or pass --allow-unsandboxed "
+        "(SDK/MCP: allow_unsandboxed=True) to run with command checks only."
+    )
 
 
 def _container_mode() -> bool:
@@ -854,7 +885,7 @@ class SandboxPolicy:
         _container_mode()  # validate TETHER_SANDBOX on every host, before any short-circuit
         if self.allow_unsandboxed or not self._relies_on_bwrap():
             return None
-        return _ISOLATION_MSG
+        return _isolation_message()
 
     def require_isolation(self) -> None:
         """Refuse before any model call; with the opt-out, print the notice once per process."""

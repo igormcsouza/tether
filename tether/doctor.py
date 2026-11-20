@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
 
 from tether.providers.declarative import load_declared
+from tether.sandbox import bwrap_probe
 from tether.store import SQLiteStore
 
 
@@ -55,12 +55,22 @@ def run_checks(model: str, host: str, db_path: Path) -> list[Check]:
     if model.startswith("ollama/"):
         checks.extend(_ollama_checks(model, host))
 
-    bwrap = shutil.which("bwrap")
-    if bwrap:
-        checks.append(Check("bwrap", True, bwrap))
-    else:
+    probe = bwrap_probe()
+    if probe.state == "ok":
+        checks.append(Check("bwrap", True, probe.path))
+    elif probe.state == "missing":
         checks.append(
             Check("bwrap", False, "bwrap not found: install bubblewrap for the kernel sandbox")
+        )
+    else:
+        checks.append(
+            Check(
+                "bwrap",
+                False,
+                f"{probe.path} found but cannot create namespaces ({probe.error}). Fix: sudo "
+                "sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 (persist in "
+                "/etc/sysctl.d/), or set TETHER_SANDBOX=container, or pass --allow-unsandboxed",
+            )
         )
 
     try:
