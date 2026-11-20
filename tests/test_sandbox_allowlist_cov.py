@@ -71,7 +71,7 @@ def test_mcp_allow_reaches_policy(tmp_path: Path, monkeypatch) -> None:
     )
     ws = tmp_path / "root"
     ws.mkdir()
-    impl = TetherMCP(db_path=tmp_path / "t.db", workspace=ws)
+    impl = TetherMCP(db_path=tmp_path / "t.db", workspace=ws, permit_widen=True)
     out = asyncio.run(impl.call("tether_run", {"goal": "g", "wait": False, "allow": ["gh"]}))
     rec = impl.store.get_session(out["id"])
     assert rec is not None

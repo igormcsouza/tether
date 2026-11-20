@@ -134,7 +134,7 @@ def test_opt_out_runs_with_notice_once(
         assert asyncio.run(opted.run("g")).status == "COMPLETED"
     rc = asyncio.run(_async_main(["run", "--allow-unsandboxed", "--db", str(db), "goal"]))
     assert rc == 0
-    impl = TetherMCP(db_path=db, workspace=tmp_path)
+    impl = TetherMCP(db_path=db, workspace=tmp_path, permit_widen=True)
     out = asyncio.run(impl.call("tether_run", {"goal": "g", "allow_unsandboxed": True}))
     assert out["status"] == "COMPLETED"
     assert capsys.readouterr().err.count(NOTICE) == 1

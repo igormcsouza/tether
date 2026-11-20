@@ -217,7 +217,9 @@ async def test_cli_events_send_read_json_and_mcp_serve(
     # `tether mcp` wires workspace/db into serve()
     seen: dict[str, Any] = {}
 
-    async def fake_serve(db_path: Any = None, workspace: Any = None) -> None:
+    async def fake_serve(
+        db_path: Any = None, workspace: Any = None, permit_widen: bool = False
+    ) -> None:
         seen.update(db=db_path, ws=workspace)
 
     monkeypatch.setattr(mcp_mod, "serve", fake_serve)

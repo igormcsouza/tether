@@ -383,6 +383,7 @@ tether mcp [flags]
 |------|---------|
 | `--db` | SQLite DB path (default .tether/tether.db) |
 | `--workspace` | Workspace root (default: current directory) |
+| `--permit-widen` | Let `tether_run` callers widen the sandbox with `allow` and `allow_unsandboxed`; without it the server refuses them |
 
 ```bash
 tether mcp --workspace /path/to/project

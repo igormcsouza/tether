@@ -129,9 +129,12 @@ class ToolError(Exception):
 
 
 class TetherMCP:
-    def __init__(self, db_path: str | Path | None, workspace: Path) -> None:
+    def __init__(
+        self, db_path: str | Path | None, workspace: Path, permit_widen: bool = False
+    ) -> None:
         self.db_path = db_path
         self.workspace = workspace.resolve()
+        self.permit_widen = permit_widen
         self.store = SQLiteStore(db_path=db_path)
 
     def _session(self, sid: str) -> Any:
@@ -202,6 +205,12 @@ class TetherMCP:
     async def _run(self, a: dict[str, Any]) -> Any:
         # Sandbox is rooted at the server's workspace or a narrower dir inside it (`workspace`).
         root = self._resolve_workspace(a.get("workspace"))
+        if (a.get("allow") or a.get("allow_unsandboxed")) and not self.permit_widen:
+            raise ToolError(
+                "`allow` and `allow_unsandboxed` widen the sandbox; this server refuses them. "
+                "Start it with `tether mcp --permit-widen` to allow them, "
+                "or remove them from the call."
+            )
         try:
             sandbox = SandboxPolicy(
                 profile=a.get("sandbox") or "workspace-write",
@@ -256,8 +265,10 @@ class TetherMCP:
         return [api.digest_dict(self.store, r) for r in recs]
 
 
-def build_server(db_path: str | Path | None, workspace: Path) -> lowlevel.Server:
-    impl = TetherMCP(db_path, workspace)
+def build_server(
+    db_path: str | Path | None, workspace: Path, permit_widen: bool = False
+) -> lowlevel.Server:
+    impl = TetherMCP(db_path, workspace, permit_widen)
 
     async def list_tools(ctx: Any, params: Any) -> types.ListToolsResult:
         return types.ListToolsResult(tools=[types.Tool(**t) for t in TOOLS])
@@ -279,7 +290,9 @@ def build_server(db_path: str | Path | None, workspace: Path) -> lowlevel.Server
     )
 
 
-async def serve(db_path: str | Path | None = None, workspace: Path | None = None) -> None:
-    server = build_server(db_path, workspace or Path.cwd())
+async def serve(
+    db_path: str | Path | None = None, workspace: Path | None = None, permit_widen: bool = False
+) -> None:
+    server = build_server(db_path, workspace or Path.cwd(), permit_widen)
     async with stdio_server() as (read, write):
         await server.run(read, write, server.create_initialization_options())

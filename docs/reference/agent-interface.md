@@ -43,9 +43,9 @@ With `tether run --worktree`, the session JSON carries `worktree` (the worktree 
 - `tether run --output-schema <schema.json>`: `done` is rejected (like a failed gate, 0 prompt tokens until it fails) unless the deliverable is JSON matching the schema. Supported subset: `type`, `enum`, `required`, `properties`, `items`.
 - `tether events <id> [--follow]`: one JSON object per turn (`turn`, `step`, `role`, `cmd`, `event`, `text`); with `--follow` streams until the session ends and finishes with `{"event":"status","status":"…"}`.
 
-## MCP server: `tether mcp [--db <path>] [--workspace <dir>]`
+## MCP server: `tether mcp [--db <path>] [--workspace <dir>] [--permit-widen]`
 
-Optional: `pip install "tether-sdk[mcp]"` (installs the official `mcp` SDK; core Tether never imports it). Without the extra, `tether mcp` prints a warning with the install command to stderr and exits 1. Transport: stdio, `tools` capability only. Tool results are the JSON above as text content; failures set `isError`.
+Optional: `pip install "tether-sdk[mcp]"` (installs the official `mcp` SDK; core Tether never imports it). Without the extra, `tether mcp` prints a warning with the install command to stderr and exits 1. Transport: stdio, `tools` capability only. Tool results are the JSON above as text content; failures set `isError`. **`--permit-widen`** lets `tether_run` callers widen the sandbox with `allow` (command prefixes outside the jail) and `allow_unsandboxed` (run without bwrap); without it the server rejects those arguments with a tool error (#306).
 
 | Tool | Arguments |
 |------|-----------|
@@ -58,6 +58,6 @@ Optional: `pip install "tether-sdk[mcp]"` (installs the official `mcp` SDK; core
 | `tether_stats` | `model`, `skill` |
 | `tether_query` | `id`, `query`, `top` |
 
-Security: sandboxes are always rooted at `--workspace` (default: the server's cwd). Callers can choose `read-only` or `no_network`, never widen, with two exceptions that widen what runs outside the jail: `allow` (a list of command prefixes that run outside the jail, see security-and-sandbox section 8) and `allow_unsandboxed` (boolean) lets a `workspace-write` session run without `bwrap` (command checks only). Without `bwrap` and without it, `tether_run` returns a tool error that names `--allow-unsandboxed`, `TETHER_SANDBOX=container` and how to install bubblewrap; the CLI exits `1` in the same case. A caller of a shared MCP server can opt out per call with `allow_unsandboxed`; the server does not set a default for it.
+Security: sandboxes are always rooted at `--workspace` (default: the server's cwd). Callers can choose `read-only` or `no_network`, never widen, with two exceptions that widen what runs outside the jail: `allow` (a list of command prefixes that run outside the jail, see security-and-sandbox section 8) and `allow_unsandboxed` (boolean) lets a `workspace-write` session run without `bwrap` (command checks only). **These exceptions are only honored on a server started with `--permit-widen` (#306); otherwise the server rejects them with a tool error.** Without `bwrap` and without it, `tether_run` returns a tool error that names `--allow-unsandboxed`, `TETHER_SANDBOX=container` and how to install bubblewrap; the CLI exits `1` in the same case. A caller of a shared MCP server can opt out per call with `allow_unsandboxed`; the server does not set a default for it.
 `workspace` (optional) must be an absolute existing directory inside the server workspace; anything else is rejected.
 `limits` (optional) is an object of key to whole number, e.g. `{"cpu": 60, "mem": 2048}` (keys `cpu` seconds, `mem` MB, `procs`, `fsize` MB; Linux only), the same as `--limit`. An unknown key, a non-integer (including `1.0`), a value below 1 or above 2147483647 is a tool error.
