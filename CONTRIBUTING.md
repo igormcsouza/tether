@@ -54,8 +54,9 @@ TETHER_E2E=1 uv run pytest e2e                       # ollama at localhost:11435
 TETHER_E2E_OLLAMA=http://localhost:11434 TETHER_E2E_MODELS=qwen3.5:9b,gemma4:e4b uv run pytest e2e
 ```
 
-It is local only (needs ollama, never runs in CI) and skips itself when `TETHER_E2E` is unset or
-ollama does not answer. A scenario tagged *model* runs once per model in `TETHER_E2E_MODELS`;
+It is local only (never runs in CI) and skips itself when `TETHER_E2E` is unset. Only scenarios that
+call the model (tagged *model*, or `@pytest.mark.ollama`) are skipped when ollama does not answer;
+scripted and sandbox-only ones run without it (#307). A *model* scenario runs once per model in `TETHER_E2E_MODELS`;
 *scripted* ones do not use the model at all, so they take a second.
 
 | Feature / bug | Scenario | Kind |

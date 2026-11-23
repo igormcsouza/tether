@@ -12,6 +12,11 @@
 - Troubleshooting entries link to their GitHub issues. The Reference section has an index that maps questions to pages.
 - Orchestration logs (`.claude/gru/`) are no longer committed and are git-ignored; what they held that matters is in the decisions register.
 
+### Fixed
+
+- The e2e suite skips only the scenarios that call the model when Ollama does not answer; scripted and sandbox-only scenarios run without it (#307).
+- Inside the `bwrap` jail a virtualenv found on `PATH` (for example the one `uv run` activates) under `/home` is mounted read-only whole, so `pytest`, `ruff` and other venv tools start instead of failing with "required file not found" or "No module named" (#76, #307).
+
 ### Changed
 
 - `bench/run.py` has a `plain` runner next to `naive`: the same bare tool loop, but through Ollama's native `/api/chat` with the same `num_ctx` as the tether run (the `/v1` route ignores it) and up to three reminders to keep going when the model replies without a tool call. It makes the comparison with a bare model fairer to the local model.

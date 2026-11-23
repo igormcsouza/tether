@@ -1,8 +1,9 @@
 """e2e fixtures: real tether CLI, real processes, a fault-injecting proxy in front of ollama.
 
-Local only (needs a running ollama). Enable with `TETHER_E2E=1`; point at ollama with
+Local only. Enable with `TETHER_E2E=1`; point at ollama with
 `TETHER_E2E_OLLAMA` (default http://localhost:11435) and pick models with `TETHER_E2E_MODELS`
-(comma separated, default `qwen3.5:9b`). Scenarios marked "scripted" never use the model.
+(comma separated, default `qwen3.5:9b`). Only scenarios that use the `model` fixture need ollama (or
+`@pytest.mark.ollama` for ones that pass through to it); scripted and sandbox-only ones run without.
 """
 
 from __future__ import annotations
@@ -27,17 +28,27 @@ MODELS = [m for m in os.environ.get("TETHER_E2E_MODELS", "qwen3.5:9b").split(","
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
-    reason = ""
-    if not os.environ.get("TETHER_E2E"):
-        reason = "e2e is local only: set TETHER_E2E=1"
-    else:
-        try:
-            httpx.get(f"{OLLAMA}/api/tags", timeout=3).raise_for_status()
-        except Exception as exc:
-            reason = f"ollama not reachable at {OLLAMA}: {exc}"
-    for item in items:
-        if "e2e" in str(item.fspath) and reason:
+    """Skip the e2e scenarios that need what is missing: all without `TETHER_E2E=1`, and only the
+    ones that call the model (the `model` fixture) when Ollama does not answer (#307). Scripted and
+    sandbox-only scenarios do not need Ollama."""
+    e2e_items = [i for i in items if "e2e" in str(i.fspath)]
+    reason = "" if os.environ.get("TETHER_E2E") else "e2e is local only: set TETHER_E2E=1"
+    if reason:
+        for item in e2e_items:
             item.add_marker(pytest.mark.skip(reason=reason))
+        return
+    needs_model = [
+        i
+        for i in e2e_items
+        if "model" in getattr(i, "fixturenames", ()) or i.get_closest_marker("ollama")
+    ]
+    if not needs_model:
+        return
+    try:
+        httpx.get(f"{OLLAMA}/api/tags", timeout=3).raise_for_status()
+    except Exception as exc:
+        for item in needs_model:
+            item.add_marker(pytest.mark.skip(reason=f"ollama not reachable at {OLLAMA}: {exc}"))
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:

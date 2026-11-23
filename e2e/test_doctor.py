@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import socket
 
+import pytest
+
 from e2e.conftest import Tether
 
 
@@ -37,6 +39,7 @@ def test_doctor_fails_on_a_closed_port_and_names_ollama_host(tether: Tether, cha
     assert words[:1] == ["FAIL"] and "OLLAMA_HOST" in " ".join(words), p.stdout
 
 
+@pytest.mark.ollama
 def test_doctor_tells_you_to_pull_a_missing_model(tether: Tether, chaos) -> None:
     p = tether.cli(
         "doctor",

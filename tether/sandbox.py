@@ -1050,11 +1050,13 @@ class SandboxPolicy:
         return args
 
     def _venv_prefixes(self) -> list[str]:
-        """Interpreter prefixes of the workspace venvs (`home =` in pyvenv.cfg), e.g. a uv-managed
-        Python under `~/.local/share/uv`: without it `.venv/bin/pytest` cannot start (#76)."""
+        """Interpreter prefixes of the workspace venvs and of venvs on PATH (`home =` in
+        pyvenv.cfg), e.g. a uv-managed Python under `~/.local/share/uv`: without it
+        `.venv/bin/pytest` cannot start (#76, #307)."""
         out: list[str] = []
-        for name in (".venv", "venv"):
-            cfg = self.workspace_root / name / "pyvenv.cfg"
+        on_path = [Path(e).parent / "pyvenv.cfg" for e in os.environ.get("PATH", "").split(":")]
+        cfgs = [self.workspace_root / n / "pyvenv.cfg" for n in (".venv", "venv")] + on_path
+        for cfg in cfgs:
             try:
                 text = cfg.read_text()
             except OSError:
@@ -1062,7 +1064,9 @@ class SandboxPolicy:
             match = re.search(r"^home\s*=\s*(\S.*)$", text, re.MULTILINE)
             if match:
                 home = Path(match.group(1).strip())
-                out.append(str(home.parent if home.name == "bin" else home))
+                prefix = str(home.parent if home.name == "bin" else home)
+                if prefix not in out:
+                    out.append(prefix)
         return out
 
     def _tool_path_mounts(self, hidden: list[str]) -> list[str]:
@@ -1080,6 +1084,8 @@ class SandboxPolicy:
             if not entry or not os.path.isabs(entry) or not os.path.isdir(entry):
                 continue
             real = Path(entry).resolve()
+            if (real.parent / "pyvenv.cfg").is_file():  # a venv's bin/: its site-packages too
+                real = real.parent
             if (
                 str(real) in masked
                 or real == ws
