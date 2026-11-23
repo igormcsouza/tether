@@ -1,4 +1,4 @@
-"""Draw the ladder charts as plain SVG (no dependencies): `python3 bench/ladder/charts.py` -> docs/ladder/img/.
+"""Draw the ladder charts as plain SVG (no dependencies): `python3 bench/ladder/charts.py` -> docs/benchmarks/ladder/img/.
 
 Colours are mid-tones with a transparent background, so the same file reads on the light and dark
 themes of the docs site.
@@ -8,7 +8,7 @@ import os
 from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.join(HERE, "..", "..", "docs", "ladder", "img")
+OUT = os.path.join(HERE, "..", "..", "docs", "benchmarks", "ladder", "img")
 MODELS = ["qwen3.5:9b", "qwen3.5:4b", "qwen2.5-coder:7b"]
 COLORS = {"qwen3.5:9b": "#2a9d8f", "qwen3.5:4b": "#e9a23b", "qwen2.5-coder:7b": "#7b6fd0"}
 HCOLORS = {"tether": "#2a9d8f", "naive": "#8a8f98", "opencode": "#d9694e"}
