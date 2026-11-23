@@ -4,6 +4,18 @@ This document is the authoritative specification for AI coding agents and human 
 
 ---
 
+## 0. Architecture Decisions (read first, binding)
+
+[`docs/architecture.md`](docs/architecture.md) is the **single source of truth for tether's architecture**: numbered decisions (`AD-n`), open questions (`OQ-n`) and rejected ideas with their evidence. It overrides anything you infer from code or old notes.
+
+1. **Before you plan or change code, read the decisions your change touches** and follow them. Cite the IDs (`AD-12`) in the PR body. If a change would contradict a decision, stop and ask the product owner; do not work around it.
+2. **Never edit or reverse a decision on your own.** Change one only when the product owner asks, and in the same PR as the code: update the entry (decision, why, cost, status).
+3. **Record every new decision there in the PR that introduces it** (a constant, a default, a trade-off, a rejected alternative). A decision that is not in that page is not decided. Add unresolved questions to `OQ-n`, and tried-and-rejected ideas to "Not adopted" with the evidence.
+4. Keep this file's rules and that page in step: if they disagree, the page wins and this file is fixed in the same PR.
+5. Orchestration logs (gru store) are local and git-ignored; anything durable they contain belongs in that page.
+
+---
+
 ## 1. Mission & Core Philosophy
 
 **Tether** is a general-purpose, headless-first **LLM-Native Micro-Harness** written in Python (`3.12+`), designed to orchestrate both Small Language Models (SLMs like **`ollama/qwen3.5:9b`**) and frontier models (`Claude`, `GPT`, `OpenRouter`, `vLLM`) with minimal context overhead.
@@ -256,4 +268,4 @@ uv run mypy tether/
 - Design docs: `AGENTS.md` sections 1-3, `docs/architecture.md`, `docs/reference/*`
 - Orchestration: **`/gru` runs this repo** (Team Leader + router). Strong model plans, writes the failing acceptance tests first, reviews and decides; tether does the typing as the minion at Tier 0 on the strongest free model (`nvidia/nvidia/nemotron-3-ultra-550b-a55b`, fallback `nvidia/z-ai/glm-5.3`), escalating one tier only on evidence. Tiers, context sizes and sensitive paths: `.claude/gru.json`. tether's own failures while doing a card are logged as friction and filed as issues (with the PO's OK).
 - Improvement loop: **every PR leaves tether a little better**, measured, not asserted: a behaviour change ships with a bench or e2e delta (Polyglot-Python on `ollama/qwen3.5:9b`, `bench/`) in the PR body as a `north star:` line (see North Star), reported honestly even when it is flat. After a merge, gru re-reads the next planned milestone and the other open bug issues and picks the one that clearly improves tether most (evidence from bench failure breakdowns and `tether stats` friction beats guesses); features and docs wait behind bugs that cost steps or pass rate.
-- gru store: .claude/gru/   (committed; legacy `feature-context` logs were moved here)
+- gru store: `.claude/gru/` (local, git-ignored, never committed). Durable decisions and open questions from orchestration go to `docs/architecture.md`, not to logs.

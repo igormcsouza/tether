@@ -28,3 +28,6 @@ coverage.xml
 # Environment files
 .env
 .env.*
+
+# Local gru store (logs, cards, scratch): never committed. Durable decisions live in docs/architecture.md
+.claude/gru/

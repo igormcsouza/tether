@@ -158,7 +158,7 @@ Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-
 | package domain instructions, model defaults, and tools into reusable skills | [Progressive Skills](tutorial/skills.md) |
 | spawn parallel sub-agents and query their findings via BM25 RAG | [Async Multi-Agent Orchestration](tutorial/multi-agent.md) |
 | configure `workspace-write` or `read-only` sandboxes and Linux `bwrap` | [Security and Sandbox](tutorial/security-and-sandbox.md) |
-| understand the academic literature and L1/L2 memory architecture | [Architecture and Literature](architecture.md) |
+| understand the academic literature and L1/L2 memory architecture | [Architecture and Decisions](architecture.md) |
 | register a custom model gateway or transport | [Extending Tether](extending.md) |
 | see real-world token & wall-clock benchmarks (8B local vs Sonnet vs Claude Code) | [Benchmark Evaluation](benchmarks.md) |
 | look up a class or function signature | [API Reference](reference/index.md) |

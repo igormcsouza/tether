@@ -111,7 +111,7 @@ nav:
       - Use Tether Inside Your Harness: tutorial/agent-interface.md
       - Extending Tether: extending.md
   - Concepts:
-      - Architecture and Literature: architecture.md
+      - Architecture and Decisions: architecture.md
       - Benchmark Evaluation: benchmarks.md
       - Coding Ladder: ladder/index.md
       - Coding Ladder results: ladder/results.md
