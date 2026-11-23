@@ -217,6 +217,24 @@ def test_venv_interpreter_prefix_is_re_exposed_read_only(
     assert sp._venv_prefixes() == []
 
 
+def test_venv_on_path_outside_the_workspace_is_re_exposed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #307: an activated venv outside the workspace (`uv run`) needs its interpreter too
+    home = tmp_path / "home"
+    other = home / "other"
+    other.mkdir(parents=True)
+    prefix = _venv_with_home_interpreter(home, other)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("PATH", f"{other / '.venv' / 'bin'}:/usr/bin")
+    ws = home / "proj"
+    ws.mkdir()
+    sp = SandboxPolicy(workspace_root=ws)
+    assert sp._venv_prefixes() == [str(prefix)]
+    venv = str((other / ".venv").resolve())  # the whole venv, so its site-packages load too
+    assert sp._tool_path_mounts([str(home)])[:3] == ["--ro-bind", venv, venv]
+
+
 @pytest.mark.skipif(shutil.which("bwrap") is None, reason="needs bwrap")
 async def test_workspace_venv_runs_inside_the_sandbox(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

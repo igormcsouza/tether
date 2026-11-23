@@ -59,6 +59,7 @@ packages = ["tether"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["ollama: e2e scenario that passes through to a real Ollama (skipped when it does not answer)"]
 
 [tool.ruff]
 line-length = 100
