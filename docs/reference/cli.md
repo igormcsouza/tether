@@ -371,6 +371,22 @@ tether doctor [flags]
 tether doctor --model ollama/qwen3.5:9b
 ```
 
+## tether models
+
+List the model ids tether can use: the models your Ollama has pulled, the `providers.yaml` entries, the built-in prefixes (with whether their API-key variable is set, never its value) and prefixes registered from Python. An unreachable Ollama is one line and still exit 0; an invalid `providers.yaml` prints `Error: providers.yaml: ...` and exits 1.
+
+```bash
+tether models [--json]
+```
+
+| Flag | Meaning |
+|------|---------|
+| `--json` | One JSON document (`v: 1`): `ollama` (`host`, `reachable`, `models`), `providers`, `builtin`, `registered` |
+
+```bash
+tether models
+```
+
 ## tether mcp
 
 Start an MCP (Model Context Protocol) server that exposes tether sessions as tools. Use this to let other agents or IDEs invoke tether runs.

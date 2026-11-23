@@ -12,6 +12,10 @@
 - Troubleshooting entries link to their GitHub issues. The Reference section has an index that maps questions to pages.
 - Orchestration logs (`.claude/gru/`) are no longer committed and are git-ignored; what they held that matters is in the decisions register.
 
+### Added
+
+- `tether models [--json]` lists every model id tether can use: the models Ollama has pulled, `providers.yaml` entries, the built-in prefixes with whether their API-key variable is set, and registered providers (#310).
+
 ### Fixed
 
 - The e2e suite skips only the scenarios that call the model when Ollama does not answer; scripted and sandbox-only scenarios run without it (#307).

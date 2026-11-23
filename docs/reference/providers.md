@@ -53,6 +53,8 @@ my-cli:                # kind: command - wrap a program that takes a prompt and 
 
 ## Verify it works
 
+`tether models` lists what you can use: pulled Ollama models, your `providers.yaml` entries and the built-in prefixes, with whether each key variable is set.
+
 ```bash
 tether run --model my-gateway/some-model "reply with the word ok"
 ```

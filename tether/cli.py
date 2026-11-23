@@ -49,6 +49,7 @@ _KNOWN_SUBCOMMANDS = {
     "mcp",
     "export",
     "doctor",
+    "models",
     "replay",
     "_worker",
 }
@@ -393,6 +394,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor = sub.add_parser("doctor", help="Check the local setup and say what to fix")
     p_doctor.add_argument("--model", type=str, default="ollama/qwen3.5:9b")
     p_doctor.add_argument("--db", type=str, default=".tether/tether.db")
+    # `tether models`
+    p_models = sub.add_parser("models", help="List the model ids tether can use")
+    _add_json(p_models)
     # `tether replay`
     p_replay = sub.add_parser("replay", help="Re-run a session's goal and compare the runs")
     p_replay.add_argument(
@@ -751,6 +755,17 @@ async def _async_main(argv: list[str]) -> int:
             status = "ok  " if check.ok else "FAIL"
             print(f"{status} {check.name}  {check.detail}")
         return 0 if all(check.ok for check in checks) else 1
+
+    if cmd == "models":
+        from tether.models import collect, render
+
+        try:
+            data = collect(os.environ.get("OLLAMA_HOST", "http://localhost:11434"))
+        except ValueError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return api.EXIT_USAGE
+        print(json.dumps({"v": 1, **data}) if ns.json else render(data))
+        return 0
 
     if cmd == "mcp":
         try:
