@@ -1,4 +1,4 @@
-# Extending Tether
+# Custom providers and transports
 
 *For: developers adding tools or model backends. After this page you can extend tether without touching its core.*
 
@@ -6,7 +6,7 @@ Tether is designed around small, explicit protocols so you can plug in custom mo
 
 ## 1. Custom Model Providers
 
-Out of the box tether talks to Ollama, OpenAI-compatible servers and Anthropic. To reach anything else (an internal gateway, a custom inference runner, a replay harness for tests) declare it in `providers.yaml` or register a Python class with `register_provider`. Both routes, with worked examples, are on one page: [Model providers](reference/providers.md).
+Out of the box tether talks to Ollama, OpenAI-compatible servers and Anthropic. To reach anything else (an internal gateway, a custom inference runner, a replay harness for tests) declare it in `providers.yaml` or register a Python class with `register_provider`. Both routes, with worked examples, are on one page: [Model providers](../../reference/providers.md).
 
 ## 2. Custom `ToolSpec` Namespaces
 
@@ -52,3 +52,24 @@ import tether
 def drop_vendor_prefix(cmd: str) -> str:
     return cmd.removeprefix("vendor:")
 ```
+
+## Check that tether sees your provider
+
+A provider declared in `providers.yaml` shows up in the setup check, and an invalid entry is reported by name:
+
+```text
+ok   providers  5 declared
+```
+
+```text
+FAIL providers  providers.yaml: entry `my-gateway` has unknown kind `opneai`. Valid kinds: openai, ollama, anthropic, command.
+```
+
+A provider you register in Python (`register_provider`) lives in your program, not in a file, so `tether doctor` does not list it. Run a one-line task through `Harness(model="<prefix>/<model>")` to prove it works.
+
+## When it goes wrong
+
+- **`unknown command` after registering a normalizer.** A normalizer rewrites the text of `cmd` before parsing; it cannot add a tool. Enable the tool with `tools=[...]`.
+- **A prefix you registered is ignored.** `ollama`, `openai`, `anthropic` and `claude` are built in and cannot be shadowed. Pick another prefix.
+- **A transport works once and then times out.** Tether retries a timeout twice; set `timeout:` on the entry, or raise it in your adapter.
+- More messages and their fixes: [Troubleshooting](../../troubleshooting.md).

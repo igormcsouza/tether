@@ -54,6 +54,12 @@ OLLAMA_HOST=http://localhost:11435 tether doctor
 
 Every command is explained with all its flags in the [CLI reference](../../reference/cli.md).
 
+## When it goes wrong
+
+- **`tether list` shows nothing.** Sessions are stored per folder. Run it from the folder where you ran the task, or pass `--db /path/to/.tether/tether.db`.
+- **`doctor` says `FAIL bwrap`.** Follow its message; on Ubuntu 24.04 and later the kernel may block `bwrap` ([how to fix it](../../troubleshooting.md#bwrap-is-installed-but-blocked-ubuntu-2404)).
+- **A background run vanished.** Read `.tether/workers/<id>.log`.
+
 ## What a session is
 
 Every run is a **session**: a row in the database with its goal, model, tools, every step and every full output. A session ends in one of three states:

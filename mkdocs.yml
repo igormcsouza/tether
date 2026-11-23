@@ -91,33 +91,58 @@ extra_javascript:
   - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
 
 nav:
-  - Start here: index.md
+  - Start here:
+      - Introduction and first call: index.md
+      - Search the web and write a summary: start/search-and-summarize.md
+      - Let Claude call tether to review your writing: start/review-with-claude.md
+      - Write and check a script with Nemotron: start/script-with-nemotron.md
   - Guides:
-      - 'Choose a model: what to expect': guides/choose-a-model.md
-      - Fix a failing test with a local model: guides/fix-a-failing-test.md
-      - Use tether from Claude Code, Codex or Cursor: guides/use-tether-from-your-agent.md
-      - A pipeline where each stage has its own job: guides/a-pipeline-with-checks.md
-      - Give the model a tool of your own: guides/add-your-own-tool.md
-      - Run a session on its own branch: guides/own-branch.md
-      - Write tasks a small model can finish: guides/small-models.md
-      - tutorial/index.md
-      - CLI and Headless Sessions: tutorial/cli-and-headless.md
-      - Python SDK and Custom Tools: tutorial/sdk-and-custom-tools.md
-      - Built-in Tools: tutorial/built-in-tools.md
-      - Progressive Skills: tutorial/skills.md
-      - Async Multi-Agent Orchestration: tutorial/multi-agent.md
-      - Gates, Memory, Pipelines & Telemetry: tutorial/workflows-and-telemetry.md
-      - Security and Sandbox: tutorial/security-and-sandbox.md
-      - Use Tether Inside Your Harness: tutorial/agent-interface.md
-      - Extending Tether: extending.md
+      - guides/index.md
+      - Basic usage:
+          - Find your way around: guides/basic/find-your-way-around.md
+          - Run and manage sessions: guides/basic/run-and-manage-sessions.md
+          - Built-in tools: guides/basic/built-in-tools.md
+          - Configure providers and models: guides/basic/configure-providers.md
+          - 'Choose a model: what to expect': guides/basic/choose-a-model.md
+          - Fix a failing test with a local model: guides/basic/fix-a-failing-test.md
+          - Write tasks a small model can finish: guides/basic/write-tasks-small-models.md
+          - Review and debug a session: guides/basic/review-and-debug.md
+          - Skills: guides/basic/skills.md
+      - Advanced:
+          - Python SDK and custom tools: guides/advanced/sdk-and-custom-tools.md
+          - Give the model a tool of your own: guides/advanced/add-your-own-tool.md
+          - A pipeline where each stage has its own job: guides/advanced/pipelines.md
+          - Multi-agent orchestration: guides/advanced/multi-agent.md
+          - Run a session on its own branch: guides/advanced/own-branch.md
+          - Security and sandbox: guides/advanced/security-and-sandbox.md
+          - Gates, memory and telemetry: guides/advanced/gates-memory-telemetry.md
+          - Control cost and limits: guides/advanced/control-cost-and-limits.md
+          - Delegate from Claude Code, Codex or Cursor: guides/advanced/delegate-from-your-agent.md
+          - Use tether inside your agent (MCP): guides/advanced/use-from-your-agent-mcp.md
+          - Custom providers and transports: guides/advanced/custom-providers-and-transports.md
   - Concepts:
-      - Architecture and Decisions: architecture.md
-      - Benchmark Evaluation: benchmarks.md
-      - Coding Ladder: ladder/index.md
-      - Coding Ladder results: ladder/results.md
-      - Coding Ladder results, Claude Haiku: ladder/claude-haiku.md
-      - Everyday work ladder, Claude Haiku: ladder/general.md
-      - Glossary: glossary.md
+      - concepts/index.md
+      - One action for everything: concepts/one-action-primitive.md
+      - Help only when asked: concepts/progressive-help.md
+      - Context and folding: concepts/context-and-folding.md
+      - A prefix that never changes: concepts/kv-cache-and-static-prefix.md
+      - The deterministic envelope: concepts/deterministic-envelope.md
+      - Loops, stalls and fresh starts: concepts/stalls-and-restarts.md
+      - The repair loop around tests: concepts/repair-loop.md
+      - Thinking and sampling: concepts/thinking-and-sampling.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Decisions and open questions: architecture/decisions.md
+      - Build and test tether: architecture/build-and-test.md
+      - Models we have tested: architecture/models.md
+  - Benchmarks:
+      - benchmarks/index.md
+      - Polyglot-Python: benchmarks/polyglot.md
+      - Coding Ladder:
+          - The Coding Ladder: benchmarks/ladder/index.md
+          - Results, local models: benchmarks/ladder/results.md
+          - Results, Claude Haiku: benchmarks/ladder/claude-haiku.md
+          - Everyday work ladder: benchmarks/ladder/general.md
   - Reference:
       - reference/index.md
       - CLI: reference/cli.md
@@ -130,6 +155,7 @@ nav:
       - Agent Interface (JSON, MCP): reference/agent-interface.md
   - Help:
       - Troubleshooting: troubleshooting.md
+      - Glossary: glossary.md
       - Release Notes: release-notes.md
 
 validation:

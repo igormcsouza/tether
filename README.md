@@ -32,7 +32,7 @@ Tether answers to one number: how many real coding exercises a small local model
 | Mean score | 0.718 | 0.763 | 0.783 | 0.756 | 0.830 |
 | Runs killed by the wall cap | 11 | 14 | 13 | 12 | 17 |
 
-The target is 74% (50 of 68) by v0.4.0, so this is the number every change is ranked by. It is what qwen3.5:9b can already do: 27 of the 34 exercises have passed at least once from scratch, so the work is making each of them pass every run. For comparison, the best published harness for this model, [little-coder](https://github.com/itayinbarr/little-coder), reports 52.9% on the same 34 Python exercises (its own setup). v0.2.18 passes 5 more runs than v0.2.15, and this time the paired score delta clears the noise: +0.074, 95% interval +0.003 to +0.147 (pass flips +7/-2). It comes with the larger default context, so the gain belongs to both. connect and hangman passed for the first time; more runs now end at the wall cap (17, against 12) instead of running out of steps. One run is noisy (about 0.1), so read the pass count and the failure breakdown, not one decimal. The second yardstick is the [Coding Ladder](https://igormcsouza.github.io/tether/ladder/): 24 tasks, 6 tiers of difficulty times write, bugfix, plan and review, which shows how far up a model climbs and what stops it. Method, how to reproduce both and fair-comparison rules: [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/).
+The target is 74% (50 of 68) by v0.4.0, so this is the number every change is ranked by. It is what qwen3.5:9b can already do: 27 of the 34 exercises have passed at least once from scratch, so the work is making each of them pass every run. For comparison, the best published harness for this model, [little-coder](https://github.com/itayinbarr/little-coder), reports 52.9% on the same 34 Python exercises (its own setup). v0.2.18 passes 5 more runs than v0.2.15, and this time the paired score delta clears the noise: +0.074, 95% interval +0.003 to +0.147 (pass flips +7/-2). It comes with the larger default context, so the gain belongs to both. connect and hangman passed for the first time; more runs now end at the wall cap (17, against 12) instead of running out of steps. One run is noisy (about 0.1), so read the pass count and the failure breakdown, not one decimal. The second yardstick is the [Coding Ladder](https://igormcsouza.github.io/tether/benchmarks/ladder/): 24 tasks, 6 tiers of difficulty times write, bugfix, plan and review, which shows how far up a model climbs and what stops it. Method, how to reproduce both and fair-comparison rules: [Benchmarks](https://igormcsouza.github.io/tether/benchmarks/).
 
 ## How it works
 
@@ -63,7 +63,7 @@ A session is a row in SQLite, so it survives crashes, runs detached (`--headless
 | Explicit `done` plus verification gates | Letting the model declare success | Small models stop early or never stop. The gate is a command you wrote. |
 | Thin `httpx` adapters, 2 runtime dependencies | Vendor SDKs, LangChain-style frameworks | Easy to read, easy to add a backend (`providers.yaml`, no code), nothing to upgrade around. |
 
-The research behind it: Maia et al. (2026) on probabilistic core and deterministic envelope, Wang et al. (2024, CodeAct), Yang et al. (2024, SWE-agent) and Packer et al. (2023, MemGPT); see [References](#references) and [Architecture](https://igormcsouza.github.io/tether/architecture/).
+The research behind it: Maia et al. (2026) on probabilistic core and deterministic envelope, Wang et al. (2024, CodeAct), Yang et al. (2024, SWE-agent) and Packer et al. (2023, MemGPT); see [References](#references) and [Architecture](https://igormcsouza.github.io/tether/concepts/).
 
 ## Install and first run
 
@@ -79,7 +79,7 @@ On Linux install `bubblewrap` for write sessions; on macOS/Windows pass `--allow
 An empty Ollama reply is resent once, unchanged; if three empty replies come in a row, the session stops and suggests `think=false`. See the [providers page](https://igormcsouza.github.io/tether/reference/providers/).
 Resume a failed pipeline from its first unfinished stage with `tether pipeline --resume <pipeline_session_id>`.
 
-Everything else (headless sessions, skills, pipelines, MCP, the CLI reference, writing your own tool or provider) is in the docs: **[igormcsouza.github.io/tether](https://igormcsouza.github.io/tether/)**. Start with the guides: [choose a model](https://igormcsouza.github.io/tether/guides/choose-a-model/), [fix a failing test](https://igormcsouza.github.io/tether/guides/fix-a-failing-test/), [use it from Claude Code or Codex](https://igormcsouza.github.io/tether/guides/use-tether-from-your-agent/).
+Everything else (headless sessions, skills, pipelines, MCP, the CLI reference, writing your own tool or provider) is in the docs: **[igormcsouza.github.io/tether](https://igormcsouza.github.io/tether/)**. Start with the guides: [choose a model](https://igormcsouza.github.io/tether/guides/basic/choose-a-model/), [fix a failing test](https://igormcsouza.github.io/tether/guides/basic/fix-a-failing-test/), [use it from Claude Code or Codex](https://igormcsouza.github.io/tether/guides/advanced/delegate-from-your-agent/).
 
 ## Build on it
 

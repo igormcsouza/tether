@@ -1,5 +1,9 @@
 # Built-in Tools
 
+*For: people who need the exact syntax of a built-in tool. After this page you know every verb, flag and failure message of `done`, `bash`, `edit`, `web`, `mem` and `agent`.*
+
+Only `done` is on by default; the rest are opted in with `--tools`, `Harness(tools=[...])` or a skill. Each section below is generated from the tool's docstring, which is also what the model sees when it runs `<tool> --help`. For examples of each in use, see [Built-in tools](../guides/basic/built-in-tools.md).
+
 ## `tether.tools.done`
 
 ::: tether.tools.done

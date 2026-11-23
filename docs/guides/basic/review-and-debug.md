@@ -115,7 +115,7 @@ tether retro ses_ed3a5a1c
 
 Reads the friction in a finished session and proposes at most two short rules for a skill, printed as a diff. Nothing changes until you add `--apply`. Tether never rewrites its own instructions in the middle of a run, because that would break the model's cache of the prompt ([why](../../concepts/kv-cache-and-static-prefix.md)).
 
-## When a session is stuck or failed
+## When it goes wrong
 
 - **`WAITING_INPUT` after "stuck":** read the summary, refine the task, `tether send <id> "..."`.
 - **`FAILED` with a gate error:** your `--verify` command is broken, not the model. Run it by hand.

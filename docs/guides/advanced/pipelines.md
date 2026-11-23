@@ -67,4 +67,4 @@ ses_f6b0921b   COMPLETED  ...   2/15   Read changes.txt and call done with the l
 - **A stage's gate keeps failing.** Run the gate command by hand; make the stage goal name the file it must produce.
 - **Invalid manifest.** `Error: invalid pipeline ...` and exit code 1 name the field.
 
-More: [Gates, memory, pipelines](../tutorial/workflows-and-telemetry.md#pipelines), [multi-agent](../tutorial/multi-agent.md).
+More: [Gates, memory, pipelines](gates-memory-telemetry.md#pipelines), [multi-agent](multi-agent.md).

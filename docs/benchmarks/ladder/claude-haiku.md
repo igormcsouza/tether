@@ -121,4 +121,4 @@ LADDER_CLAUDE_DIR=<a-logged-in-claude-config-dir> uv run python bench/ladder/run
 uv run python bench/ladder/run.py --out /tmp/ladder-qwen --models qwen3.5:9b --attempts 2 --tether-bin .venv/bin/tether
 ```
 
-The Claude CLI provider is the `command` kind of entry described in the [providers reference](../reference/providers.md).
+The Claude CLI provider is the `command` kind of entry described in the [providers reference](../../reference/providers.md).

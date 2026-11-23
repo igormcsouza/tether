@@ -88,15 +88,17 @@ import sys
 import re
 from collections import Counter
 
+
 def main():
     if len(sys.argv) != 2:
         print("Usage: python wordcount.py <file_path>")
         sys.exit(1)
-    with open(sys.argv[1], 'r') as f:
+    with open(sys.argv[1], "r") as f:
         text = f.read()
-    words = re.findall(r'\b\w+\b', text.lower())
+    words = re.findall(r"\b\w+\b", text.lower())
     for word, count in Counter(words).most_common(5):
         print(f"{word} {count}")
+
 
 if __name__ == "__main__":
     main()

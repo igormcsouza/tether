@@ -84,7 +84,13 @@ A call beats the file, and the file beats the adapter's default. Other per-entry
 | `rpm` | Requests per minute across all your tether processes (a free tier's limit) |
 | `fold_after` | Fix how soon old outputs are folded ([how folding works](../../concepts/context-and-folding.md)) |
 
-## When it fails
+Check an entry with `tether doctor`:
+
+```text
+ok   providers  5 declared
+```
+
+## When it goes wrong
 
 Failures name what to do: an Ollama model that is not installed lists the ones that are; a 401 or 403 names the variable to set; a usage limit shows the provider's own words once instead of retrying. See [Troubleshooting](../../troubleshooting.md) for each message.
 

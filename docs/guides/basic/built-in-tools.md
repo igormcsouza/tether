@@ -96,7 +96,37 @@ act(cmd="mem recall obs_3")
 The [course-builder example](https://github.com/igormcsouza/tether/tree/main/examples/course) uses `edit` and custom tools to turn a plan into a course. Three limits shaped it:
 
 - **`edit write` replaces the whole file.** Overwriting an existing file now reports `Replaced N lines with M (X removed, Y added; first removed: ...)` and, when the file shrank, points to `edit replace --lines a:b` ([#40](https://github.com/igormcsouza/tether/issues/40)). Small models assume it appends and silently lose earlier content. To build a file in parts, use `edit append <path>` with the next part in `stdin`; it creates the file if needed and adds a newline when the file does not end with one. To add lines in the middle, use `edit insert <path> --line N` with the lines in `stdin`: they go before line N and nothing is replaced (N = lines + 1 appends).
-- **`web search` cannot reliably find a specific YouTube video.** Use a [custom tool](sdk-and-custom-tools.md#pattern-numbered-candidates) that returns numbered candidates instead.
+- **`web search` cannot reliably find a specific YouTube video.** Use a [custom tool](../advanced/sdk-and-custom-tools.md#pattern-numbered-candidates) that returns numbered candidates instead.
 - **Tools are opt-in.** The searcher skill lists `tools: [yt-todo, yt-candidates, yt-save]` and nothing else; `edit` is only loaded by the stages that write files.
 
-Re-viewing files with `edit view` also interacts badly with observation folding; see [Context and SQLite Store](../reference/context-and-store.md#observation-folding-and-small-models).
+Re-viewing files with `edit view` also interacts badly with observation folding; see [Context and SQLite Store](../../reference/context-and-store.md#observation-folding-and-small-models).
+
+## Turn tools on
+
+Nothing but `done` is on until you ask. Name what the job needs:
+
+```bash
+tether run --tools bash,edit "Create hello.py that prints hello and run it"
+tether run --tools web "What changed in Python 3.14?"
+tether run --tools all "..."          # every built-in, for a quick experiment only
+```
+
+A tool you did not enable answers with what is on, so the model can correct itself. This is real output from a session that had `bash` and `edit` and tried a bare `python`:
+
+```text
+Error: unknown command `python`. Enabled tools: done, bash, edit.
+```
+
+## Why it works this way
+
+- **Everything is off until you turn it on.** Each enabled tool adds a line to the prompt on every step, and each is a way to break something. `done` alone is enough for a question; add `web` for research, `bash,edit` for code ([one action for everything](../../concepts/one-action-primitive.md)).
+- **`edit` exists next to `bash`.** Shell redirection is easy for a model to get wrong (quotes, newlines, a lost heredoc). `edit` takes the content in `stdin`, refuses to wipe a file silently, and says how many lines it replaced or removed.
+- **Long output is kept, not shown.** `web fetch` and `bash` store everything in SQLite and show the model a head and tail, so a long page never fills its memory ([context and folding](../../concepts/context-and-folding.md)).
+
+## When it goes wrong
+
+- **`Error: bash is disabled`.** The message lists the tools that are on; add one with `--tools bash,edit`.
+- **A write replaced a whole file.** `edit write` overwrites; use `edit append` to add, or `edit replace` for a range.
+- **`web search` returns nothing useful.** Some search engines refuse automated clients; tether says so, and you can set `SEARXNG_URL`, `BRAVE_API_KEY` or `TAVILY_API_KEY`.
+
+See also [Troubleshooting](../../troubleshooting.md).

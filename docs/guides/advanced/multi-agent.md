@@ -104,3 +104,17 @@ Run via CLI (inline or `--headless`) or Python SDK (`await harness.run_pipeline(
 ```bash
 tether pipeline pipeline.yaml --headless "Add HMAC signature verification"
 ```
+
+## Why it works this way
+
+- **Spawn never blocks.** A child session runs in its own detached process, so a parent can start three at once and keep thinking. The cost is that you must `wait` to collect.
+- **You get a digest, not a transcript.** A child's work can be thousands of tokens. `agent wait` returns about fifty (status, size, a two-line preview), and `agent query` fetches only the passages that match a question. The parent's context is the scarce resource ([context and folding](../../concepts/context-and-folding.md)).
+- **A child can never be stronger than its parent.** It inherits the parent's sandbox or a narrower one, so delegating cannot be used to escape a restriction.
+
+## When it goes wrong
+
+- **`agent wait` is slow.** It polls until the child finishes; a stuck child hands back as `WAITING_INPUT`, and `agent send <id> "..."` continues it.
+- **Two children edit the same file.** Tether does not lock files. Give each child its own folder or its own branch ([own branch](own-branch.md)).
+- **A child cannot reach a tool.** Children enable their own tools: pass `--tools` to `agent spawn`.
+
+See also [Troubleshooting](../../troubleshooting.md).

@@ -62,4 +62,4 @@ prints, per model, how many sessions passed, the average steps and tokens, and w
 - **`FAILED: Verification gate ... misconfigured`.** The gate command itself is broken (command not found, sandbox refused it). Run the gate by hand first.
 - **Not sure the gate is strict enough?** A gate that exits `0` when its input is missing checks nothing. Make it fail when the file or test is absent.
 
-More: [Troubleshooting](../troubleshooting.md), [gates](../tutorial/workflows-and-telemetry.md#gates), [CLI reference](../reference/cli.md).
+More: [Troubleshooting](../../troubleshooting.md), [gates](../advanced/gates-memory-telemetry.md#gates), [CLI reference](../../reference/cli.md).

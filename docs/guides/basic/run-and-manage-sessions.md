@@ -28,7 +28,7 @@ Install the `tether-sdk` package from PyPI using `pip` or `uv` to make the `teth
     uvx --from tether-sdk tether "Summarize the CAP theorem"
     ```
 
-Need to call Tether from another agent or script? Add the optional MCP extra with `pip install "tether-sdk[mcp]"` and see [Use Tether Inside Your Harness](agent-interface.md). Normal CLI and SDK use never needs it.
+Need to call Tether from another agent or script? Add the optional MCP extra with `pip install "tether-sdk[mcp]"` and see [Use Tether Inside Your Harness](../advanced/use-from-your-agent-mcp.md). Normal CLI and SDK use never needs it.
 
 ## Foreground Execution
 
@@ -91,7 +91,7 @@ tether run --context-tokens 32000 --fold-after 8 "refactor the parser"
 
 ## Scripting: `--json` and exit codes
 
-`run`, `pipeline`, `status`, `list`, `read`, `wait`, `send` and `stats` accept `--json`. Exit codes: `0` completed, `1` usage error, `2` waiting for input (also a session that is stuck or out of steps, handed back), `3` gate failed, `5` worker error or `tether stop`. A failure reason goes to stderr, never stdout. `--result-file <path>` writes the deliverable to a file, `--output-schema <schema.json>` rejects a `done` whose JSON does not match, and `tether events <id> --follow` streams turns as JSONL. Details: [Agent Interface reference](../reference/agent-interface.md).
+`run`, `pipeline`, `status`, `list`, `read`, `wait`, `send` and `stats` accept `--json`. Exit codes: `0` completed, `1` usage error, `2` waiting for input (also a session that is stuck or out of steps, handed back), `3` gate failed, `5` worker error or `tether stop`. A failure reason goes to stderr, never stdout. `--result-file <path>` writes the deliverable to a file, `--output-schema <schema.json>` rejects a `done` whose JSON does not match, and `tether events <id> --follow` streams turns as JSONL. Details: [Agent Interface reference](../../reference/agent-interface.md).
 
 ### When a model's replies are not understood
 
@@ -118,7 +118,7 @@ tether send --headless "$SESSION_ID" "Now export the comparison table to CSV"
 
 ## Waiting for input, telemetry and retro
 
-If the agent calls `done --ask`, the session becomes `WAITING_INPUT`; `tether wait` returns and `tether send` resumes it. `tether stats` shows per-model pass rate, token cost and friction, and `tether retro <session_id>` distills a session's mistakes into at most 2 rules. See [Gates, Memory, Pipelines & Telemetry](workflows-and-telemetry.md).
+If the agent calls `done --ask`, the session becomes `WAITING_INPUT`; `tether wait` returns and `tether send` resumes it. `tether stats` shows per-model pass rate, token cost and friction, and `tether retro <session_id>` distills a session's mistakes into at most 2 rules. See [Gates, Memory, Pipelines & Telemetry](../advanced/gates-memory-telemetry.md).
 
 ## Example: Ollama in Docker
 
@@ -134,3 +134,36 @@ tether run --model ollama/qwen3.5:9b "Say hello"
 ```
 
 `OLLAMA_HOST` is read by the Ollama provider (default `http://localhost:11434`).
+
+## What the commands print
+
+```bash
+tether list
+tether status ses_ed3a5a1c
+```
+
+```text
+ID             STATUS    MODEL                  STEP    GOAL
+ses_d065a28e   COMPLETED ollama/qwen3.5:9b      1/15   Explain the CAP theorem in 3 bullet points
+
+ID             STATUS        MODEL                  STEP    PEAK_TOK  LAST_CMD
+ses_ed3a5a1c   COMPLETED     nvidia/nvidia/nemotron-3-ultra-550b-a55b 6/20   1415      done
+sandbox: bwrap
+```
+
+`STEP 6/20` is steps used out of the maximum. `PEAK_TOK` is the biggest prompt the model saw: a small number means the context stayed small.
+
+## Why it works this way
+
+- **Every run is stored.** Nothing is "just printed". A session is a database row you can read, search, export and resume, which is why a closed terminal does not lose work.
+- **Running out of road hands the task back.** A session that hits its step limit, its token budget or a stall ends as `WAITING_INPUT` with a summary, not as a crash. You decide whether to continue with `send`.
+- **Foreground is for humans, headless is for jobs.** A foreground run prints the answer and shows progress on stderr; `--headless` returns an id at once and keeps working after your shell closes.
+
+## When it goes wrong
+
+- **Nothing is printed for a long time.** The model may be loading, or thinking; watch stderr or add `--verbose`.
+- **`tether wait` timed out.** It exits `6` and names the sessions still running; the sessions themselves keep going.
+- **The worker died before starting.** The failure names its log in `.tether/workers/`.
+- **Ctrl+C.** It stops the run cleanly, exits `130` and keeps the session, so you can `send` to resume.
+
+See also [Troubleshooting](../../troubleshooting.md).

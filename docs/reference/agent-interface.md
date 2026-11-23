@@ -2,7 +2,7 @@
 
 *For: agents and scripts calling tether. After this page you know the JSON shape, exit codes and MCP tools.*
 
-Machine-readable surface for calling Tether from another agent. Setup per harness: [Use Tether Inside Your Harness](../tutorial/agent-interface.md). Code: `tether/api.py`, `tether/mcp.py`, `tether/schema.py`.
+Machine-readable surface for calling Tether from another agent. Setup per harness: [Use Tether Inside Your Harness](../guides/advanced/use-from-your-agent-mcp.md). Code: `tether/api.py`, `tether/mcp.py`, `tether/schema.py`.
 
 ## Session JSON (schema version 1)
 

@@ -93,8 +93,22 @@ verify:
 
 ### <a id="tools-py-and-the-tools-list"></a>`tools.py` and the `tools:` list
 
-Defining a tool in `tools.py` is not enough: name it in the skill `tools:` as well, or the model gets `unknown command` ([#24](https://github.com/igormcsouza/tether/issues/24)). A skill's own custom tools are opt-in like built-in ones, so list them in `tools:`. Loading a skill whose `tools.py` defines an unlisted `@tool` emits a `UserWarning` naming it (costs no prompt tokens). See [Python SDK and Custom Tools](sdk-and-custom-tools.md).
+Defining a tool in `tools.py` is not enough: name it in the skill `tools:` as well, or the model gets `unknown command` ([#24](https://github.com/igormcsouza/tether/issues/24)). A skill's own custom tools are opt-in like built-in ones, so list them in `tools:`. Loading a skill whose `tools.py` defines an unlisted `@tool` emits a `UserWarning` naming it (costs no prompt tokens). See [Python SDK and Custom Tools](../advanced/sdk-and-custom-tools.md).
 
 ### Let the model decide, let code enforce hard requirements
 
 The planner's goal states what the course must cover; the model designs the modules, topics and their order. Code checks only what is a hard requirement: `checks.py plan` demands 1 to 3 modules and at least one topic per module, nothing about content. Gates that police taste make small models loop.
+
+## Why it works this way
+
+- **A skill is a setting, not code in the harness.** Instructions, a default model, the tools it turns on and its checks live in a file you can read, share and review. New behaviour comes through skills and `@tool`, not special cases in tether itself.
+- **Skills never change the start of the prompt mid-session.** The skill text is added once when the session begins, so the cache keeps working ([a prefix that never changes](../../concepts/kv-cache-and-static-prefix.md)).
+- **Learned rules are proposed, not applied.** `tether retro` writes at most two rules and shows a diff; you add `--apply`. Tether never edits instructions on its own.
+
+## When it goes wrong
+
+- **`unknown command` for a tool in the skill's `tools.py`.** Also list it in the skill's `tools:` (loading the skill warns about unlisted ones).
+- **The skill is not found.** Skills are looked up in `./skills/` and `~/.tether/skills/`; a folder skill needs `SKILL.md` with front matter.
+- **The skill's instructions are ignored.** Keep them short and concrete; a long list of rules costs tokens on every step.
+
+See also [Troubleshooting](../../troubleshooting.md).

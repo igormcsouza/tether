@@ -108,7 +108,7 @@ If status is `WAITING_INPUT`, answer with `tether_send`. Keep architecture and r
 
 ## Any model, no code: providers.yaml
 
-Delegate to any backend you declare in `~/.tether/providers.yaml` (a gateway, a remote Ollama, a `claude -p` style command). Location, worked examples and every setting are on one page: [Model providers](../reference/providers.md).
+Delegate to any backend you declare in `~/.tether/providers.yaml` (a gateway, a remote Ollama, a `claude -p` style command). Location, worked examples and every setting are on one page: [Model providers](../../reference/providers.md).
 
 ## Patterns
 
@@ -129,4 +129,39 @@ tether run --json --model ollama/qwen3.5:9b --verify "pytest -q" "fix the failin
 echo $?   # 0 ok, 2 needs input, 3 gate failed, 5 error
 ```
 
-See the [reference](../reference/agent-interface.md) for the JSON shape, exit codes and all tools.
+See the [reference](../../reference/agent-interface.md) for the JSON shape, exit codes and all tools.
+
+## What comes back
+
+The agent gets a small JSON object, never the other model's transcript. This is a real one (the same object `tether run --json` prints):
+
+```json
+{
+  "v": 1,
+  "id": "ses_09a5d090",
+  "status": "COMPLETED",
+  "model": "nvidia/nvidia/nemotron-3-ultra-550b-a55b",
+  "steps": 3,
+  "tokens": { "prompt": 1845, "completion": 748 },
+  "duration_ms": 13569,
+  "failure": null,
+  "exit_code": 0
+}
+```
+
+plus a `result` field with the answer. Exit codes: `0` done, `2` waiting or stuck, `3` your check failed, `5` worker error.
+
+## Why it works this way
+
+- **A subagent, not a replacement.** Your harness stays the place where you work; tether takes the mechanical jobs and returns a small structured answer, so the parent spends tokens on judgement.
+- **The result is JSON with an exit code.** Any agent, script or CI job can use it without parsing prose.
+- **The server is rooted in one folder and can only narrow it.** A delegated session cannot be talked into touching more than `--workspace` allows.
+- **MCP is an optional extra.** Plain `tether-sdk` stays small, and the official `mcp` package is imported only when you start the server.
+
+## When it goes wrong
+
+- **`MCP support is not installed`.** `pip install "tether-sdk[mcp]"`.
+- **The agent never calls tether.** Put the delegation rule in its instructions file ([delegate from your agent](delegate-from-your-agent.md)).
+- **A call from the agent is refused.** A caller cannot widen the sandbox (`allow`, `allow_unsandboxed`) unless the server was started with `--permit-widen`.
+
+See also [Troubleshooting](../../troubleshooting.md).

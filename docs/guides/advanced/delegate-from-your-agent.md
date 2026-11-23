@@ -12,7 +12,7 @@ claude mcp add tether -- tether mcp --workspace "$PWD"      # Claude Code
 codex mcp add tether -- tether mcp --workspace "$PWD"       # Codex CLI
 ```
 
-Other agents (Cursor, Gemini CLI, VS Code, Claude Desktop) take the same command in their MCP config: see [Use Tether Inside Your Harness](../tutorial/agent-interface.md). `--workspace` fixes the sandbox root, and a caller can only narrow it, never widen it.
+Other agents (Cursor, Gemini CLI, VS Code, Claude Desktop) take the same command in their MCP config: see [Use Tether Inside Your Harness](use-from-your-agent-mcp.md). `--workspace` fixes the sandbox root, and a caller can only narrow it, never widen it.
 
 ## Delegate
 
@@ -63,4 +63,4 @@ If the small model needs a decision, it ends with `status: "WAITING_INPUT"` and 
 - **`status: "FAILED"`.** `failure.kind` says why (`gate`, `max_steps`, `worker_error`); read the details with `tether_read` or `tether read <id> --steps`.
 - **A task the small model cannot do.** Keep architecture and review in the main agent; delegate only work a gate can check.
 
-Reference: [Agent interface](../reference/agent-interface.md), [CLI](../reference/cli.md).
+Reference: [Agent interface](../../reference/agent-interface.md), [CLI](../../reference/cli.md).

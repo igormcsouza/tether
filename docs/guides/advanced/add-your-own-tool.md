@@ -52,11 +52,11 @@ Write tool errors for a reader that cannot ask a follow-up question: say what wa
 ## Other ways to add things
 
 - **In a skill.** Put the function in `skills/<name>/tools.py` and list its name under `tools:` in `SKILL.md`; tools are opt-in, so an unlisted tool stays unavailable.
-- **A model backend, not a tool.** Declare it in `~/.tether/providers.yaml` or register a class: [Model providers](../reference/providers.md).
+- **A model backend, not a tool.** Declare it in `~/.tether/providers.yaml` or register a class: [Model providers](../../reference/providers.md).
 
 ## When it goes wrong
 
 - **`unknown command` for your tool.** It was not passed in `tools=[...]` (or not listed in the skill's `tools:`).
 - **The model passes the wrong argument.** Tether answers with the tool's usage line; if it keeps happening, tighten the docstring and the error message.
 
-More: [Python SDK and custom tools](../tutorial/sdk-and-custom-tools.md), [Extending tether](../extending.md).
+More: [Python SDK and custom tools](sdk-and-custom-tools.md), [Extending tether](custom-providers-and-transports.md).

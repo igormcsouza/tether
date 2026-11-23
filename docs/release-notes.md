@@ -34,7 +34,7 @@
 
 ### Docs
 
-- New guide [Choose a model: what to expect](guides/choose-a-model.md): what each model does through tether, where it fails, and the same five tasks run on qwen3.5:9b, nemotron, Haiku, Sonnet and Opus.
+- New guide [Choose a model: what to expect](guides/basic/choose-a-model.md): what each model does through tether, where it fails, and the same five tasks run on qwen3.5:9b, nemotron, Haiku, Sonnet and Opus.
 
 ## v0.3.1 (2026-11-14)
 
@@ -57,7 +57,7 @@
 
 ### Docs
 
-- New guide [Write tasks a small model can finish](guides/small-models.md): the task-writing rules, a re-runnable example, what each model was seen to do well and badly, and how to tell whose fault a failed task is.
+- New guide [Write tasks a small model can finish](guides/basic/write-tasks-small-models.md): the task-writing rules, a re-runnable example, what each model was seen to do well and badly, and how to tell whose fault a failed task is.
 
 ## v0.3.0 (2026-11-09)
 
@@ -83,7 +83,7 @@
 - `tether export <id>` prints a session as a Markdown transcript (`--out FILE` to save it).
 - A `--verify` gate whose program does not exist (checked for every command in a `&&`/`||`/`;`/`|` chain) now fails the session before the first model call, as a misconfigured gate (#82).
 - `tether doctor` checks your setup (Ollama reachable, model pulled, bwrap, providers.yaml, session DB) and says what to fix; exit 1 when a check fails.
-- `tether run --worktree` runs the session in its own git worktree on branch `tether/<id>` and commits the result there when it stops. `--worktree-from <ref>` sets the base ref and `--setup <cmd>` runs a shell command in the worktree before the model starts (outside the sandbox, not offered over MCP). See [Run a session on its own branch](guides/own-branch.md).
+- `tether run --worktree` runs the session in its own git worktree on branch `tether/<id>` and commits the result there when it stops. `--worktree-from <ref>` sets the base ref and `--setup <cmd>` runs a shell command in the worktree before the model starts (outside the sandbox, not offered over MCP). See [Run a session on its own branch](guides/advanced/own-branch.md).
 - `tether read <id> --thinking` prints the stored model thinking for each step. Thinking is kept for reading only and is never replayed to the model.
 - `tether replay SESSION_ID` re-runs a session's goal in the current directory with its saved tools, skill, sandbox, output_schema and params, and prints the original and replay side by side (`--model`, `--max-steps`, `--json`). Verify gates are not stored, so a replay runs without them.
 - `tether pipeline --resume <id>` re-runs a failed or waiting pipeline from its first unfinished stage and reuses the stages that completed (#35).

@@ -129,3 +129,19 @@ sqlite3 .tether/tether.db \
 ```
 
 `turns.event_type` is one of `ok`, `nudge`, `loop_stall`, `cycle_stall`, `syntax_error`, `tool_error`, `gate_fail`, `gate_error`, `completed`; the non-`ok` ones are what `tether stats` counts as friction. Model **reasoning is not recorded** (only the action and its output), so a "thinking" model that loops shows no visible cause ([#32](https://github.com/igormcsouza/tether/issues/32)).
+
+## Why it works this way
+
+- **The check is yours, not the model's.** A model that says "tests pass" may be wrong, so tether runs your command itself and trusts its exit code. A model's `done` is a request, not evidence ([the deterministic envelope](../../concepts/deterministic-envelope.md)).
+- **A broken gate fails at once.** If the check cannot run at all (the program does not exist, the command is empty, the sandbox refused it), retrying does not help, so the session ends as `gate_error` before the first model call and without spending tokens.
+- **Memory is a database, not a prompt.** Notes you pin and facts you share across sessions live in SQLite and come back through search, so they cost no tokens until they are needed.
+- **Statistics measure friction, not just success.** `tether stats` counts nudges, loops and malformed commands, because a model that passes after ten corrections is a different model from one that passes cleanly.
+
+## When it goes wrong
+
+- **The session is `FAILED` as a gate error.** Run the `--verify` command by hand in the workspace; fix the command, not the task.
+- **The gate times out.** A full suite can exceed the default 300 seconds: set `TETHER_GATE_TIMEOUT`.
+- **A pinned fact is not found later.** Pins are per session unless you use `mem pin --project`.
+- **`retro` printed nothing.** It needs friction to learn from; a clean session has none.
+
+See also [Troubleshooting](../../troubleshooting.md).

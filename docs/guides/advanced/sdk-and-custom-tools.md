@@ -81,7 +81,7 @@ Patterns from the [course-builder example](https://github.com/igormcsouza/tether
 
 ### Gotcha: list skill tools in `tools:` too
 
-A skill's `tools.py` functions are registered when the skill loads, but the session only exposes names listed in the skill's `tools:`. A tool missing from that list fails with `Error: unknown command`. See [Skills](skills.md#tools-py-and-the-tools-list) ([#24](https://github.com/igormcsouza/tether/issues/24)).
+A skill's `tools.py` functions are registered when the skill loads, but the session only exposes names listed in the skill's `tools:`. A tool missing from that list fails with `Error: unknown command`. See [Skills](../basic/skills.md#tools-py-and-the-tools-list) ([#24](https://github.com/igormcsouza/tether/issues/24)).
 
 ### Pattern: numbered candidates
 
@@ -119,3 +119,17 @@ def clean(x):  # '|' is the videos.md column separator
 ### Make multi-step edits atomic
 
 Prefer one in-place swap over drop-then-save (delete the old row, then write the new one): if the model stops between the two steps, data is lost. Write the replacement and the removal in the same tool call.
+
+## Why it works this way
+
+- **A function is the whole interface.** Type hints become the argument grammar and the docstring becomes `--help`, so there is no JSON schema to write or keep in sync ([one action for everything](../../concepts/one-action-primitive.md)).
+- **Tools are opt-in, even your own.** A custom tool must be listed in `tools=[...]` or a skill's `tools:`. Silent loading would put your tool's description into every prompt of every session.
+- **Bad input is refused with the valid options.** The model sees what to do next, not a Python traceback, so it can correct itself in one step ([help only when asked](../../concepts/progressive-help.md)).
+
+## When it goes wrong
+
+- **`unknown command` for a tool you wrote.** It is not enabled. Add it to `tools=[...]` (SDK) or the skill's `tools:` list.
+- **The model passes a list or a number as text.** Arguments arrive as strings; declare types in the signature so tether converts them, and refuse bad values with a message that lists the valid ones.
+- **A long file argument breaks.** Put multi-line content in `stdin`, never inside the command line.
+
+See also [Troubleshooting](../../troubleshooting.md).

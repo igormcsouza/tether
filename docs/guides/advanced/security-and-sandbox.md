@@ -206,3 +206,16 @@ TETHER_E2E=1 uv run pytest e2e/test_sandbox_conformance.py -q
 ```
 
 The e2e layer needs `bwrap` with user namespaces. Without them its tests are skipped, and `-rs` shows the reason.
+
+## Why it works this way
+
+- **The kernel enforces it, the prompt does not.** A model can be persuaded, confused or hijacked by text it reads on a web page. A jail built from mounts and a scrubbed environment does not care what the model believes, so it is the only protection worth relying on.
+- **No `bwrap`, no write session.** Tether would rather refuse than pretend to be safe. If the kernel blocks `bwrap`, `tether doctor` says so, and you choose on purpose: lift the restriction, use a container, or `--allow-unsandboxed`.
+- **Authority only narrows.** A sub-agent, a pipeline stage or an MCP caller can ask for less access than its parent, never more. The two exceptions are named and need a server started with `--permit-widen`.
+- **The caller approves what leaves the jail.** `git push`, `gh` and `docker` pause the session and wait for you. A model's own message can never grant that approval.
+
+## When it goes wrong
+
+- **`Sandbox unavailable`.** See [bwrap installed but blocked](../../troubleshooting.md#bwrap-is-installed-but-blocked-ubuntu-2404).
+- **A command is refused.** The message names the rule, an alternative and the flag. Read it before you widen anything.
+- **A tool under your home directory is "not found".** The jail hides `$HOME`; put the tool on `PATH` or in the workspace ([troubleshooting](../../troubleshooting.md)).

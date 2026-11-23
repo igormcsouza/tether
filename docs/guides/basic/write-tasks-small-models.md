@@ -85,4 +85,4 @@ Common signs:
 | The check passes, the output is slightly off | The check compares part of the output | Compare the whole value |
 | An edit command is refused | The edit text was put inside `cmd` | Say "two arguments: cmd and stdin" in the task |
 
-More: [Fix a failing test with a local model](fix-a-failing-test.md), [Troubleshooting](../troubleshooting.md).
+More: [Fix a failing test with a local model](fix-a-failing-test.md), [Troubleshooting](../../troubleshooting.md).

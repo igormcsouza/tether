@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TUTORIAL = ROOT / "docs" / "tutorial" / "security-and-sandbox.md"
-OWN_BRANCH = ROOT / "docs" / "guides" / "own-branch.md"
+TUTORIAL = ROOT / "docs" / "guides" / "advanced" / "security-and-sandbox.md"
+OWN_BRANCH = ROOT / "docs" / "guides" / "advanced" / "own-branch.md"
 HEADING = "Install with the network, work without it"
 COMMAND = (
     'tether run --worktree --setup "uv sync" --no-network --verify "uv run pytest -q" "<goal>"'
@@ -50,5 +50,5 @@ def test_own_branch_links_network_section() -> None:
     assert TUTORIAL.is_file(), f"missing {TUTORIAL}"
     # The anchor is derived from the tutorial heading, so a renamed heading breaks this test.
     assert f"## {HEADING}" in TUTORIAL.read_text(encoding="utf-8"), "link target heading missing"
-    link = f"](../tutorial/security-and-sandbox.md#{_slug(HEADING)})"
+    link = f"](security-and-sandbox.md#{_slug(HEADING)})"
     assert link in OWN_BRANCH.read_text(encoding="utf-8"), f"own-branch.md lacks link {link}"

@@ -68,6 +68,13 @@ tether run --output-schema invoice.schema.json --result-file out.json "Extract t
 
 `done` is refused until the answer validates against your JSON Schema, so a script can trust the shape of the result. `--result-file` writes the answer to a file instead of the terminal.
 
+## When it goes wrong
+
+- **The session paused with `[TOKEN BUDGET]` or "out of steps" and the work is half done.** That is the limit working. Read the summary, then `tether send <id> "keep going"` to grant the same amount again, or refine the goal first.
+- **A limit seems to have no effect.** `--limit` is Linux only and needs the kernel jail; `tether doctor` shows whether `bwrap` works. Without it, write sessions are refused unless you opt out.
+- **`--output-schema` keeps rejecting `done`.** The model's answer does not validate; the rejection message lists the failing fields. Loosen the schema or say the shape in the goal.
+- **A slow test suite fails `--verify` on time.** Raise `TETHER_GATE_TIMEOUT`.
+
 ## Putting it together
 
 For an unattended job on a paid model:

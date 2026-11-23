@@ -77,6 +77,6 @@ Practical settings that came out of the ladder:
 
 ## How reliable are these numbers
 
-One run per cell at temperature 0.2. Two runs of the same build differ by about one task in 24, and the 9B tether runs show it (15 and 16). The ladder tells you where a model stops, a rough size of the gap between harnesses, and which tasks are out of reach. It cannot rank two harnesses that are one or two tasks apart. To judge a change to tether, use the paired comparison in the [benchmark guide](../benchmarks.md) instead of a single run.
+One run per cell at temperature 0.2. Two runs of the same build differ by about one task in 24, and the 9B tether runs show it (15 and 16). The ladder tells you where a model stops, a rough size of the gap between harnesses, and which tasks are out of reach. It cannot rank two harnesses that are one or two tasks apart. To judge a change to tether, use the paired comparison in the [benchmark guide](../polyglot.md) instead of a single run.
 
 Known limits are tracked as issues: [#200](https://github.com/igormcsouza/tether/issues/200) (unsaid cases), [#199](https://github.com/igormcsouza/tether/issues/199) (repeated reads) and [#183](https://github.com/igormcsouza/tether/issues/183) (long empty thinking turns on `qwen3.5`).

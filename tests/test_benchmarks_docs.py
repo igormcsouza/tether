@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-PAGE = (Path(__file__).resolve().parents[1] / "docs" / "benchmarks.md").read_text()
+PAGE = (Path(__file__).resolve().parents[1] / "docs" / "benchmarks" / "polyglot.md").read_text()
 
 
 def test_reports_the_polyglot_score_and_the_method() -> None:
