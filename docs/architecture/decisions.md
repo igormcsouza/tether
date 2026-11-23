@@ -178,3 +178,7 @@ Tried or considered, measured, and rejected. Revisit only with new evidence.
 | A maintained `bench/baseline` directory | Unmaintainable | Replaced by golden traces and local e2e (AD-45, AD-46) |
 | Escalating a failed card to a Claude Code minion | Hides the failure data | A failed card is reported; an Opus plan then a retry on the same model is allowed |
 | Letting minions run unscoped tasks on a large repo | 340-780k tokens and no finish | Scoped briefs (AD-49) |
+| Refusing or holding a blind whole-file rewrite until the tests ran | About 80 s of a 600 s run went to retyping refused or held writes (a 51 s blind gate and a 28 s hold in one run) | Replaced by re-running the tests after every edit (AD-24) |
+| Reverting a small whole-file rewrite when `edit` is on | A lab variant; the model ignored the pointer to `edit replace` in 4 of 4 runs and the revert cost more typing | Replaced by naming the rewrite that changed nothing or little (AD-24) |
+| Folding repeated unittest failures in the observation | Experiment with no measured gain, not for merge | Not adopted |
+| Treating read pipelines (`cat f \| head`) as reads for live-read tracking | Parked, no measured gain | Not adopted |

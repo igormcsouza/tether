@@ -1,5 +1,22 @@
 # Release Notes
 
+## Unreleased
+
+### Documentation
+
+- The docs site is reorganised into **Start here**, **Guides** (basic and advanced), **Concepts**, **Architecture**, **Benchmarks**, **Reference** and **Help**. Start here has four short pages with real runs: a first call, a web search and summary, Claude calling tether over MCP to review a draft, and a script written by Nemotron and checked by a `--verify` gate.
+- New guides: find your way around, configure providers and models, review and debug a session, control cost and limits. Every guide now says why the feature works the way it does and what to do when it goes wrong.
+- New **Concepts** pages, one per problem with research behind it: one action, progressive help, context and folding, a prefix that never changes, the deterministic envelope, loops and restarts, the repair loop around tests, thinking and sampling.
+- New **Architecture** section: an overview, the decisions register (`AD-n` decisions, `OQ-n` open questions and a list of ideas that were tried and not adopted, each with its evidence), build and test habits, and a page on every model tested with its score on each Coding Ladder task. `AGENTS.md` points contributors and agents to the register and says it changes only when the product owner asks.
+- **Benchmarks** has a page per benchmark: Polyglot-Python with the score of every version from the first measurement to v0.2.18, and the Coding Ladder pages.
+- Troubleshooting entries link to their GitHub issues. The Reference section has an index that maps questions to pages.
+- Orchestration logs (`.claude/gru/`) are no longer committed and are git-ignored; what they held that matters is in the decisions register.
+
+### Changed
+
+- `bench/run.py` has a `plain` runner next to `naive`: the same bare tool loop, but through Ollama's native `/api/chat` with the same `num_ctx` as the tether run (the `/v1` route ignores it) and up to three reminders to keep going when the model replies without a tool call. It makes the comparison with a bare model fairer to the local model.
+- `bench/ladder/charts.py` writes its charts to `docs/benchmarks/ladder/img/`.
+
 ## v0.3.3 (2026-11-20)
 
 ### Security

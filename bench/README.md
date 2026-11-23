@@ -27,6 +27,7 @@ Three runners, so a gap can be attributed:
 |---|---|
 | `tether` | the CLI under test (`--tether-bin` picks a version or a venv) |
 | `naive` | `naive_agent.py`, a plain OpenAI-compatible tool loop (bash/read/write) with the same model |
+| `plain` | the same loop made fairer for a local model: it calls Ollama's native `/api/chat` with the same `num_ctx` as the tether run (the `/v1` route ignores it) and reminds the model up to 3 times to keep going when it replies without a tool call |
 | `claude` | Claude Code in print mode, as a frontier baseline (`--models cc/sonnet`) |
 
 ```bash

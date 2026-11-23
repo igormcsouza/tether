@@ -46,20 +46,27 @@ def main():
     ap.add_argument("--ws", required=True)
     ap.add_argument("--goal", required=True)
     ap.add_argument("--max-turns", type=int, default=40)
+    ap.add_argument("--native-ollama", action="store_true", help="use /api/chat with --num-ctx (the /v1 route ignores it)")
+    ap.add_argument("--num-ctx", type=int, default=8192)
+    ap.add_argument("--keep-going", type=int, default=0, help="on a reply without a tool call, remind the model up to N times before stopping")
     ap.add_argument("--result-file", required=True)
     ap.add_argument("--stats-file", required=True)
     a = ap.parse_args()
     hdr = {"Authorization": f"Bearer {os.environ.get(a.key_env, 'x')}"}
     msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": a.goal}]
-    pt = ct = turns = 0
+    pt = ct = turns = reminders = 0
     peak = 0
     final, status = "", "max_turns"
     t0 = time.time()
     with httpx.Client(timeout=300) as c:
         for turns in range(1, a.max_turns + 1):
             for attempt in range(4):
-                r = c.post(f"{a.base_url}/chat/completions", headers=hdr,
-                           json={"model": a.model, "messages": msgs, "tools": TOOLS, "temperature": 0.2})
+                if a.native_ollama:
+                    r = c.post(f"{a.base_url}/chat", json={"model": a.model, "messages": msgs, "tools": TOOLS, "stream": False,
+                               "keep_alive": "10m", "options": {"num_ctx": a.num_ctx, "temperature": 0.2}})
+                else:
+                    r = c.post(f"{a.base_url}/chat/completions", headers=hdr,
+                               json={"model": a.model, "messages": msgs, "tools": TOOLS, "temperature": 0.2})
                 if r.status_code in (429, 500, 502, 503, 504) and attempt < 3:
                     time.sleep(2 * (attempt + 1))
                     continue
@@ -68,13 +75,28 @@ def main():
                 status, final = "http_error", f"HTTP {r.status_code}: {r.text[:300]}"
                 break
             d = r.json()
-            u = d.get("usage") or {}
+            if a.native_ollama:
+                m = d["message"]
+                u = {"prompt_tokens": d.get("prompt_eval_count", 0), "completion_tokens": d.get("eval_count", 0)}
+                m["tool_calls"] = [{"id": f"c{turns}_{i}", "function": {"name": t["function"]["name"],
+                                    "arguments": json.dumps(t["function"].get("arguments") or {})}}
+                                   for i, t in enumerate(m.get("tool_calls") or [])]
+            else:
+                u = d.get("usage") or {}
+                m = d["choices"][0]["message"]
             pt += u.get("prompt_tokens", 0)
             ct += u.get("completion_tokens", 0)
             peak = max(peak, u.get("prompt_tokens", 0))
-            m = d["choices"][0]["message"]
-            msgs.append({k: v for k, v in m.items() if k in ("role", "content", "tool_calls") and v is not None})
+            sent = {k: v for k, v in m.items() if k in ("role", "content", "tool_calls") and v is not None and v != []}
+            if a.native_ollama and "tool_calls" in sent:  # ollama wants arguments as an object, not a string
+                sent["tool_calls"] = [{"function": {"name": t["function"]["name"], "arguments": json.loads(t["function"]["arguments"])}}
+                                      for t in sent["tool_calls"]]
+            msgs.append(sent)
             if not m.get("tool_calls"):
+                if reminders < a.keep_going and "DONE" not in (m.get("content") or ""):
+                    reminders += 1
+                    msgs.append({"role": "user", "content": "Continue. Make sure the tests pass; when everything is finished reply with DONE."})
+                    continue
                 final, status = m.get("content") or "", "completed"
                 break
             for tc in m["tool_calls"]:

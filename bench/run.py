@@ -92,10 +92,11 @@ def build_cmd(runner, model, task, goal, ws, rd, tether_bin, params=(), context_
         if task.startswith("poly-") and POLY_VERIFY:
             cmd += ["--verify", "python3 -m unittest discover -p '*_test.py'"]
         return cmd + [goal]
-    if runner == "naive":
-        base, key = ("http://localhost:11435/v1", "") if model.startswith("ollama/") else ("https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY")
+    if runner in ("naive", "plain"):
+        base, key = ("http://localhost:11435/" + ("api" if runner == "plain" else "v1"), "") if model.startswith("ollama/") else ("https://integrate.api.nvidia.com/v1", "NVIDIA_API_KEY")
         return [sys.executable, f"{HERE}/naive_agent.py", "--base-url", base, "--model", model.split("/", 1)[1] if model.startswith("ollama/") else model.removeprefix("nvidia/"),
-                "--key-env", key, "--ws", ws, "--goal", goal, "--max-turns", str(steps), "--result-file", f"{rd}/result.txt", "--stats-file", f"{rd}/stats.json"]
+                "--key-env", key, "--ws", ws, "--goal", goal, "--max-turns", str(steps), "--result-file", f"{rd}/result.txt", "--stats-file", f"{rd}/stats.json"] + (
+            ["--keep-going", "3"] + (["--native-ollama", "--num-ctx", str(context_tokens or 8192)] if model.startswith("ollama/") else []) if runner == "plain" else [])
     if runner == "claude":
         return ["env", "-u", "ANTHROPIC_API_KEY", "claude", "-p", goal, "--model", model.removeprefix("cc/"), "--permission-mode", "bypassPermissions",
                 "--output-format", "json", "--setting-sources", "", "--disable-slash-commands", "--no-session-persistence", "--max-budget-usd", "3"]
@@ -182,7 +183,7 @@ async def one(sem, rec, args, results):
                             completion_tokens=u.get("output_tokens"))
             except Exception:
                 info["parse_error"] = True
-        elif runner == "naive":
+        elif runner in ("naive", "plain"):
             try:
                 info.update(json.load(open(f"{rd}/stats.json")))
                 result = open(f"{rd}/result.txt").read()
