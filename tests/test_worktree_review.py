@@ -104,7 +104,7 @@ async def test_worktree_flags_need_worktree(
 
 
 def test_docs_say_keys_are_top_level() -> None:
-    for page in ("docs/guides/own-branch.md", "docs/reference/agent-interface.md"):
+    for page in ("docs/guides/advanced/own-branch.md", "docs/reference/agent-interface.md"):
         text = (ROOT / page).read_text()
         assert "sandbox_config" not in text, page
     assert "--worktree" in (ROOT / "README.md").read_text()

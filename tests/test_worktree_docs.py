@@ -8,14 +8,14 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_guide_page_covers_the_flow() -> None:
-    page = (ROOT / "docs" / "guides" / "own-branch.md").read_text()
+    page = (ROOT / "docs" / "guides" / "advanced" / "own-branch.md").read_text()
     for needle in ("--worktree", "--worktree-from", "--setup", "tether/", "git worktree remove"):
         assert needle in page, needle
     assert "status" in page and "branch" in page and "commit" in page
 
 
 def test_guide_is_in_the_nav() -> None:
-    assert "guides/own-branch.md" in (ROOT / "mkdocs.yml").read_text()
+    assert "guides/advanced/own-branch.md" in (ROOT / "mkdocs.yml").read_text()
 
 
 def test_release_notes_and_agent_interface_mention_it() -> None:

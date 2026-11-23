@@ -1,44 +1,26 @@
 # tether
 
-*For: anyone deciding whether to use tether, and agents looking for the right page. After this page you can install it, run a first task and find where to go next.*
+*For: anyone deciding whether to use tether, and agents looking for the right page. After this page you can install tether, run your first task and see where to go next.*
 
-**Tether** is a general-purpose, headless-first **LLM-Native Micro-Harness** in Python (`3.12+`) built to orchestrate both Small Language Models (`ollama/qwen3.5:9b`, `ollama/gemma4:e4b`) and frontier models (`Anthropic Claude`, `OpenAI GPT`, `OpenRouter`, `vLLM`) with **under 150 tokens of fixed prompt framing**.
+**Tether is a small harness that lets a small model do real work.** You give it a goal in plain words. It lets a model (a 9B model on your own laptop, or Claude, GPT, Nemotron) run commands, read and write files, search the web and check its own work, then hands you the result.
 
-Most agent frameworks drown small models in 3,000–8,000 tokens of nested JSON tool schemas and unbounded append-only transcripts before the model emits a single token. Tether flips this architecture:
+Most agent tools were built for giant models and cost 3,000 to 8,000 tokens of tool descriptions before the model says a word. A small model drowns in that. Tether keeps its fixed instructions under 150 tokens, loads no tools you did not ask for, and keeps the model's working memory short, so a model that fits on your graphics card has room left to think.
 
-- **One Action Primitive (`act`)**: Every tool call—built-in or custom—routes through a single POSIX-style command multiplexer `act(cmd: str, stdin: str | None = None)`.
-- **Zero Default Tool Bloat**: By default, zero optional tools are loaded. Only the mandatory `done` termination command is active until you opt in via `--tools`, `Harness(tools=[...])`, or a Skill.
-- **Progressive `--help` Disclosure**: The system prompt lists only a 1-line index per enabled tool (`<= 12 tokens`). Full usage signatures (`<= 60 tokens`) are revealed Just-In-Time (JIT) when the agent runs `<cmd> --help` or makes a syntax mistake.
-- **Bounded L1 Context + SQLite FTS5 RAG**: Active observations are capped with Head+Tail elision and folded into 1-line tombstones once they are older than $K=2$ turns and the history fills more than half the context, while every raw output is indexed into `.tether/tether.db` (SQLite WAL + FTS5 BM25) for sub-millisecond recall.
+That gives you three things:
 
----
+- **Cheap and private.** Routine work runs on a local model. Nothing leaves your machine unless you point tether at a hosted model.
+- **Safe by default.** Every command runs in a jail that can only touch your project folder. The safety does not depend on the model behaving.
+- **Checked, not trusted.** You can give tether a command (`--verify "pytest"`) and it will not accept "done" until that command passes.
 
-## Which page do I read?
+## Install
 
-| I want to... | Read |
-|---|---|
-| Have a small local model fix a failing test | [Fix a failing test](guides/fix-a-failing-test.md) |
-| Write a task a small model can finish | [Write tasks a small model can finish](guides/small-models.md) |
-| Delegate work from Claude Code, Codex or Cursor | [Use tether from your agent](guides/use-tether-from-your-agent.md) |
-| Check my setup before the first run | `tether doctor` in the [CLI reference](reference/cli.md) |
-| Let a session work on its own branch | [Run a session on its own branch](guides/own-branch.md) |
-| Run a multi-stage job with checks | [A pipeline where each stage has its own job](guides/a-pipeline-with-checks.md) |
-| Give the model my own function | [Give the model a tool of your own](guides/add-your-own-tool.md) |
-| Look up a command or flag | [CLI reference](reference/cli.md) |
-| Point tether at a different model server | [Model providers](reference/providers.md) |
-| Understand what a session can touch | [Security and sandbox](tutorial/security-and-sandbox.md) |
-| Fix something that does not work | [Troubleshooting](troubleshooting.md) |
-| Know what a word means | [Glossary](glossary.md) |
+Tether needs Python 3.12 or newer.
 
-(For agents: [`llms.txt`](llms.txt) lists every page with a one-line description.)
+=== "uv tool (recommended)"
 
-## Works inside your harness
-
-Tether does not replace your TUI. Keep Claude Code, Codex, Cursor, Gemini CLI or Copilot as the cockpit and let Tether run as a subagent over MCP (`pip install "tether-sdk[mcp]"`), on a local model or any provider, so routine work costs fewer tokens. See [Use Tether Inside Your Harness](tutorial/agent-interface.md).
-
-## Install from PyPI
-
-Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-sdk/)** (requires Python `3.12+`). Installing `tether-sdk` provides both the **`tether` CLI command** and the **`import tether` Python SDK**.
+    ```sh
+    uv tool install tether-sdk
+    ```
 
 === "pip"
 
@@ -46,119 +28,73 @@ Tether is published on PyPI as **[`tether-sdk`](https://pypi.org/project/tether-
     pip install tether-sdk
     ```
 
-=== "uv (project dependency)"
-
-    ```sh
-    uv add tether-sdk
-    ```
-
-=== "uv tool (global CLI)"
-
-    ```sh
-    uv tool install tether-sdk
-    ```
-
-=== "pip + MCP extra"
-
-    ```sh
-    pip install "tether-sdk[mcp]"   # adds `tether mcp` (optional; not needed for normal use)
-    ```
-
-=== "uvx (zero-install run)"
+=== "no install"
 
     ```sh
     uvx --from tether-sdk tether "Explain the CAP theorem in 3 bullet points"
     ```
 
----
+By default tether talks to [Ollama](https://ollama.com) on your machine and uses the model `qwen3.5:9b`. If you do not have it yet:
 
-## Quickstart
+```sh
+ollama pull qwen3.5:9b
+tether doctor        # checks Ollama, the model, the sandbox and your config, and says what to fix
+```
 
-!!! note "Before your first command: the default model"
-    With no `--model`, tether talks to **Ollama** at `http://localhost:11434` and asks for **`qwen3.5:9b`**. That server must be running and the model pulled, or the run fails with `ProviderError: ollama model ... unavailable ... ConnectError`.
+## Your first call
 
-    ```sh
-    ollama pull qwen3.5:9b        # once; `ollama serve` (or the Ollama app) must be running
-    ```
+```sh
+tether "Explain the CAP theorem in 3 bullet points"
+```
 
-    Ollama in Docker or on another machine? Set `OLLAMA_HOST=http://localhost:11435` (use your port). Want another model or a hosted one (OpenAI, Claude, OpenRouter, vLLM, a custom `~/.tether/providers.yaml` entry)? Pass `--model <provider>/<model>`. See [Model Providers](reference/providers.md) for every option.
+This is the real output, from an 8 GB laptop GPU, in 38 seconds (most of it loading the model for the first time):
 
-=== "CLI (Foreground & Headless)"
+```text
+CAP Theorem in 3 bullet points:
 
-    ```sh
-    # Zero-tool reasoning with a local 9B model (defaults to ollama/qwen3.5:9b)
-    tether "Explain the CAP theorem in 3 bullet points"
+1. In a distributed system, you can only guarantee 2 out of 3 properties simultaneously: Consistency, Availability, and Partition Tolerance.
 
-    # See each step as it happens (animated dots show it is alive even without -v)
-    tether --verbose "Explain the CAP theorem in 3 bullet points"
+2. The three properties are: Consistency (all nodes see same data), Availability (every request gets a response), and Partition Tolerance (system works despite network partitions).
 
-    # Opt-in to web search and memory tools
-    tether --tools web,mem "Research 2026 solid-state battery breakthroughs"
+3. When a network partition occurs, systems must choose between Consistency (CP) or Availability (AP), making this a fundamental trade-off in distributed system design.
+```
 
-    # Spawn a detached background session and query its findings via BM25 RAG
-    SESSION_ID=$(tether run --headless --tools web,mem "Compare SQLite WAL vs rollback journal")
-    tether wait "$SESSION_ID"
-    tether query "$SESSION_ID" "concurrency readers writers"
-    ```
+The answer goes to your terminal and the session is stored, so you can look at what happened:
 
-=== "Python SDK (`@tool` & `Harness`)"
+```sh
+tether list          # every session, newest first
+tether stats         # pass rate, steps and tokens per model
+```
 
-    ```python
-    import asyncio
-    from typing import Literal
-    from tether import Harness, tool
+```text
+ID             STATUS    MODEL                  STEP    GOAL
+ses_d065a28e   COMPLETED ollama/qwen3.5:9b      1/15   Explain the CAP theorem in 3 bullet points
+```
 
+One step and 809 tokens in total. No tools were loaded, because this task needed none.
 
-    @tool(description="Update customer subscription tier")
-    def update_tier(
-        customer_id: int,
-        tier: Literal["free", "pro", "enterprise"] = "pro",
-        stdin: str | None = None,
-    ) -> str:
-        """Update customer tier with an optional multi-line audit note via stdin."""
-        return f"Updated #{customer_id} to {tier} (note={stdin or 'none'})"
+## What tether can do for you
 
+These short pages each end with something you can run now:
 
-    async def main() -> None:
-        harness = Harness(
-            model="ollama/qwen3.5:9b",
-            tools=[update_tier, "mem"],
-        )
-        session = await harness.run(
-            "Upgrade customer 1042 to enterprise and include a brief audit justification."
-        )
-        print(session.result)
-
-
-    if __name__ == "__main__":
-        asyncio.run(main())
-    ```
-
----
-
-## Why Tether?
-
-| Dimension | Traditional Agent Frameworks | Tether Micro-Harness |
-|---|---|---|
-| **Base Prompt + Schema Overhead** | 3,000 – 8,000+ tokens (15–30 JSON schemas) | **< 150 tokens** (`act` primitive + 1-line index) |
-| **KV-Cache Prefix Reuse** | Broken by dynamic tool injection & scratchpad edits | **100% Immutable Prefix** across every turn |
-| **Observation Memory** | Append-only transcript (context blowup on step 4+) | **Head+Tail L1 Elision + $K$-Turn Folding + SQLite FTS5 BM25** |
-| **Sub-Agent Coordination** | Dumps child's 15k-token transcript into parent | **~50-token Digest + `agent query` BM25 RAG** |
-| **Security Boundary** | Prompt-level "please don't touch `.env`" | **Deterministic OS Sandbox (`bwrap` / workspace jail / env scrub)** |
-
----
-
-## What can I do?
-
-| I want to... | Go to |
+| | |
 |---|---|
-| run interactive or detached headless agent sessions from the terminal | [CLI and Headless Sessions](tutorial/cli-and-headless.md) |
-| embed Tether in Python and expose `@tool` functions with zero JSON boilerplate | [Python SDK and Custom Tools](tutorial/sdk-and-custom-tools.md) |
-| use `bash`, `edit`, `web`, `mem`, or `done` | [Built-in Tools](tutorial/built-in-tools.md) |
-| package domain instructions, model defaults, and tools into reusable skills | [Progressive Skills](tutorial/skills.md) |
-| spawn parallel sub-agents and query their findings via BM25 RAG | [Async Multi-Agent Orchestration](tutorial/multi-agent.md) |
-| configure `workspace-write` or `read-only` sandboxes and Linux `bwrap` | [Security and Sandbox](tutorial/security-and-sandbox.md) |
-| understand the academic literature and L1/L2 memory architecture | [Architecture and Decisions](architecture.md) |
-| register a custom model gateway or transport | [Extending Tether](extending.md) |
-| see real-world token & wall-clock benchmarks (8B local vs Sonnet vs Claude Code) | [Benchmark Evaluation](benchmarks.md) |
-| look up a class or function signature | [API Reference](reference/index.md) |
+| [Search the web and write a summary](start/search-and-summarize.md) | A local model reads real pages and cites its sources. |
+| [Let Claude call tether to review your writing](start/review-with-claude.md) | Keep Claude as your editor and send the mechanical reading to a cheaper model. |
+| [Write and check a script with Nemotron](start/script-with-nemotron.md) | A big free hosted model writes the code, and a check command decides when it is done. |
+
+After that, the [Guides](guides/index.md) cover everything else tether can do, from your first provider file to pipelines and sandboxes. If something does not work, start with [Troubleshooting](troubleshooting.md).
+
+## How it compares
+
+| | Typical agent framework | Tether |
+|---|---|---|
+| Fixed prompt before the first step | 3,000 to 8,000+ tokens | under 150 tokens |
+| Tools loaded by default | 15 to 30 | none (only `done`) |
+| Long outputs | pile up in the prompt | folded to one line, kept in SQLite, searchable |
+| Safety | "please do not touch `.env`" in the prompt | an operating-system jail, enforced outside the model |
+| Sub-agents | the child's whole transcript lands in the parent | a 50-token digest, details on demand |
+
+Why these choices work is explained in [Concepts](concepts/index.md), and the numbers behind them are in [Benchmarks](benchmarks/index.md).
+
+For agents: [`llms.txt`](llms.txt) lists every page with a one-line description.
