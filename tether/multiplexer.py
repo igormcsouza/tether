@@ -182,8 +182,9 @@ _ACT_CALL_RE = re.compile(
 _HEREDOC_RE = re.compile(r"[ \t]*<<-?[ \t]*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n?\2[ \t]*$", re.DOTALL)
 
 
-# `edit ..., stdin="..."` typed inside cmd (#317); a real stdin argument still wins.
-_STDIN_TAIL_RE = re.compile(rf"(edit\b.*?),\s*stdin\s*=\s*({_QUOTED})\s*", re.DOTALL)
+# `edit ..., stdin="..."` or `done, stdin="..."` typed inside cmd (#317); a real stdin argument
+# still wins. Never bash: `python -c "f(x, stdin=1)"` is legitimate.
+_STDIN_TAIL_RE = re.compile(rf"((?:edit|done)\b.*?),\s*stdin\s*=\s*({_QUOTED})\s*", re.DOTALL)
 
 
 def split_heredoc(cmd: str) -> tuple[str, str | None]:

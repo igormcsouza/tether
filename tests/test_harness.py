@@ -550,6 +550,12 @@ async def test_identical_run_stays_loop_stall(tmp_path: Path) -> None:
     assert run.events == ["ok", "loop_stall", "loop_stall", "loop_stall", "completed"]
 
 
+async def test_repeated_unknown_done_comma_is_a_loop_stall(tmp_path: Path) -> None:
+    """`done,` is an unknown command, not a `done` call: the loop guard must still catch it."""
+    run = await _run_commands(tmp_path, ["done,"] * 4)
+    assert "loop_stall" in run.events
+
+
 async def test_cycle_history_resets_on_inbox_message(tmp_path: Path) -> None:
     # Message consumed before step 5: a,b,a,b | a,b must not fire as a 6-action cycle.
     run = await _run_commands(tmp_path, ["ping a", "ping b"] * 3, inbox_at=4)
