@@ -139,6 +139,12 @@ def harness_cmd(harness, model, task, ctx, rd, ws, tether_bin, think, can_think,
     raise SystemExit(f"unknown harness {harness}")
 
 
+def answered(task, ws, session_status):
+    """Delivered: the deliverable file exists and is not empty (text kinds), or the session ended COMPLETED."""
+    f = Path(ws) / task.deliverable if task.deliverable else None
+    return bool(f and f.is_file() and f.read_text().strip()) or session_status == "COMPLETED"
+
+
 def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True, harness="tether", provider="ollama", prev=None):
     think, params, steps, fold = ATTEMPTS[attempt]
     rd = Path(out) / "runs" / f"{harness}__{model.replace(':', '-').replace('/', '_')}__{task.id}__a{attempt}"
@@ -187,6 +193,7 @@ def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True
             rec.update(session_status="n/a", **claude_usage((rd / "stdout.txt").read_text()))
         else:
             rec.update(steps=steps_other(harness, rd), session_status="n/a")
+        rec["answered"] = answered(task, ws, "n/a")
         return rec
     try:
         c = sqlite3.connect(str(rd / "t.db"))
@@ -197,6 +204,7 @@ def run_attempt(model, task, attempt, ctx, out, tether_bin, wall, can_think=True
                    peak_tokens=row[4], result=(row[5] or "")[:200], events={k: v for k, v in ev.items() if k not in ("ok", "completed")})
     except Exception as e:  # tether died before creating a session
         rec.update(steps=0, session_status="none", error=repr(e)[:100])
+    rec["answered"] = answered(task, ws, rec.get("session_status"))
     return rec
 
 
@@ -205,7 +213,7 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--models", default="qwen3.5:9b")
     ap.add_argument("--ctx", default="", help="model=tokens,... context window per model")
-    ap.add_argument("--kinds", default=",".join(T.KINDS), help=f"default the coding kinds; also {','.join(T.GENERAL_KINDS)}")
+    ap.add_argument("--kinds", default=",".join(T.KINDS), help=f"default the coding kinds; also {','.join(T.GENERAL_KINDS)}, and the opt-in {','.join(T.SHELL_KINDS)}")
     ap.add_argument("--tasks", default="", help="only these task ids, e.g. plan-5,bugfix-5")
     ap.add_argument("--max-tier", type=int, default=6)
     ap.add_argument("--wall", type=int, default=1200, help="seconds per attempt")

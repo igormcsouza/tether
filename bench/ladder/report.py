@@ -3,6 +3,15 @@ import json
 import sys
 from collections import defaultdict
 
+def answered(r):
+    """Delivered (run.py records it); older records: the session ended COMPLETED."""
+    return r.get("answered", r.get("session_status") == "COMPLETED")
+
+
+def tokens(r):
+    return (r.get("prompt_tokens") or 0) + (r.get("completion_tokens") or 0)
+
+
 def main(out):
     rows = [json.loads(l) for l in open(f"{out}/results.jsonl")]
     by = defaultdict(lambda: defaultdict(list))
@@ -31,7 +40,10 @@ def main(out):
                 print(f"{kind}-{tier:<4} {'PASS' if win else 'STUCK':8} {len(rs):>3} {'on' if last['think'] else 'off':>5} "
                       f"{best['score']:>5.2f} {t:>5}s {st if st is not None else '-':>5} {last.get('prompt_tokens', 0):>10}  {note}")
             print(f"  -> {kind}: tier {reached} reached")
+        runs = [r for rs in tasks.values() for r in rs]
+        gone = [r for r in runs if not answered(r)]
         print(f"  total wall {total_t // 60} min")
+        print(f"  answered {len(runs) - len(gone)} of {len(runs)} runs; tokens on unanswered runs: {sum(map(tokens, gone)):,}")
 
 
 if __name__ == "__main__":
