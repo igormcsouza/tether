@@ -59,6 +59,7 @@ from tether.store import (
     TELL_WRAPUP,
     SessionRecord,
     SQLiteStore,
+    is_done_call,
     sandbox_rule,
     worker_log_path,
 )
@@ -1621,10 +1622,10 @@ class Harness:
                 cmd = normalize_cmd(resp.action.cmd)
                 stdin = resp.action.stdin
                 action_sig = (cmd.strip(), stdin)
-                is_loop_stall = action_sig == last_action_sig and not cmd.strip().startswith("done")
+                is_loop_stall = action_sig == last_action_sig and not is_done_call(cmd)
                 cycle = (
                     None
-                    if is_loop_stall or cmd.strip().startswith("done")
+                    if is_loop_stall or is_done_call(cmd)
                     else detect_cycle([*action_history, action_sig])
                 )
 
