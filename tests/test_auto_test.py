@@ -82,6 +82,7 @@ def test_is_test_cmd_false_for_probes_quoted_or_heredoc_words() -> None:
         PROBE,
         "python3 -c 'import pytest'",
         "cat > t.py << 'EOF'\nimport unittest\nEOF",
+        'python3 -c "from unittest.mock import patch\nprint(patch)"',  # a quote that spans lines
     ):
         assert not is_test_cmd(cmd), cmd
 

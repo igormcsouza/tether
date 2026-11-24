@@ -203,7 +203,7 @@ _QUOTED = re.compile(r"'[^']*'|\"(?:\\.|[^\"\\])*\"")
 def is_test_cmd(cmd: str) -> bool:
     """A test-runner call. Words inside quotes or a heredoc body (a `python -c` probe that imports
     `unittest.mock`) are not the runner."""
-    return bool(_TEST_CMD.search(_QUOTED.sub("''", cmd.split("\n", 1)[0])))
+    return bool(_TEST_CMD.search(_QUOTED.sub("''", cmd).split("\n", 1)[0]))
 
 
 _TESTS_RED = re.compile(r"\[exit [1-9]\d*\]|\b(FAILED|FAIL|Error|Traceback)\b|\bfailed\b")
