@@ -17,6 +17,7 @@ from base import project
 
 KINDS = ("write", "bugfix", "plan", "review")
 GENERAL_KINDS = ("content", "qa", "critique", "extract")  # general.py
+SHELL_KINDS = ("shell",)  # shell.py, opt-in: --kinds shell
 
 
 @dataclass
@@ -33,6 +34,7 @@ class Task:
     deliverable: str = ""  # text kinds: file the model must write
     allowed_files: tuple = ()  # plan: file names that exist or may be created
     checks: list = field(default_factory=list)  # general kinds: (label, fn(text) -> bool) on the deliverable
+    ws_checks: list = field(default_factory=list)  # shell kind: (label, fn(ws: Path) -> bool) on the workspace after the run
 
 
 def workspace(task):
@@ -118,18 +120,30 @@ def grade_text(task, ws):
     return score, ", ".join(notes)
 
 
+def _safe(check, arg):
+    """A check that raises (a malformed file) counts as failed, never as a grader crash."""
+    try:
+        return bool(check(arg))
+    except Exception:
+        return False
+
+
 def grade_checks(task, ws):
-    path = Path(ws) / task.deliverable
-    text = path.read_text() if path.exists() else ""
-    if not text.strip():
-        return 0.0, f"{task.deliverable} missing or empty"
-    failed = [label for label, ok in task.checks if not ok(text)]
-    n = len(task.checks)
+    text = ""
+    if task.deliverable:
+        path = Path(ws) / task.deliverable
+        text = path.read_text() if path.exists() else ""
+        if not text.strip():
+            return 0.0, f"{task.deliverable} missing or empty"
+    results = [(label, _safe(ok, text)) for label, ok in task.checks]
+    results += [(label, _safe(ok, Path(ws))) for label, ok in task.ws_checks]
+    failed = [label for label, ok in results if not ok]
+    n = len(results)
     return (n - len(failed)) / n, f"{n - len(failed)}/{n} checks" + (f", failed: {', '.join(failed)}" if failed else "")
 
 
 def grade(task, ws):
-    if task.checks:
+    if task.checks or task.ws_checks:
         return grade_checks(task, ws)
     return grade_text(task, ws) if task.kind in ("plan", "review", "critique") else grade_code(task, ws)
 
@@ -146,7 +160,7 @@ def grade_copy(task, ws):
 
 
 def pass_threshold(task):
-    return 0.99 if task.kind in ("write", "bugfix", "extract") else 0.8 if task.kind in ("content", "qa") else 0.7
+    return 0.99 if task.kind in ("write", "bugfix", "extract", "shell") else 0.8 if task.kind in ("content", "qa") else 0.7
 
 
 def numbered(src):
@@ -871,3 +885,4 @@ def by_kind(kind):
 
 
 import general  # noqa: E402,F401  registers the non-coding kinds (it imports Task and add from here)
+import shell  # noqa: E402,F401  registers the opt-in shell kind

@@ -16,7 +16,7 @@ NEW_KINDS = ("content", "qa", "critique", "extract")
 @pytest.fixture
 def T(monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     monkeypatch.syspath_prepend(str(LADDER))
-    for name in ("tasks", "general", "refs"):
+    for name in ("tasks", "general", "shell", "refs"):
         sys.modules.pop(name, None)
     return importlib.import_module("tasks")
 

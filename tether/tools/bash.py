@@ -27,10 +27,10 @@ def _missing_cd(cmd: str, root: Path) -> tuple[str, str] | None:
 
 def _test_head(cmd: str) -> tuple[str, int] | None:
     """The test command and N of `<test runner> | head -N`, else None (#173)."""
-    from tether.harness import _TEST_CMD  # lazy: the harness imports the tools
+    from tether.harness import is_test_cmd  # lazy: the harness imports the tools
 
     m = _HEAD_PIPE.fullmatch(cmd)
-    if not m or "|" in m["cmd"] or not _TEST_CMD.search(m["cmd"]):
+    if not m or "|" in m["cmd"] or not is_test_cmd(m["cmd"]):
         return None
     return m["cmd"], int(m["n"] or 10)
 

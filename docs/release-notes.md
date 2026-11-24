@@ -2,8 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- The Coding Ladder has an opt-in **shell** kind (`--kinds shell`): six tasks of everyday terminal work (count, rename, CSV totals, find a leaked key, fix a backup script, report on logs), graded by checks on the deliverable and on the workspace after the run. See [the ladder page](benchmarks/ladder/index.md#everyday-terminal-work-shell).
+
+### Changed
+
+- The ladder report shows, per model, how many runs were answered (deliverable written, or the session completed) and the tokens spent on the runs that were not.
+
 ### Fixed
 
+- A `python -c` probe that imports `unittest.mock` is no longer taken for the test command, so the auto-test after an edit runs the real tests.
 - `bash backup.sh` and `bash ./x.sh` run the script through bash, so a script without an exec bit no longer fails with "command not found" or "Permission denied" (`bash -x x.sh` and `bash -n x.sh` too).
 
 ## v0.3.4 (2026-11-23)

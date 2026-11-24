@@ -197,13 +197,22 @@ _PY_TESTS = (["-m", "unittest"], ["-m", "pytest"], ["-m", "doctest"])
 _TEST_CMD = re.compile(
     r"\b(pytest|unittest|go test|cargo test|npm (?:run )?test|make test|jest|mocha)\b"
 )
+_QUOTED = re.compile(r"'[^']*'|\"(?:\\.|[^\"\\])*\"")
+
+
+def is_test_cmd(cmd: str) -> bool:
+    """A test-runner call. Words inside quotes or a heredoc body (a `python -c` probe that imports
+    `unittest.mock`) are not the runner."""
+    return bool(_TEST_CMD.search(_QUOTED.sub("''", cmd).split("\n", 1)[0]))
+
+
 _TESTS_RED = re.compile(r"\[exit [1-9]\d*\]|\b(FAILED|FAIL|Error|Traceback)\b|\bfailed\b")
 _TESTS_GREEN = re.compile(r"^OK\b|\b\d+ passed\b|^ok\s", re.M)
 
 
 def tests_green(cmd: str, out: str) -> bool:
     """True when `cmd` is a test runner whose output reports success (#177)."""
-    return bool(_TEST_CMD.search(cmd) and _TESTS_GREEN.search(out) and not _TESTS_RED.search(out))
+    return bool(is_test_cmd(cmd) and _TESTS_GREEN.search(out) and not _TESTS_RED.search(out))
 
 
 _TRACE_FRAME = re.compile(r'File "([^"]+)", line (\d+), in (\w+)')
@@ -2010,7 +2019,7 @@ class Harness:
                 tracker.refresh([rel for rel, _, _ in broken])
                 out += revert_notes(broken)
                 tcmd, tout = cmd, dispatch.output  # the test run this step, if any
-                if _TEST_CMD.search(cmd) and is_quiet(cmd):
+                if is_test_cmd(cmd) and is_quiet(cmd):
                     last_test = cmd.strip()
                 elif (
                     last_test
@@ -2021,13 +2030,9 @@ class Harness:
                     # never types a second version blind (each rewrite costs it 30-100 s)
                     tcmd, tout = last_test, (await mux.execute(last_test)).output
                     out += f"\n[auto-test] `{last_test}` after your edit:\n{tout}"
-                if (
-                    _TEST_CMD.search(tcmd)
-                    and _TESTS_RED.search(tout)
-                    and not tests_green(tcmd, tout)
-                ):
+                if is_test_cmd(tcmd) and _TESTS_RED.search(tout) and not tests_green(tcmd, tout):
                     out += failing_test_source(tout, Path(sandbox.workspace_root))
-                if _TEST_CMD.search(tcmd) and (outcome := run_outcome(tout)):
+                if is_test_cmd(tcmd) and (outcome := run_outcome(tout)):
                     if last_run:
                         out += regression_note(last_run, outcome)
                     # #173: after a change the same tests fail again, or only a few still fail:
@@ -2104,9 +2109,7 @@ class Harness:
                 # The same check failed again after another edit (counted once per edit between)
                 check = tcmd.strip()
                 red = bool(
-                    _TEST_CMD.search(tcmd)
-                    and _TESTS_RED.search(tout)
-                    and not tests_green(tcmd, tout)
+                    is_test_cmd(tcmd) and _TESTS_RED.search(tout) and not tests_green(tcmd, tout)
                 )
                 if red and (check not in fail_runs or check in stale):
                     fail_runs[check] = fail_runs.get(check, 0) + 1
