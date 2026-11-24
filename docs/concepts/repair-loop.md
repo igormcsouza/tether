@@ -17,7 +17,7 @@ Most of a small model's time goes into typing code. A whole-file rewrite of a 10
 
 All of it is the harness's time, not the model's. No model call, no addition to the fixed prompt.
 
-**Tests after every edit (`[auto-test]`).** Once the model has run a recognised test command, tether re-runs it after every command that writes an existing file and appends the result. The model sees whether a version works before it types the next one.
+**Tests after every edit (`[auto-test]`).** Once the model has run a recognised test command (a runner name outside quotes and heredocs), tether re-runs it after every command that writes an existing file and appends the result. The model sees whether a version works before it types the next one.
 
 **The failing test's source (`[failing test source]`).** When a test fails, tether appends the source of up to three failing test functions named in the traceback (at most 1,500 characters), so the model sees the inputs:
 

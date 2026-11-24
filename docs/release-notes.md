@@ -10,6 +10,10 @@
 
 - The ladder report shows, per model, how many runs were answered (deliverable written, or the session completed) and the tokens spent on the runs that were not.
 
+### Fixed
+
+- A `python -c` probe that imports `unittest.mock` is no longer taken for the test command, so the auto-test after an edit runs the real tests.
+
 ## v0.3.4 (2026-11-23)
 
 ### Documentation
