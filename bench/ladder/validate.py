@@ -14,8 +14,15 @@ from refs import REFS  # noqa: E402
 
 
 def materialize(task, extra=None):
+    """The task's workspace with the `extra` overlay applied; a None value deletes that file."""
+    files = dict(T.workspace(task))
+    for path, text in (extra or {}).items():
+        if text is None:
+            files.pop(path, None)
+        else:
+            files[path] = text
     d = Path(tempfile.mkdtemp(prefix="lad_"))
-    for path, text in {**T.workspace(task), **(extra or {})}.items():
+    for path, text in files.items():
         p = d / path
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
@@ -25,7 +32,7 @@ def materialize(task, extra=None):
 def main():
     bad = 0
     for t in T.TASKS.values():
-        if t.kind in ("write", "bugfix"):
+        if t.kind in ("write", "bugfix", "shell"):  # shell: the start fails its checks, the reference passes them
             before = T.grade(t, materialize(t))[0]
             after = T.grade(t, materialize(t, t.ref))[0]
             ok = before < 0.99 and after >= 0.99

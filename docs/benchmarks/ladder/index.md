@@ -39,6 +39,21 @@ Most people use AI for more than code. Four more kinds measure that, with 3 or 4
 
 `content` and `qa` pass at 0.8, `critique` at 0.7 and `extract` only when every check passes. They are not run by default; name them with `--kinds content,qa,critique,extract`. The [results for Claude Haiku](general.md) show how far it gets.
 
+## Everyday terminal work: shell
+
+Some requests are the kind a person would hand to a terminal: count something in a log, rename a folder of files, total a CSV, find a leaked key, fix a backup script, report on several log files. The **shell** kind has six tasks, one per tier, on a small folder each (coreutils, grep, sed, awk, find, python3 and tar only, no network). It is opt-in: name it with `--kinds shell`.
+
+| Tier | Task | What the model delivers | How it is graded |
+|---|---|---|---|
+| 1 | Unique client IPs in `access.log` | `answer.txt` with the number | The exact count |
+| 2 | Rename `IMG_*.JPG` to `img_*.jpg` | The renamed files, in place | Every name and its content, nothing missing or extra |
+| 3 | Total per region from a CSV with quoted commas | `totals.csv`, sorted by region | Header, rows and totals |
+| 4 | Files that contain a leaked `sk-` key, in nested folders | `answer.txt` with the paths | Exactly the leaking files (a decoy has a key one character short) |
+| 5 | A broken `backup.sh` | The fixed script | Run in a fresh copy: exit 0, a gzip archive holding `data/` (including a name with a space), and an error when `data/` is missing |
+| 6 | Top 3 errors across three daily logs | `report.md` with counts | The three messages in order with their counts, no healthcheck noise, request ids stripped |
+
+The grade is the share of checks that pass; a task passes when all of them do. `validate.py` proves the graders: the starting folder fails and a reference solution passes.
+
 ## How a model climbs
 
 For each model and each kind the tiers are tried in order. A tier gets **up to four attempts**, and the first pass moves the model up:
