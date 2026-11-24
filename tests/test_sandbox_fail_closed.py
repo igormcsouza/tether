@@ -34,8 +34,9 @@ def _no_rows(db: Path) -> None:
 
 
 @pytest.fixture
-def no_bwrap(monkeypatch: pytest.MonkeyPatch) -> FakeScriptedProvider:
-    """A host without bwrap. The fake answers `done` and is the provider for CLI and MCP too."""
+def no_bwrap(monkeypatch: pytest.MonkeyPatch, no_landlock: None) -> FakeScriptedProvider:
+    """A host without bwrap and without Landlock. The fake answers `done` and is the provider
+    for CLI and MCP too."""
     monkeypatch.delenv("TETHER_SANDBOX", raising=False)
     monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: False)
     monkeypatch.setattr(sb_mod, "_UNSANDBOXED_NOTICE_SHOWN", False)

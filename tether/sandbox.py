@@ -22,6 +22,8 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from tether import landlock
+
 
 class SandboxViolationError(PermissionError):
     """Raised when a tool call violates the deterministic SandboxPolicy."""
@@ -502,6 +504,19 @@ _BWRAP_USABLE: bool | None = None
 _BWRAP_PROBE: BwrapProbe | None = None
 
 
+def _host_read_roots(skip: set[str]) -> list[str]:
+    """Host paths the Landlock jail reads: each `/` entry and each `/var` entry, minus those
+    whose real path is in `skip` or below it (`/var/run` links into `/run`, so it goes too)."""
+    names = [f"/{n}" for n in os.listdir("/") if n != "var"]
+    names += [f"/var/{n}" for n in os.listdir("/var")]
+    out = []
+    for path in names:
+        real = os.path.realpath(path)
+        if not any(real == s or real.startswith(s + "/") for s in skip):
+            out.append(path)
+    return out
+
+
 _EMPTY_LOCK = threading.Lock()
 _EMPTY_FILE: str | None = None
 
@@ -624,25 +639,41 @@ def _can_use_bwrap() -> bool:
     return _BWRAP_USABLE
 
 
+def _jail() -> str | None:
+    """The kernel jail for `bash`: "bwrap", else "landlock" (AD-35), else None.
+
+    Not cached: `_can_use_bwrap` is, and Landlock is one cheap syscall.
+    """
+    if _can_use_bwrap():
+        return "bwrap"
+    if sys.platform == "linux" and landlock.abi() >= 1:
+        return "landlock"
+    return None
+
+
 _ISOLATION_MSG_DEFAULT = (
     "Sandbox unavailable: workspace-write needs bwrap (Linux kernel sandbox), which is not "
     "available here. Install bubblewrap (e.g. apt install bubblewrap, then tether doctor), run "
     "inside a container with TETHER_SANDBOX=container, or pass --allow-unsandboxed (SDK/MCP: "
     "allow_unsandboxed=True) to run with command checks only."
 )
+_LANDLOCK_MISSING = (
+    " Landlock (no privileges needed) is unavailable too: it needs Linux 5.13+ with "
+    "Landlock enabled."
+)
 
 
 def _isolation_message() -> str:
     probe = _BWRAP_PROBE
     if probe is None or probe.state != "blocked":
-        return _ISOLATION_MSG_DEFAULT
+        return _ISOLATION_MSG_DEFAULT + _LANDLOCK_MISSING
     return (
         f"Sandbox unavailable: bwrap is installed ({probe.path}) but the kernel refuses it: "
         f"{probe.error}. On Ubuntu 24.04+ run: sudo sysctl -w "
         "kernel.apparmor_restrict_unprivileged_userns=0 (persist it in /etc/sysctl.d/), or run "
         "inside a container with TETHER_SANDBOX=container, or pass --allow-unsandboxed "
         "(SDK/MCP: allow_unsandboxed=True) to run with command checks only."
-    )
+    ) + _LANDLOCK_MISSING
 
 
 def _container_mode() -> bool:
@@ -713,6 +744,8 @@ class SandboxPolicy:
     escalate: tuple[str, ...] = DEFAULT_ESCALATE
     # Optional rlimits (LIMIT_KEYS). Empty = off, the default.
     limits: dict[str, int] = field(default_factory=dict)
+    # Landlock's private temp dir, made on first use (never copied by attenuate).
+    _tmp_dir: str | None = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.workspace_root = Path(self.workspace_root).resolve()
@@ -863,19 +896,19 @@ class SandboxPolicy:
                 return f"[limit hit: {label}] Instead: {hint}"
         return None
 
-    def _relies_on_bwrap(self) -> bool:
-        # A write session that asked for the kernel sandbox, on a host without one.
+    def _needs_jail(self) -> bool:
+        # A write session that asked for the kernel sandbox, on a host with no jail at all.
         return (
             self.profile != "read-only"
             and self.use_kernel_sandbox
-            and not _can_use_bwrap()
+            and _jail() is None
             and not _container_mode()
         )
 
     def isolation_error(self) -> str | None:
-        """The refusal message when this policy needs bwrap and has no opt-out, else None."""
+        """The refusal message when this policy needs a jail and has no opt-out, else None."""
         _container_mode()  # validate TETHER_SANDBOX on every host, before any short-circuit
-        if self.allow_unsandboxed or not self._relies_on_bwrap():
+        if self.allow_unsandboxed or not self._needs_jail():
             return None
         return _isolation_message()
 
@@ -885,13 +918,15 @@ class SandboxPolicy:
         err = self.isolation_error()
         if err is not None:
             raise SandboxUnavailableError(err)
-        if not _UNSANDBOXED_NOTICE_SHOWN and self._relies_on_bwrap():
+        if not _UNSANDBOXED_NOTICE_SHOWN and self._needs_jail():
             print(UNSANDBOXED_NOTICE, file=sys.stderr, flush=True)
             _UNSANDBOXED_NOTICE_SHOWN = True
 
     def mode(self) -> str:
         """What `tether status` shows for the session."""
-        return "bwrap" if self.use_kernel_sandbox and _can_use_bwrap() else "command checks only"
+        if not self.use_kernel_sandbox:
+            return "command checks only"
+        return _jail() or "command checks only"
 
     def resolve_safe_path(self, raw_path: str | Path, *, write: bool = False) -> Path:
         """Resolve a path and enforce workspace confinement + sensitive-file protection."""
@@ -1069,8 +1104,9 @@ class SandboxPolicy:
                     out.append(prefix)
         return out
 
-    def _tool_path_mounts(self, hidden: list[str]) -> list[str]:
-        """Read-only binds for PATH entries that the tmpfs masks hid (`~/.local/bin/uv`, nvm).
+    def _tool_path_dirs(self, hidden: list[str]) -> tuple[list[str], list[str]]:
+        """PATH directories that the tmpfs masks hid (`~/.local/bin/uv`, nvm), and the venv
+        prefixes.
 
         Tools installed under /home would otherwise vanish inside the sandbox (#76). Only the
         PATH directories themselves are re-exposed, read-only; never a hidden root, `$HOME`,
@@ -1096,6 +1132,10 @@ class SandboxPolicy:
             ):
                 continue
             seen.append(str(real))
+        return seen, venv
+
+    def _tool_path_mounts(self, hidden: list[str]) -> list[str]:
+        seen, venv = self._tool_path_dirs(hidden)
         args = [a for d in seen[:_MAX_PATH_MOUNTS] for a in ("--ro-bind", d, d)]
         for raw in venv:  # uv names the prefix by a symlink (`cpython-3.14-...` -> `3.14.4-...`)
             target = str(Path(raw).resolve())
@@ -1144,11 +1184,50 @@ class SandboxPolicy:
             return bwrap_cmd
         if not self.network:
             raise _refusal(
-                "network isolation (`--no-network`) requires `bwrap`, which is unavailable; "
-                "refusing to run un-isolated",
+                "network isolation (`--no-network`) requires `bwrap`, which is unavailable "
+                "(Landlock cannot block the network); refusing to run un-isolated",
                 "install `bwrap`, or drop `--no-network`",
             )
+        if self.use_kernel_sandbox and _jail() == "landlock":
+            return self._landlock_argv(cmd)
         return ["bash", "-c", cmd]
+
+    def _private_tmp(self) -> str:
+        """One private temp dir per policy: rw inside the jail, and TMPDIR points at it."""
+        if self._tmp_dir is None:
+            self._tmp_dir = tempfile.mkdtemp(prefix="tether-tmp-")
+            atexit.register(shutil.rmtree, self._tmp_dir, ignore_errors=True)
+        return self._tmp_dir
+
+    def _landlock_argv(self, cmd: str) -> list[str]:
+        """`python -m tether.landlock` (AD-35): the host read-only except the homes, `/run` and
+        the other hidden dirs; PATH tool dirs read-only; the workspace read-write (read-only in
+        the read-only profile); a private temp dir read-write."""
+        home = Path(os.path.expanduser("~")).parts
+        skip = {*_HIDDEN_HOST_DIRS, "/root", "/run"}
+        if len(home) > 1:
+            skip.add("/" + home[1])
+        hidden = [d for d in _HIDDEN_HOST_DIRS if os.path.isdir(d)]
+        tools, _venv = self._tool_path_dirs(hidden)
+        ro = [*_host_read_roots(skip), *tools[:_MAX_PATH_MOUNTS]]
+        return [
+            sys.executable,
+            # By path, not `-m tether.landlock`: importing the package costs ~100 ms per command.
+            # -I: no cwd on sys.path, so a workspace `tether/` cannot run before the jail.
+            "-I",
+            "-S",
+            landlock.__file__,
+            *(a for p in ro for a in ("--ro", p)),
+            "--rw" if self.profile == "workspace-write" else "--ro",
+            str(self.workspace_root),
+            "--rw",
+            self._private_tmp(),
+            "--dev",
+            "--",
+            "bash",
+            "-c",
+            cmd,
+        ]
 
     async def execute_bash_with_code(self, cmd: str, stdin: str | None = None) -> tuple[int, str]:
         """Execute a shell command in the deterministic sandbox and return (returncode, output)."""
@@ -1172,7 +1251,10 @@ class SandboxPolicy:
             raise ApprovalNeeded(effective_cmd, prefix, stdin)
         self.validate_bash_command(effective_cmd)
         argv = self._build_exec_argv(effective_cmd)
-        return await self._run_argv(argv, stdin, env=self.scrub_env(), cwd=str(self.workspace_root))
+        env = self.scrub_env()
+        if self._tmp_dir is not None:  # Landlock: the host /tmp is read-only
+            env.update(TMPDIR=self._tmp_dir, TEMP=self._tmp_dir, TMP=self._tmp_dir)
+        return await self._run_argv(argv, stdin, env=env, cwd=str(self.workspace_root))
 
     def _outside_match(self, cmd: str) -> str | None:
         """The `allow_outside` entry whose whole tokens start the command, else None.

@@ -36,7 +36,7 @@ That is a real run on a machine where Ollama listens on another port. Every line
 OLLAMA_HOST=http://localhost:11435 tether doctor
 ```
 
-`bwrap` is the Linux jail that keeps commands inside your project folder. If it is missing, or the kernel blocks it, `doctor` says which, and tether refuses to let a model write files until you fix it or opt out on purpose (see [Security and sandbox](../advanced/security-and-sandbox.md)).
+`bwrap` is the Linux jail that keeps commands inside your project folder. If it is missing or the kernel blocks it, tether uses Landlock instead where the kernel has it (Ubuntu 24.04 does), and `doctor` says which. Only when neither works does tether refuse to let a model write files, until you fix it or opt out on purpose (see [Security and sandbox](../advanced/security-and-sandbox.md)).
 
 ## The commands you will use
 
@@ -57,7 +57,7 @@ Every command is explained with all its flags in the [CLI reference](../../refer
 ## When it goes wrong
 
 - **`tether list` shows nothing.** Sessions are stored per folder. Run it from the folder where you ran the task, or pass `--db /path/to/.tether/tether.db`.
-- **`doctor` says `FAIL bwrap`.** Follow its message; on Ubuntu 24.04 and later the kernel may block `bwrap` ([how to fix it](../../troubleshooting.md#bwrap-is-installed-but-blocked-ubuntu-2404)).
+- **`doctor` says `FAIL bwrap`.** Follow its message. On Ubuntu 24.04 and later the kernel may block `bwrap`; with Landlock available the check passes instead ([how to fix it](../../troubleshooting.md#bwrap-is-installed-but-blocked-ubuntu-2404)).
 - **A background run vanished.** Read `.tether/workers/<id>.log`.
 
 ## What a session is

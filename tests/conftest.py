@@ -15,6 +15,14 @@ def _container_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TETHER_SANDBOX", "container")
 
 
+@pytest.fixture
+def no_landlock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A kernel without Landlock: with bwrap also gone, a write session has no jail at all."""
+    from tether import landlock
+
+    monkeypatch.setattr(landlock, "abi", lambda: 0)
+
+
 @pytest.fixture(autouse=True)
 def _fresh_bwrap_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     """A probe cached by an earlier test must not colour the refusal text of a later one (#311)."""
