@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- `bash backup.sh` and `bash ./x.sh` run the script through bash, so a script without an exec bit no longer fails with "command not found" or "Permission denied" (`bash -x x.sh` and `bash -n x.sh` too).
+
 ## v0.3.4 (2026-11-23)
 
 ### Documentation

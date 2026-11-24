@@ -276,3 +276,19 @@ def test_done_with_a_stdin_flag_passes_the_text_as_stdin() -> None:
     assert normalize_cmd("done") == "done"
     cmd = normalize_cmd("edit --file 'a.py' --method 'create' --content 'z'")
     assert split_heredoc(cmd) == ("edit write a.py", "z")
+
+
+async def test_bash_keeps_bash_in_front_of_a_script(tmp_path: Path) -> None:
+    """`bash backup.sh` runs the script through bash, even with no exec bit (#bash-script-arg)."""
+    mux = Multiplexer()
+    mux.register(make_bash_tool(SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)))
+    (tmp_path / "backup.sh").write_text("echo BACKUP_MARKER\n")
+    (tmp_path / "x.sh").write_text("echo X_MARKER\n")
+    (tmp_path / "bad.sh").write_text("if then\n")
+    assert "BACKUP_MARKER" in (await mux.execute("bash backup.sh")).output
+    assert "X_MARKER" in (await mux.execute("bash ./x.sh")).output
+    assert not (await mux.execute("bash -n x.sh")).is_error
+    assert "syntax error" in (await mux.execute("bash -n bad.sh")).output
+    (tmp_path / "marker.txt").write_text("x")
+    assert "marker.txt" in (await mux.execute("bash ls -la")).output
+    assert (await mux.execute("bash -c 'echo hi'")).output.strip() == "hi"
