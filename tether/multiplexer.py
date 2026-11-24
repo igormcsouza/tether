@@ -338,7 +338,15 @@ class Multiplexer:
 
         if name == "bash":
             # shlex already stripped quotes; hand the shell the original text (#37).
-            args = clean_cmd.split(None, 1)[1:]
+            # `bash backup.sh` / `bash -x s.sh`: the script is the shell's argument, so keep `bash`
+            # in front of it (the bare script had no exec bit: 127 / Permission denied).
+            words = clean_cmd.split()
+            script = (
+                len(words) > 1
+                and words[1] not in ("-h", "--help")
+                and (words[1].endswith((".sh", ".bash")) or words[1].startswith("-"))
+            )
+            args = [clean_cmd] if script else clean_cmd.split(None, 1)[1:]
 
         if (
             name == "edit"
