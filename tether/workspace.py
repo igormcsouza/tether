@@ -7,6 +7,7 @@ the look before. Pure stdlib, no threads.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import stat
 from pathlib import Path
@@ -26,11 +27,17 @@ Meta = dict[str, tuple[int, int]]  # rel path -> (mtime_ns, size)
 Sig = tuple[int, int, int]  # (mtime_ns, size, inode): `mv a b` keeps a's mtime, not its inode
 
 
+def _digest(data: bytes | None) -> str | None:
+    return None if data is None else hashlib.blake2b(data, digest_size=16).hexdigest()
+
+
 class Changes(NamedTuple):
     created: list[str]
     modified: list[str]
     deleted: list[str]
     touched: list[str]  # rewritten with the same bytes
+    # created or modified, with content the path already had earlier in the session (AD-50)
+    revisited: list[str] = []
 
 
 class Tracker:
@@ -43,6 +50,7 @@ class Tracker:
         self._cache: dict[str, bytes] = {}
         self._cache_bytes = 0
         self._old: dict[str, bytes | None] = {}
+        self._seen: dict[str, set[str]] = {}  # rel -> digests of every content it had (AD-50)
 
     def _walk(self) -> dict[str, Sig] | None:
         """Files under the root, or None when there are more than MAX_ENTRIES."""
@@ -85,6 +93,10 @@ class Tracker:
             self._cache[rel] = data
             self._cache_bytes += len(data)
 
+    def _note(self, rel: str, data: bytes | None) -> None:
+        if (digest := _digest(data)) is not None:
+            self._seen.setdefault(rel, set()).add(digest)
+
     def scan(self) -> Meta:
         """First look at the workspace; an oversized tree disables the tracker."""
         meta = self._walk()
@@ -93,42 +105,54 @@ class Tracker:
             return {}
         self._meta = meta
         for rel, (_, size, _) in meta.items():
-            self._keep(rel, self._read(rel, size))
+            data = self._read(rel, size)
+            self._keep(rel, data)
+            self._note(rel, data)
         return {rel: (sig[0], sig[1]) for rel, sig in meta.items()}
 
     def step(self) -> Changes:
         """What differs from the previous look; the new files become the baseline."""
         self._old = {}
         if self.disabled:
-            return Changes([], [], [], [])
+            return Changes([], [], [], [], [])
         new = self._walk()
         if new is None:
             self.disabled = True
-            return Changes([], [], [], [])
+            return Changes([], [], [], [], [])
         created: list[str] = []
         modified: list[str] = []
         touched: list[str] = []
+        revisited: list[str] = []
         for rel, sig in new.items():
             seen = self._meta.get(rel)
             if seen == sig:
                 continue
             data = self._read(rel, sig[1])
             old = self._cache.get(rel)
+            # a content the file had before this step, not the one it has now
+            was_here = (digest := _digest(data)) is not None and digest in self._seen.get(
+                rel, set()
+            )
             if seen is None:
                 created.append(rel)
                 self._old[rel] = None
+                if was_here:
+                    revisited.append(rel)
             elif old is not None and old == data:
                 touched.append(rel)
             else:
                 modified.append(rel)
                 self._old[rel] = old
+                if was_here:
+                    revisited.append(rel)
             self._keep(rel, data)
+            self._note(rel, data)
         deleted = sorted(set(self._meta) - set(new))
         for rel in deleted:
             self._old[rel] = self._cache.get(rel)
             self._keep(rel, None)
         self._meta = new
-        return Changes(created, modified, deleted, touched)
+        return Changes(created, modified, deleted, touched, revisited)
 
     def refresh(self, rels: list[str]) -> None:
         """Take the current state of `rels` as the baseline: the harness wrote them itself."""
@@ -140,7 +164,9 @@ class Tracker:
                 self._keep(rel, None)
                 continue
             self._meta[rel] = (st.st_mtime_ns, st.st_size, st.st_ino)
-            self._keep(rel, self._read(rel, st.st_size))
+            data = self._read(rel, st.st_size)
+            self._keep(rel, data)
+            self._note(rel, data)
 
     def old(self, rel: str) -> bytes | None:
         """Bytes of `rel` before the last step; None when unknown or the file was created."""
