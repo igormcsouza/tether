@@ -1204,12 +1204,16 @@ class SandboxPolicy:
         the other hidden dirs; PATH tool dirs read-only; the workspace read-write (read-only in
         the read-only profile); a private temp dir read-write."""
         home = Path(os.path.expanduser("~")).parts
-        skip = {*_HIDDEN_HOST_DIRS, "/root", "/run"}
+        # /tmp too: bwrap gives an empty tmpfs; here the private temp dir stands in for it
+        skip = {*_HIDDEN_HOST_DIRS, "/root", "/run", "/tmp"}
         if len(home) > 1:
             skip.add("/" + home[1])
         hidden = [d for d in _HIDDEN_HOST_DIRS if os.path.isdir(d)]
         tools, _venv = self._tool_path_dirs(hidden)
-        ro = [*_host_read_roots(skip), *tools[:_MAX_PATH_MOUNTS]]
+        # DNS: /etc/resolv.conf usually links into /run/systemd/resolve, which `skip` hides
+        resolv = os.path.dirname(os.path.realpath("/etc/resolv.conf"))
+        dns = [resolv] if resolv.startswith("/run/") else []
+        ro = [*_host_read_roots(skip), *tools[:_MAX_PATH_MOUNTS], *dns]
         return [
             sys.executable,
             # By path, not `-m tether.landlock`: importing the package costs ~100 ms per command.

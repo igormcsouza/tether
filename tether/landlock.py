@@ -44,6 +44,11 @@ REFER = 1 << 13  # ABI >= 2
 TRUNCATE = 1 << 14  # ABI >= 3
 IOCTL_DEV = 1 << 15  # ABI >= 5
 
+# landlock_ruleset_attr.scoped (ABI >= 6): no signals to, and no abstract unix sockets of,
+# processes outside the jail (bwrap gets the same from its PID and IPC namespaces)
+SCOPE_ABSTRACT_UNIX_SOCKET = 1 << 0
+SCOPE_SIGNAL = 1 << 1
+
 _FILE_RIGHTS = EXECUTE | WRITE_FILE | READ_FILE | TRUNCATE
 _RO = READ_FILE | READ_DIR | EXECUTE
 
@@ -120,7 +125,8 @@ def restrict(ro: Sequence[str], rw: Sequence[str], dev: bool) -> None:
         raise _fail("prctl(PR_SET_NO_NEW_PRIVS)", ctypes.get_errno())
     handled = _handled(version)
     size = 8 if version < 4 else 16 if version < 6 else 24  # the struct grew per ABI
-    attr = _RulesetAttr(handled, 0, 0)  # net and scoped stay unrestricted
+    scoped = SCOPE_ABSTRACT_UNIX_SOCKET | SCOPE_SIGNAL if version >= 6 else 0
+    attr = _RulesetAttr(handled, 0, scoped)  # the network stays unrestricted
     ruleset = _syscall(_NR_CREATE_RULESET, ctypes.byref(attr), size, 0)
     if ruleset < 0:
         raise _fail("landlock_create_ruleset", ctypes.get_errno())

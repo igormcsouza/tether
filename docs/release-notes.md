@@ -8,7 +8,7 @@
 
 ### Changed
 
-- On Ubuntu 24.04 and other kernels that block `bwrap`, tether now runs `bash` in a **Landlock** jail (Linux 5.13+, no sudo, no opt-out needed) instead of refusing write sessions. `tether doctor` passes and `tether status` shows `sandbox: landlock`. Landlock hides no secret files inside the workspace (the command-text rules still refuse them), cannot block the network (`--no-network` still needs `bwrap`), unix-socket connects such as `docker.sock`, or signals to other processes of your user. See [security and sandbox](guides/advanced/security-and-sandbox.md#landlock-when-bwrap-is-blocked-ubuntu-2404) and AD-35.
+- On Ubuntu 24.04 and other kernels that block `bwrap`, tether now runs `bash` in a **Landlock** jail (Linux 5.13+, no sudo, no opt-out needed) instead of refusing write sessions. `tether doctor` passes and `tether status` shows `sandbox: landlock`. Landlock hides no secret files inside the workspace (the command-text rules still refuse them), cannot block the network (`--no-network` still needs `bwrap`), or unix-socket connects such as `docker.sock`; on kernel 6.12+ it also keeps jailed commands from signalling your other processes. See [security and sandbox](guides/advanced/security-and-sandbox.md#landlock-when-bwrap-is-blocked-ubuntu-2404) and AD-35.
 - The ladder report shows, per model, how many runs were answered (deliverable written, or the session completed) and the tokens spent on the runs that were not.
 
 ### Fixed

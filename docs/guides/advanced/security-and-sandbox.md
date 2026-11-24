@@ -44,8 +44,8 @@ Ubuntu 24.04 and later block the unprivileged user namespaces `bwrap` needs. Tet
 Landlock is weaker than `bwrap` in three ways, and the command-text rules stay on to cover the first:
 
 - Secret files inside the workspace (`.env`, `*.pem`, `.git/config`) cannot be hidden. Commands that name them are refused, but a program can still read them.
-- It cannot block the network, unix-socket connects or signals. `--no-network` therefore still needs `bwrap`; a user in the `docker` group can reach `/var/run/docker.sock`, and a jailed command can signal other processes of your user (for example the tether worker), which `bwrap` prevents. Prefer `bwrap` there.
-- `/tmp` is read-only (writes go to the private temp dir), and `/dev` is the host's, with its device files keeping their usual permissions.
+- It cannot block the network or unix-socket connects. `--no-network` therefore still needs `bwrap`, and a user in the `docker` group can reach `/var/run/docker.sock`; prefer `bwrap` there. On kernels older than 6.12 a jailed command can also signal other processes of your user (for example the tether worker).
+- The host `/tmp` is hidden (writes go to a private temp dir, `$TMPDIR`), DNS keeps working, and `/dev` is the host's, with its device files keeping their usual permissions.
 
 ### Without a jail (fail closed)
 Without `bwrap` and without Landlock (macOS, Windows, or an old kernel) only the command-text checks remain, and those are easy to get around (`python -c ...`). So a `workspace-write` session with the kernel sandbox on is refused before the first model call (exit `1`). The message names the ways out:

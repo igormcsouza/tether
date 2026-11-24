@@ -237,6 +237,30 @@ async def test_write_sessions_run_jailed_without_bwrap(
 
 
 @needs_landlock
+async def test_host_tmp_is_hidden_dns_config_stays_readable_and_signals_stay_inside(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("TETHER_SANDBOX", raising=False)
+    monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: False)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    policy = SandboxPolicy(workspace_root=ws)
+    # bwrap gives an empty /tmp; here the host /tmp (other sessions' files) must not be listable
+    assert "rc=2" in await policy.execute_bash("ls /tmp >/dev/null; echo rc=$?")
+    # DNS: /etc/resolv.conf links into /run/systemd/resolve on systemd hosts
+    # (built at runtime: the fallback text rules refuse an absolute path typed in the command)
+    text = await policy.execute_bash(
+        "python3 -c \"open('/' + 'etc/resolv.conf').read()\"; echo rc=$?"
+    )
+    assert "rc=0" in text
+    if landlock.abi() >= 6:  # scoped signals: the harness outside the jail cannot be signalled
+        text = await policy.execute_bash(
+            f'python3 -c "import os; os.kill({os.getpid()}, 0)"; echo rc=$?'
+        )
+        assert "PermissionError" in text and "rc=1" in text
+
+
+@needs_landlock
 async def test_hidden_home_is_unreadable_from_the_jail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
