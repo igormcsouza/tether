@@ -292,3 +292,25 @@ async def test_bash_keeps_bash_in_front_of_a_script(tmp_path: Path) -> None:
     (tmp_path / "marker.txt").write_text("x")
     assert "marker.txt" in (await mux.execute("bash ls -la")).output
     assert (await mux.execute("bash -c 'echo hi'")).output.strip() == "hi"
+
+
+async def test_done_stdin_tail_inside_cmd_is_the_answer(tmp_path: Path) -> None:
+    """`done, stdin="13"` typed into cmd delivers 13 (same recovery as edit, #317)."""
+    mux = _bash_mux(tmp_path)
+    assert (await mux.execute('done, stdin="13"')).final_result == "13"
+    assert (await mux.execute("done, stdin='a\\nb'")).final_result == "a\nb"
+    assert (await mux.execute('done, stdin="13"', stdin="real")).final_result == "real"
+
+
+def test_stdin_tail_never_matches_bash(tmp_path: Path) -> None:
+    """A python call with stdin= inside bash is legitimate and stays unchanged."""
+    from tether.multiplexer import _STDIN_TAIL_RE
+
+    assert _STDIN_TAIL_RE.fullmatch('bash python3 -c "f(x, stdin=1)"') is None
+    assert _STDIN_TAIL_RE.fullmatch('done, stdin="13"') is not None
+
+
+def _bash_mux(tmp_path: Path) -> Multiplexer:
+    sandbox = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
+    harness = Harness(db_path=tmp_path / "t.db", tools=["bash"], sandbox=sandbox)
+    return harness.build_multiplexer("ses_done", ["bash"], sandbox, "ollama/qwen3.5:9b")

@@ -59,6 +59,7 @@ from tether.store import (
     TELL_WRAPUP,
     SessionRecord,
     SQLiteStore,
+    is_done_call,
     sandbox_rule,
     worker_log_path,
 )
@@ -327,6 +328,19 @@ def _is_test_file(rel: str) -> bool:
         or name == "conftest.py"
         or "tests" in parts[:-1]
     )
+
+
+# AD-50: a bare `echo` (no redirect, pipe, substitution or second statement) only talks back
+_ECHO_META = re.compile(r"[><|;&$`()<]")
+ECHO_NUDGE = (
+    "\n[NUDGE] `echo` only prints back to you; no one else reads it. If the task is done, call "
+    '`act("done", stdin="<your answer>")`.'
+)
+
+
+def is_bare_echo(cmd: str) -> bool:
+    s = cmd.strip()
+    return s.split()[:1] == ["echo"] and "\n" not in s and not _ECHO_META.search(s)
 
 
 def is_quiet(cmd: str) -> bool:
@@ -1621,10 +1635,10 @@ class Harness:
                 cmd = normalize_cmd(resp.action.cmd)
                 stdin = resp.action.stdin
                 action_sig = (cmd.strip(), stdin)
-                is_loop_stall = action_sig == last_action_sig and not cmd.strip().startswith("done")
+                is_loop_stall = action_sig == last_action_sig and not is_done_call(cmd)
                 cycle = (
                     None
-                    if is_loop_stall or cmd.strip().startswith("done")
+                    if is_loop_stall or is_done_call(cmd)
                     else detect_cycle([*action_history, action_sig])
                 )
 
@@ -1634,6 +1648,8 @@ class Harness:
                 read_run += 1 if target else 0
                 read_counts.update([target] if target else [])
                 range_stall = bool(target) and read_run >= RANGE_STALL_READS
+                # AD-50: a bare echo runs, but counts as a stall like a repeat
+                echo_only = is_bare_echo(cmd) and not (is_loop_stall or cycle or range_stall)
 
                 assistant_turn_id = self.store.add_turn(
                     session_id=session_id,
@@ -1648,14 +1664,14 @@ class Harness:
                     duration_ms=llm_duration_ms,
                     event_type=(
                         "loop_stall"
-                        if is_loop_stall
+                        if is_loop_stall or echo_only
                         else "cycle_stall"
                         if cycle or range_stall
                         else "ok"
                     ),
                 )
 
-                if is_loop_stall or cycle or range_stall:
+                if is_loop_stall or cycle or range_stall or echo_only:
                     stalls += 1
                     if stalls >= STALL_ABORT:
                         # A model that fixed the task and then only repeats its check has
@@ -1975,7 +1991,10 @@ class Harness:
                 if tracker.disabled or not workspace_only:
                     made = not is_quiet(cmd) and not was_refused
                 else:
-                    made = bool(delta.created or delta.modified or delta.deleted)
+                    # AD-50: a rewrite back to a version the file already had is not progress
+                    made = bool(delta.deleted) or any(
+                        p not in delta.revisited for p in (*delta.created, *delta.modified)
+                    )
                 if was_refused and not is_quiet(cmd):
                     pass  # refused: nothing ran, so neither a quiet step nor a change (#318)
                 elif not made:
@@ -2065,6 +2084,8 @@ class Harness:
                     }
                     if len(kept) == len(delta.touched) + len(delta.modified):
                         out += unchanged_note(kept, root)
+                if echo_only:
+                    out += ECHO_NUDGE
                 if changed and not dispatch.is_error and tests_green(tcmd, tout):
                     # only a run the model asked for is its own gate: an auto-test after a
                     # later change must not re-arm the harness's "finished" verdict

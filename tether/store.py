@@ -154,6 +154,11 @@ _SUBCOMMAND_TOOLS: dict[str, set[str]] = {
 _CD_LEAD = re.compile(r"^(?:bash\s+)?(?:cd\s+\S+\s*(?:&&|;)\s*)+")
 
 
+def is_done_call(cmd: str | None) -> bool:
+    """True only for a real `done` call: `done,` (an unknown command) is not one."""
+    return (cmd or "").split(None, 1)[:1] == ["done"]
+
+
 def canonical_tool_command(raw_cmd: str | None) -> str:
     """Normalize a raw tool command into its canonical `<tool>` or `<tool> <subcommand>` key."""
     if not raw_cmd:
@@ -1133,7 +1138,7 @@ class SQLiteStore:
                     if tid == TELL_EXPLORE:
                         followed = bool(cmd) and not is_quiet(cmd)
                     else:
-                        followed = cmd.startswith("done")
+                        followed = is_done_call(cmd)
                     counts[tid][1] += int(followed)
         notices = [(tid, fired, ok) for tid, (fired, ok) in counts.items() if fired]
 

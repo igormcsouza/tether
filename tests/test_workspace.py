@@ -253,3 +253,43 @@ def test_secret_looking_files_are_never_read(tmp_path: Path) -> None:
     assert set(tracker.scan()) == {"a.py"}
     (tmp_path / ".env").write_text("TOKEN=2")
     assert tracker.step() == Changes([], [], [], [])
+
+
+def test_rewrite_back_to_an_earlier_content_is_revisited(tmp_path: Path) -> None:
+    # AD-50: A, B, A flips back to a content the file had; C is new; re-creating is revisited
+    f = tmp_path / "report.md"
+    tracker = Tracker(tmp_path)
+    tracker.scan()
+    f.write_text("A")
+    assert tracker.step().revisited == []
+    f.write_text("B")
+    assert tracker.step().revisited == []
+    f.write_text("A")
+    third = tracker.step()
+    assert third.modified == ["report.md"] and third.revisited == ["report.md"]
+    f.write_text("C")
+    assert tracker.step().revisited == []
+    f.unlink()
+    tracker.step()
+    f.write_text("A")
+    assert tracker.step().revisited == ["report.md"]
+
+
+def test_revisit_seeds_from_the_first_look(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("first")
+    tracker = Tracker(tmp_path)
+    tracker.scan()
+    (tmp_path / "f.txt").write_text("second")
+    tracker.step()
+    (tmp_path / "f.txt").write_text("first")
+    assert tracker.step().revisited == ["f.txt"]
+
+
+def test_oversized_file_is_never_revisited(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(workspace, "MAX_FILE_BYTES", 4)
+    f = tmp_path / "big.txt"
+    tracker = Tracker(tmp_path)
+    tracker.scan()
+    for text in ("aaaaaaaa", "bbbbbbbb", "aaaaaaaa"):
+        f.write_text(text)
+        assert tracker.step().revisited == []

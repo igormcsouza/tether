@@ -1,6 +1,6 @@
 # Release Notes
 
-## Unreleased
+## v0.3.5 (2026-11-24)
 
 ### Added
 
@@ -14,6 +14,8 @@
 ### Fixed
 
 - A `python -c` probe that imports `unittest.mock` is no longer taken for the test command, so the auto-test after an edit runs the real tests.
+- A `done, stdin="..."` typed into the command now delivers the answer, and a repeated unknown command that starts with "done" is caught by the loop guard instead of burning every step.
+- A file rewritten back and forth between two versions, and a bare `echo` that only prints back after the tests went green, no longer reset the stall guard: the session ends "Finished by the harness" or by the stall path instead of at the step cap (AD-50).
 - `bash backup.sh` and `bash ./x.sh` run the script through bash, so a script without an exec bit no longer fails with "command not found" or "Permission denied" (`bash -x x.sh` and `bash -n x.sh` too).
 
 ## v0.3.4 (2026-11-23)
