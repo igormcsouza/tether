@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- A `python -c` probe that imports `unittest.mock` is no longer taken for the test command, so the auto-test after an edit runs the real tests.
+
 ## v0.3.4 (2026-11-23)
 
 ### Documentation

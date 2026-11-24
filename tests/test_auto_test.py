@@ -11,6 +11,7 @@ from pathlib import Path
 
 from tests.conftest import FakeScriptedProvider
 from tether import ActionCall, Harness, ModelResponse
+from tether.harness import is_test_cmd
 from tether.sandbox import SandboxPolicy
 
 TEST = "python3 -m unittest -q m_checks"
@@ -61,3 +62,34 @@ async def test_no_test_run_yet_means_no_auto_test(tmp_path: Path) -> None:
 async def test_failing_auto_tests_count_toward_a_restart(tmp_path: Path) -> None:
     h, _, sid = await _run(tmp_path, [TEST, _write(4), _write(5), _write(6), "ls"])
     assert [t.event_type for t in h.store.get_turns(sid)].count("restart") == 1
+
+
+PROBE = 'python3 -c "from unittest.mock import patch; print(1)"'
+
+
+def test_is_test_cmd_true_for_runner_calls() -> None:
+    for cmd in (
+        "python3 -m unittest discover -p '*_test.py'",
+        'pytest -q -k "foo"',
+        "cd x && python -m pytest",
+        "python3 -m unittest 2>&1 | head -50",
+    ):
+        assert is_test_cmd(cmd), cmd
+
+
+def test_is_test_cmd_false_for_probes_quoted_or_heredoc_words() -> None:
+    for cmd in (
+        PROBE,
+        "python3 -c 'import pytest'",
+        "cat > t.py << 'EOF'\nimport unittest\nEOF",
+    ):
+        assert not is_test_cmd(cmd), cmd
+
+
+async def test_a_quoted_unittest_probe_does_not_replace_the_test_command(tmp_path: Path) -> None:
+    # paasio: after the real tests, a `python3 -c` probe that imports unittest.mock was taken for
+    # the test command, so the auto-test re-ran the probe instead of the suite
+    _, provider, _ = await _run(tmp_path, [TEST, PROBE, _write(100), "ls"])
+    after_edit = _seen(provider, 3)
+    assert f"[auto-test] `{TEST}`" in after_edit and "AssertionError: 100 != 3" in after_edit
+    assert f"[auto-test] `{PROBE}`" not in after_edit
