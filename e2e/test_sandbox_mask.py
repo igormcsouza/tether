@@ -4,18 +4,18 @@ real CLI and the secret never reaches what tether recorded. Scripted: no model i
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 
 import pytest
 
 from e2e.conftest import Tether
+from tether.sandbox import bwrap_probe
 
 # `_run_argv` appends `[exit N]` (or `[exit N: no output]`) for nonzero exits.
 _NONZERO_EXIT = re.compile(r"\[exit [1-9]\d*")
 
 
-@pytest.mark.skipif(shutil.which("bwrap") is None, reason="needs bwrap")
+@pytest.mark.skipif(bwrap_probe().state != "ok", reason="needs a working bwrap")
 def test_git_and_cat_work_in_masked_workspace(tether: Tether, chaos) -> None:
     git = ["git", "-c", "user.name=t", "-c", "user.email=t@t"]
     subprocess.run([*git, "init", "-q"], cwd=tether.ws, check=True)
