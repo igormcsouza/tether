@@ -8,14 +8,14 @@ Tether never relies on system prompt instructions ("please do not read `.env` or
 
 | Profile | File Reads (`edit view`) | File Writes (`edit write`/`replace`) | `bash` Execution |
 |---|---|---|---|
-| `workspace-write` *(default)* | Allowed inside `workspace_root` (except protected paths) | Allowed inside `workspace_root` (except protected paths) | Allowed inside `workspace_root` (with kernel `bwrap` or command guard) |
+| `workspace-write` *(default)* | Allowed inside `workspace_root` (except protected paths) | Allowed inside `workspace_root` (except protected paths) | Allowed inside `workspace_root` (with a kernel jail, `bwrap` or Landlock; otherwise the command guard) |
 | `read-only` | Allowed inside `workspace_root` (except protected paths) | Blocked (`SandboxViolationError`) | Restricted to read-only inspection allowlist (`ls`, `cat`, `grep`, `git`, `rg`, etc.) |
 | `full-access` | Allowed inside `workspace_root` | Allowed inside `workspace_root` | Allowed without command denylist (still scrubs secrets unless disabled) |
 
 ## Four Layers of Deterministic Defense
 
 ### 1. Canonical Path Confinement (`resolve_safe_path`)
-Every path passed to `edit` or referenced in `bash` is canonicalized via `Path.resolve()` and verified to reside inside `workspace_root`. Traversal attempts (`../../etc/passwd`) raise `SandboxViolationError` before touching the filesystem. For `bash`, the kernel jail (below) is the boundary when `bwrap` is available: path and `.env` text checks on the command line run only in the no-`bwrap` fallback, so harmless commands such as `ls ~/..` are not refused for how they look. The cheap red lines (`sudo`, `su`, disk tools, `rm -rf /`, `chmod 777`, fork bombs, `~/.ssh`) are checked in both modes. `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are not treated as secrets.
+Every path passed to `edit` or referenced in `bash` is canonicalized via `Path.resolve()` and verified to reside inside `workspace_root`. Traversal attempts (`../../etc/passwd`) raise `SandboxViolationError` before touching the filesystem. For `bash`, the kernel jail (below) is the boundary when `bwrap` or Landlock is available: path and `.env` text checks on the command line run only in the no-`bwrap` fallback, so harmless commands such as `ls ~/..` are not refused for how they look. The cheap red lines (`sudo`, `su`, disk tools, `rm -rf /`, `chmod 777`, fork bombs, `~/.ssh`) are checked in both modes. `.env.example`, `.env.sample`, `.env.template` and `.env.dist` are not treated as secrets.
 
 ### 2. Protected Sensitive Paths
 Even within `workspace_root`, Tether deterministically blocks access to sensitive files and directories:
@@ -38,17 +38,26 @@ On Linux, when `bwrap` is available and functional, `bash` subprocesses automati
 - `/home`, `/media`, `/mnt`, `/srv` and `/var/tmp` are hidden behind empty tmpfs, `/run/user` is hidden, and every unix socket under `/run` (for example `docker.sock`) is masked. A read-only bind does not stop `connect()`, so an exposed `docker.sock` would be a host escape. Existing `PATH` directories that sit under a hidden root (`~/.local/bin` for `uv`, nvm's `bin` for `node`) are re-bound read-only so tools installed there still run in `bash` and `--verify` gates; credential directories (`.ssh`, `.gnupg`, `.aws`, `.kube`, `.docker`, `.config`) and the hidden roots themselves are never re-exposed.
 - `--unshare-pid`, `--unshare-ipc` and `--die-with-parent` ensure runaway child processes are reaped immediately on timeout.
 
-### Without bwrap (fail closed)
-Without `bwrap` (macOS, Windows, or Linux without bubblewrap) only the command-text checks remain, and those are easy to get around (`python -c ...`). So a `workspace-write` session with the kernel sandbox on is refused before the first model call (exit `1`). The message names the three ways out:
+### Landlock, when bwrap is blocked (Ubuntu 24.04+)
+Ubuntu 24.04 and later block the unprivileged user namespaces `bwrap` needs. Tether then uses **Landlock**, a Linux kernel feature (5.13+) that needs no privileges or namespaces. The jail is the same in spirit: the host is read-only, the home directories, `/run` and the other hidden roots are not visible, the workspace and a private temp dir (`TMPDIR`) are writable, and `PR_SET_NO_NEW_PRIVS` is set. `tether doctor` reports `landlock` and the reason `bwrap` is not used, and `tether status` shows `sandbox: landlock`. Nothing to configure.
 
-- Install bubblewrap (`apt install bubblewrap`, then `tether doctor`).
+Landlock is weaker than `bwrap` in three ways, and the command-text rules stay on to cover the first:
+
+- Secret files inside the workspace (`.env`, `*.pem`, `.git/config`) cannot be hidden. Commands that name them are refused, but a program can still read them.
+- It cannot block the network or unix-socket connects. `--no-network` therefore still needs `bwrap`, and a user in the `docker` group can reach `/var/run/docker.sock`; prefer `bwrap` there. On kernels older than 6.12 a jailed command can also signal other processes of your user (for example the tether worker).
+- The host `/tmp` is hidden (writes go to a private temp dir, `$TMPDIR`), DNS keeps working, and `/dev` is the host's, with its device files keeping their usual permissions.
+
+### Without a jail (fail closed)
+Without `bwrap` and without Landlock (macOS, Windows, or an old kernel) only the command-text checks remain, and those are easy to get around (`python -c ...`). So a `workspace-write` session with the kernel sandbox on is refused before the first model call (exit `1`). The message names the ways out:
+
+- Install bubblewrap (`apt install bubblewrap`, then `tether doctor`), or use a kernel with Landlock enabled.
 - Pass `--allow-unsandboxed` (`tether run`, `tether pipeline`), `SandboxPolicy(allow_unsandboxed=True)` or `Harness(allow_unsandboxed=True)` in Python, or the MCP `tether_run` argument `allow_unsandboxed`. The session then runs and prints one `[sandbox] bwrap not available, running with command checks only` line on stderr per process.
 - In Docker, set `TETHER_SANDBOX=container`: the container is the sandbox. No refusal and no notice. Any other value of `TETHER_SANDBOX` is refused. The command-text checks still apply in this mode.
 
-`read-only` sessions and `SandboxPolicy(use_kernel_sandbox=False)` are not refused. Sub-agents and pipeline stages inherit the opt-out and can only drop it. `tether status <id>` shows `sandbox: bwrap` or `sandbox: command checks only`.
+`read-only` sessions and `SandboxPolicy(use_kernel_sandbox=False)` are not refused. Sub-agents and pipeline stages inherit the opt-out and can only drop it. `tether status <id>` shows `sandbox: bwrap`, `sandbox: landlock` or `sandbox: command checks only`.
 
 ### 5. Optional network isolation (`--no-network`)
-By default `bash` keeps network access. `tether run --no-network ...` (or `SandboxPolicy(network=False)`) adds `--unshare-net`, which also separates abstract unix sockets. Sub-agents and pipeline stages inherit it and can never re-enable it. Without `bwrap` the policy cannot be enforced, so `bash` refuses to run (fail closed) instead of running un-isolated. `web fetch` runs in the harness process and is not affected by `--no-network`.
+By default `bash` keeps network access. `tether run --no-network ...` (or `SandboxPolicy(network=False)`) adds `--unshare-net`, which also separates abstract unix sockets. Sub-agents and pipeline stages inherit it and can never re-enable it. Without `bwrap` the policy cannot be enforced (Landlock cannot block the network either), so `bash` refuses to run (fail closed) instead of running un-isolated. `web fetch` runs in the harness process and is not affected by `--no-network`.
 
 ### 6. `web fetch` SSRF guard
 `web fetch` resolves the host (and every redirect hop) and refuses non-public addresses: loopback, RFC1918, link-local, and cloud metadata (`169.254.169.254`). Set `TETHER_WEB_ALLOW_PRIVATE=1` to fetch local services on purpose.
@@ -216,6 +225,6 @@ The e2e layer needs `bwrap` with user namespaces. Without them its tests are ski
 
 ## When it goes wrong
 
-- **`Sandbox unavailable`.** See [bwrap installed but blocked](../../troubleshooting.md#bwrap-is-installed-but-blocked-ubuntu-2404).
+- **`Sandbox unavailable`.** Neither `bwrap` nor Landlock works on this host. See [bwrap installed but blocked](../../troubleshooting.md#bwrap-is-installed-but-blocked-ubuntu-2404).
 - **A command is refused.** The message names the rule, an alternative and the flag. Read it before you widen anything.
 - **A tool under your home directory is "not found".** The jail hides `$HOME`; put the tool on `PATH` or in the workspace ([troubleshooting](../../troubleshooting.md)).

@@ -12,7 +12,7 @@ flowchart TB
     P --> M["model (probabilistic)"]
     M --> MUX["multiplexer.py<br/>parse act(cmd, stdin)"]
     MUX --> T["tools/<br/>done bash edit web mem agent"]
-    T --> SB["sandbox.py<br/>bwrap, path jail, env scrub"]
+    T --> SB["sandbox.py<br/>bwrap or Landlock, path jail, env scrub"]
     T --> DB[("store.py<br/>SQLite WAL + FTS5")]
     H <--> DB
     CTX <--> DB
@@ -25,7 +25,7 @@ Everything left of "model" and right of "parse" is deterministic. The model is c
 1. **Assemble.** `context.py` builds the prompt: the fixed system prompt and `act` schema, the history as structured tool calls and results, your pinned notes on the last message. Old outputs are folded to tombstones and long ones elided to head and tail ([context and folding](../concepts/context-and-folding.md)).
 2. **Ask.** A provider (`providers/`) sends it. Three thin `httpx` adapters (Ollama, OpenAI-compatible, Anthropic) plus a declarative layer that can wrap any command. It retries what is safe to retry and turns failures into messages that say what to do.
 3. **Parse.** `multiplexer.py` takes `act(cmd, stdin)`, repairs trivial quirks (a leading `$`, a heredoc in `cmd`, a tool name instead of `act`) and finds the command. Unknown or malformed commands become a usage hint, never an exception.
-4. **Run.** The tool executes. `bash` and `edit` go through `sandbox.py`: paths confined to the workspace, secrets masked, a scrubbed environment, `bwrap` on Linux. Tools that need the network go through the same policy.
+4. **Run.** The tool executes. `bash` and `edit` go through `sandbox.py`: paths confined to the workspace, secrets masked, a scrubbed environment, `bwrap` or Landlock on Linux. Tools that need the network go through the same policy.
 5. **Record.** `store.py` writes the turn, the full output and its searchable chunks to SQLite, and the workspace tracker snapshots the first version of each file that changed.
 6. **Notes.** The harness may append a short note to the observation: an auto-test result, a regression line, a nudge, a loop warning. Each is bounded, deterministic and costs no model call ([the repair loop](../concepts/repair-loop.md)).
 7. **Decide.** `harness.py` checks the stop conditions: `done` (and your `verify` gates), steps, tokens, stall counters. Otherwise back to step 1.

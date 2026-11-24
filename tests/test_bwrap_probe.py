@@ -66,6 +66,11 @@ def test_can_use_bwrap_caches_the_probe(monkeypatch: pytest.MonkeyPatch) -> None
     assert len(calls) == 1
 
 
+@pytest.fixture(autouse=True)
+def _no_landlock(no_landlock: None) -> None:
+    """These cases are about a host whose only jail is bwrap (Landlock is tested separately)."""
+
+
 def _policy(tmp_path: Path) -> SandboxPolicy:
     return SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=True)
 

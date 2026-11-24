@@ -41,7 +41,7 @@ flowchart LR
     You["CLI · SDK · MCP"] --> Loop
     subgraph Envelope["Deterministic envelope"]
         Loop["bounded loop<br/>steps · stall guard · gates"] --> Mux["act(cmd, stdin)<br/>command bus"]
-        Mux --> Sand["sandbox<br/>bwrap · workspace jail"]
+        Mux --> Sand["sandbox<br/>bwrap or Landlock · workspace jail"]
         Sand --> Tools["bash · edit · web · mem · agent · your @tool"]
         Tools --> Fold["fold old output"]
         Fold --> DB[("SQLite WAL + FTS5<br/>.tether/tether.db")]

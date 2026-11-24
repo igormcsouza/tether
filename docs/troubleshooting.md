@@ -130,15 +130,19 @@ A session whose last test run passed after its final change ends `COMPLETED` ins
 
 *Tracked in [#311](https://github.com/igormcsouza/tether/issues/311) (resolved).*
 
-**Symptom.** `tether doctor` shows `FAIL bwrap ... cannot create namespaces`, and a write session refuses to start with `Sandbox unavailable: bwrap is installed (...) but the kernel refuses it`.
+**Symptom.** `tether doctor` shows `bwrap ... landlock (bwrap blocked: ...; Landlock ABI N: workspace jail without namespaces)` and passes. Without Landlock it shows `FAIL bwrap ... cannot create namespaces`, and a write session refuses to start with `Sandbox unavailable: bwrap is installed (...) but the kernel refuses it`.
 
 **Cause.** AppArmor restricts unprivileged user namespaces on Ubuntu 24.04+, so `bwrap` is present but the kernel will not let it create the sandbox.
 
-**Fix.** Any one of:
+**Fix.** Nothing, on a kernel with Landlock (5.13+, which Ubuntu 24.04 has): tether runs `bash` in a Landlock jail instead, and `tether status` shows `sandbox: landlock`. The jail has three limits (secrets in the workspace are hidden only by the command-text rules, `--no-network` needs `bwrap`, unix sockets such as `docker.sock` stay reachable); see [Landlock, when bwrap is blocked](guides/advanced/security-and-sandbox.md#landlock-when-bwrap-is-blocked-ubuntu-2404).
+
+If you want the kernel `bwrap` jail back, any one of:
 
 - Lift the restriction: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, and persist it in `/etc/sysctl.d/`.
 - Run inside a container and set `TETHER_SANDBOX=container`.
 - Pass `--allow-unsandboxed` (SDK/MCP: `allow_unsandboxed=True`) to run with command checks only.
+
+If `Sandbox unavailable` says Landlock is unavailable too, the kernel has no Landlock (pre-5.13, or it is not enabled in the kernel): use one of the three fixes above.
 
 ## Tools and skills
 

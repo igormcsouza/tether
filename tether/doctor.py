@@ -7,6 +7,7 @@ from pathlib import Path
 
 import httpx
 
+from tether import landlock
 from tether.providers.declarative import load_declared
 from tether.sandbox import bwrap_probe
 from tether.store import SQLiteStore
@@ -56,8 +57,18 @@ def run_checks(model: str, host: str, db_path: Path) -> list[Check]:
         checks.extend(_ollama_checks(model, host))
 
     probe = bwrap_probe()
+    abi = landlock.abi()
     if probe.state == "ok":
         checks.append(Check("bwrap", True, probe.path))
+    elif abi >= 1:
+        reason = "not installed" if probe.state == "missing" else f"blocked: {probe.error}"
+        checks.append(
+            Check(
+                "bwrap",
+                True,
+                f"landlock (bwrap {reason}; Landlock ABI {abi}: workspace jail without namespaces)",
+            )
+        )
     elif probe.state == "missing":
         checks.append(
             Check("bwrap", False, "bwrap not found: install bubblewrap for the kernel sandbox")

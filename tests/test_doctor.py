@@ -75,7 +75,9 @@ def test_non_ollama_model_skips_the_ollama_checks(
     assert "ollama" not in by and "model" not in by
 
 
-def test_missing_bwrap_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_bwrap_is_reported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, no_landlock: None
+) -> None:
     monkeypatch.setattr(httpx, "get", _tags(["qwen3.5:9b"]))
     monkeypatch.setattr(doctor, "bwrap_probe", lambda: BwrapProbe("missing", "", ""))
     by = _by_name(doctor.run_checks("ollama/qwen3.5:9b", "http://h:1", tmp_path / "t.db"))

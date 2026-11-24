@@ -38,7 +38,7 @@ tether run "your goal here" [flags]
 | `--web-allow` | Comma list of domains the `web` tool may reach, e.g. `python.org,*.github.com`; other hosts and IP literals are refused |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--limit` | Resource limit, repeatable: `cpu=SECONDS`, `mem=MB`, `procs=N`, `fsize=MB`; opt-in, Linux only |
-| `--allow-unsandboxed` | Run write sessions without bwrap (command checks only). Without bwrap and without this flag, a workspace-write session is refused with exit 1 |
+| `--allow-unsandboxed` | Run write sessions without a kernel jail (bwrap or Landlock; command checks only). Without bwrap, Landlock and this flag, a workspace-write session is refused with exit 1 |
 | `--allow` | Command prefix allowed to run outside the jail (no shell, whole tokens; repeatable). Never in read-only or `--no-network` sessions. See security-and-sandbox section 8 |
 | `--max-steps` | Maximum reasoning steps |
 | `--max-tokens` | Token budget (prompt + completion); pauses as WAITING_INPUT (exit 2) when reached |
@@ -76,7 +76,7 @@ tether pipeline path/to/pipeline.yaml "root goal" [flags]
 | `--web-allow` | Comma list of domains the `web` tool may reach (stages can only narrow) |
 | `--no-network` | Disable network inside the bash sandbox (requires bwrap; fails closed without it) |
 | `--limit` | Resource limit, repeatable: `cpu=SECONDS`, `mem=MB`, `procs=N`, `fsize=MB`; opt-in, Linux only |
-| `--allow-unsandboxed` | Run write sessions without bwrap (command checks only). Without bwrap and without this flag, a workspace-write session is refused with exit 1 |
+| `--allow-unsandboxed` | Run write sessions without a kernel jail (bwrap or Landlock; command checks only). Without bwrap, Landlock and this flag, a workspace-write session is refused with exit 1 |
 | `--allow` | Command prefix allowed to run outside the jail (no shell, whole tokens; repeatable). Never in read-only or `--no-network` sessions. See security-and-sandbox section 8 |
 | `--max-steps` | Default max reasoning steps per stage |
 | `--db` | SQLite DB path (default .tether/tether.db) |
@@ -105,7 +105,7 @@ Show the current state of a session (running, paused, completed, failed). Use th
 tether status <session_id> [flags]
 ```
 
-The text output ends with `sandbox: bwrap` or `sandbox: command checks only` (sessions created since 0.3).
+The text output ends with `sandbox: bwrap`, `sandbox: landlock` or `sandbox: command checks only` (sessions created since 0.3).
 
 | Flag | Meaning |
 |------|---------|
@@ -356,7 +356,7 @@ tether export ses_abc123 --out session.md
 
 ## tether doctor
 
-Check Ollama is reachable, the model is pulled, bwrap is installed, providers.yaml is valid, and the session DB opens. Shows what to fix if anything is broken.
+Check Ollama is reachable, the model is pulled, a kernel jail (bwrap, or Landlock) is available, providers.yaml is valid, and the session DB opens. Shows what to fix if anything is broken.
 
 ```bash
 tether doctor [flags]
