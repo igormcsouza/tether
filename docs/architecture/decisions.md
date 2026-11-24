@@ -137,6 +137,8 @@ Each entry has the same shape: the **decision**, the **why**, and what it **cost
 
 **AD-49. Work is split into cards a small model can finish.** One file, about 15 lines, one edit per card, exact brief and a pinned failing test; 2-file cards and documentation rewrites by small models loop or invent facts. A minion's `done` is not evidence: every requested fix is pinned by a failing test used as the gate, and gates run inside the sandbox.
 
+**AD-50. Revisits and bare echoes are not progress.** A write that gives a file a content it already had earlier in the session (a flip between two versions) and a bare `echo` (no redirect, pipe, substitution or second statement) do not reset the stall counter: a revisit is a quiet step, and a bare echo runs but counts as a stall with a `[NUDGE]` to call `done`. Both reuse the stall stages of AD-21, so a green-tested session ends `COMPLETED` ("Finished by the harness") at the abort, and the tracker still reports these writes as changes for the auto-test, snapshots and live reads. *Why:* on a Coding Ladder run the model rewrote one correct `report.md` 23 steps in a row, flipping between two versions, and echoed "Done" 16 times after the tests went green; each rewrite was a real byte change, so the guard never fired and the sessions ran to the step cap. *Cost:* a file that really is reverted to an earlier version counts as a quiet step, so a long honest back-and-forth ends in a stall sooner. *Status:* approved by the product owner on 2026-11-24; in effect.
+
 ---
 
 ## Open questions

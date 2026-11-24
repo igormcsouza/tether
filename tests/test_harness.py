@@ -1148,3 +1148,53 @@ async def test_refused_edits_are_not_a_change(tmp_path: Path) -> None:
     assert session.status == "WAITING_INPUT"
     assert "Finished by the harness" not in (session.result or "")
     assert "No change was made" in (session.result or "")
+
+
+async def _workspace_run(tmp_path: Path, cmds: list[tuple[str, str | None]], max_steps: int) -> Any:
+    """Scripted run in a workspace-only sandbox; the script ends with a `done` if not stopped."""
+    from tether.sandbox import SandboxPolicy
+
+    script = [
+        ModelResponse(content="", action=ActionCall(cmd=c, stdin=s), prompt_tokens=10)
+        for c, s in cmds
+    ]
+    db = tmp_path / "t.db"
+    h = Harness(
+        db_path=db,
+        tools=["edit", "bash"],
+        provider=FakeScriptedProvider(script),
+        max_steps=max_steps,
+        sandbox=SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False),
+    )
+    rec = h.create_session("goal")
+    session = await h.execute_session(rec.id)
+    events = [t.event_type for t in h.store.get_turns(session.id) if t.role == "assistant"]
+    return session, events
+
+
+async def test_revisiting_two_versions_ends_by_the_stall_guard(tmp_path: Path) -> None:
+    # AD-50 (shell-6): A, B, A, B... is a real byte change each step, but no progress
+    flip = [("edit write report.md", "A" if i % 2 == 0 else "B") for i in range(80)]
+    session, events = await _workspace_run(tmp_path, flip, max_steps=80)
+    assert session.status == "WAITING_INPUT" and "[STUCK" in (session.result or "")
+    assert session.step_count < 80, events
+    assert "cycle_stall" in events and "loop_stall" in events
+
+
+async def test_green_then_bare_echoes_finish_by_the_harness(tmp_path: Path) -> None:
+    # AD-50 (bugfix-4): after green, echoes only talk; the stall guard ends the session
+    test = "import unittest\n\nclass T(unittest.TestCase):\n    def test_ok(self):\n        pass\n"
+    cmds = [("edit write test_t.py", test), ("python3 -m unittest test_t", None)]
+    cmds += [(f"echo step {i}", None) for i in range(6)]
+    session, events = await _workspace_run(tmp_path, cmds, max_steps=30)
+    assert session.status == "COMPLETED"
+    assert "Finished by the harness" in (session.result or "")
+    assert session.step_count < 30, events
+    assert events.count("loop_stall") == 4
+
+
+async def test_redirected_echo_is_not_a_bare_echo(tmp_path: Path) -> None:
+    cmds = [(f"echo hi > f{i}.txt", None) for i in range(5)] + [("done", "ok")]
+    session, events = await _workspace_run(tmp_path, cmds, max_steps=10)
+    assert "loop_stall" not in events
+    assert session.result == "ok"
