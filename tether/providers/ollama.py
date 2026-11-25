@@ -58,6 +58,8 @@ async def _stream(client: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.R
             if not line.strip():
                 continue
             last = json.loads(line)
+            if "error" in last:  # a failure mid-stream: same 500 the non-stream call returns
+                return httpx.Response(500, json={"error": last["error"]}, request=r.request)
             msg = last.get("message") or {}
             if msg.get("thinking"):
                 thinking.append(str(msg["thinking"]))

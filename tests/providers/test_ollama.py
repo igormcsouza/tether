@@ -416,3 +416,26 @@ async def test_long_thinking_then_a_long_reply_is_not_cut() -> None:
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
     assert len(seen) == 1 and resp.content == "x" * 3000
     assert resp.completion_tokens == 5000 and resp.action is None
+
+
+async def test_an_error_line_mid_stream_takes_the_rejected_call_path() -> None:
+    """Ollama reports a failure after the 200 as an NDJSON error line: same as a 500 (AD-29)."""
+    from tether.providers.ollama import THINK_BUDGET
+
+    error = {"error": "error parsing tool call: raw='<tool_call>'"}
+    lines = [_line(_think()) for _ in range(10)] + [_line(error)]
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(json.loads(request.content))
+        if len(calls) == 1:
+            return httpx.Response(200, stream=httpx.ByteStream(b"".join(lines)))
+        return httpx.Response(200, json=_CMD)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert resp.action is not None and resp.action.cmd == "ls" and not resp.hint
+    assert len(calls) == 2
+    assert calls[1]["think"] is False and calls[1]["stream"] is False
+    # rejected like the 500 path: the cut call counts its budget, as there
+    assert resp.completion_tokens == THINK_BUDGET + 30
