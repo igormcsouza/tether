@@ -203,15 +203,17 @@ class OllamaProvider:
                     f"ollama model `{self.model_name}`: the prompt does not fit num_ctx "
                     f"{self.num_ctx}; lower --context-tokens or raise the model's context window"
                 )
-        empty = False
+        empty = uncounted = False
         if rejected is None:
             resp.raise_for_status()
             data = resp.json()
             first = _response(data)
             cut = budgeted and data.get("done_reason") == "length" and first.action is None
             empty = first.empty and data.get("done_reason") != "length"
-        else:  # budget cut a call mid-way: Ollama cannot parse it (500), so no token counts
-            first, cut = ModelResponse(content=""), True
+        else:  # budget cut a call mid-way: Ollama cannot parse it (500) and returns no counts,
+            # so the cut call counts the budget it was given (and the prompt the retry re-sends)
+            first = ModelResponse(content="", completion_tokens=THINK_BUDGET)
+            cut = uncounted = True
         if cut:
             # cut by the budget without a command: ask the same turn once more, thinking off
             retry = {
@@ -224,10 +226,15 @@ class OllamaProvider:
                 return rejected
             resp.raise_for_status()
             second = _response(resp.json())
+            prompt = (
+                2 * second.prompt_tokens
+                if uncounted
+                else first.prompt_tokens + second.prompt_tokens
+            )
             return ModelResponse(
                 content=second.content,
                 action=second.action,
-                prompt_tokens=first.prompt_tokens + second.prompt_tokens,
+                prompt_tokens=prompt,
                 completion_tokens=first.completion_tokens + second.completion_tokens,
             )
         if empty:

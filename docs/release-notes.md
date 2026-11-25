@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- Token counts include a thinking turn cut by its budget (Ollama reports none for it), so `tether stats` no longer hides the most expensive turns.
+
 ## v0.3.6 (2026-11-24)
 
 ### Changed
