@@ -4,7 +4,7 @@
 
 ### Changed
 
-- The Ollama reply ceiling is 5,120 tokens (was 8,192): the 2,048-token thinking cap plus 3,072 for the reply, above every healthy turn measured, so a runaway tool call stops after about 2.5 minutes instead of 4 (AD-29). A call cut mid-stream now counts the tokens it really generated.
+- The Ollama reply ceiling is 5,120 tokens (was 8,192): the 2,048-token thinking cap plus 3,072 for the reply, above every healthy turn measured, so a runaway tool call stops after about 2.5 minutes instead of 4 (AD-29). A tool call cut by the ceiling now counts the 5,120 tokens it used (it counted 2,048).
 
 ## v0.3.8 (2026-11-25)
 

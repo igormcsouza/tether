@@ -56,16 +56,12 @@ async def _stream(client: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.R
         tool_calls: list[Any] = []
         last: dict[str, Any] = {}
         cut = False
-        streamed = 0  # every NDJSON line is one generated token
         async for line in r.aiter_lines():
             if not line.strip():
                 continue
             last = json.loads(line)
-            if "error" in last:  # a failure mid-stream: same 500 the non-stream call returns,
-                # with the tokens streamed before it so the cut call is counted honestly (AD-29)
-                body = {"error": last["error"], "eval_count": streamed}
-                return httpx.Response(500, json=body, request=r.request)
-            streamed += 1
+            if "error" in last:  # a failure mid-stream: same 500 the non-stream call returns
+                return httpx.Response(500, json={"error": last["error"]}, request=r.request)
             msg = last.get("message") or {}
             if msg.get("thinking"):
                 thinking.append(str(msg["thinking"]))
@@ -97,18 +93,6 @@ async def _stream(client: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.R
                 "eval_count": last.get("eval_count", 0),
             }
         return httpx.Response(200, json=data, request=r.request)
-
-
-def _rejected_tokens(resp: httpx.Response) -> int:
-    """Tokens a rejected call generated: the lines streamed before Ollama's error (AD-29).
-
-    A plain HTTP 500 carries no count, so the call counts the budget it was given.
-    """
-    try:
-        count = resp.json().get("eval_count")
-        return THINK_BUDGET if count is None else int(count)
-    except (ValueError, TypeError, AttributeError):  # not JSON, or not an object
-        return THINK_BUDGET
 
 
 def _response(data: dict[str, Any]) -> ModelResponse:
@@ -294,9 +278,10 @@ class OllamaProvider:
             first = _response(data)
             cut = budgeted and data.get("done_reason") == "length" and first.action is None
             empty = first.empty and data.get("done_reason") != "length"
-        else:  # budget cut a call mid-way: Ollama cannot parse it (500); the cut call counts the
-            # tokens it streamed before the error, or the budget when the 500 has no count
-            first = ModelResponse(content="", completion_tokens=_rejected_tokens(resp))
+        else:  # the ceiling cut a tool call mid-way: Ollama cannot parse it (500) and sends no
+            # count (tool-call tokens are not streamed either), so the call counts its num_predict
+            spent = int(payload["options"].get("num_predict") or REPLY_CEILING)
+            first = ModelResponse(content="", completion_tokens=spent)
             cut = True
         if cut:
             # cut by the budget without a command: ask the same turn once more, thinking off

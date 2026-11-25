@@ -277,12 +277,12 @@ async def test_a_call_cut_by_the_budget_is_asked_again_without_thinking() -> Non
 
 async def test_a_rejected_cut_call_counts_the_budget_it_was_given() -> None:
     """Ollama returns no counts on the 500, so the cut call counts its num_predict budget."""
-    from tether.providers.ollama import THINK_BUDGET
+    from tether.providers.ollama import REPLY_CEILING
 
     client, seen = _replies((500, _REJECTED), (200, _CMD))
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
     assert resp.action is not None and len(seen) == 2
-    assert resp.completion_tokens == THINK_BUDGET + 30
+    assert resp.completion_tokens == REPLY_CEILING + 30
     assert resp.prompt_tokens == 2 * 900  # the same prompt, evaluated by the cut call and the retry
 
 
@@ -430,7 +430,7 @@ async def test_long_thinking_then_a_long_reply_is_not_cut() -> None:
 
 async def test_an_error_line_mid_stream_takes_the_rejected_call_path() -> None:
     """Ollama reports a failure after the 200 as an NDJSON error line: same as a 500 (AD-29)."""
-    from tether.providers.ollama import THINK_BUDGET
+    from tether.providers.ollama import REPLY_CEILING
 
     error = {"error": "error parsing tool call: raw='<tool_call>'"}
     lines = [_line(_think()) for _ in range(10)] + [_line(error)]
@@ -447,31 +447,14 @@ async def test_an_error_line_mid_stream_takes_the_rejected_call_path() -> None:
     assert resp.action is not None and resp.action.cmd == "ls" and not resp.hint
     assert len(calls) == 2
     assert calls[1]["think"] is False and calls[1]["stream"] is False
-    # rejected like the 500 path: the cut call counts the 10 lines streamed before the error
-    assert resp.completion_tokens == 10 + 30
-    assert THINK_BUDGET > 10  # so the count is the streamed lines, not the budget
-
-
-async def test_a_mid_stream_error_before_any_line_counts_zero_tokens() -> None:
-    """Ollama fails before the first token: nothing was generated, so the cut call counts 0."""
-    error = {"error": "error parsing tool call: raw='<tool_call>'"}
-    calls: list[dict] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        calls.append(json.loads(request.content))
-        if len(calls) == 1:
-            return httpx.Response(200, stream=httpx.ByteStream(_line(error)))
-        return httpx.Response(200, json=_CMD)
-
-    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
-    assert resp.action is not None and len(calls) == 2
-    assert resp.completion_tokens == 0 + 30
+    # rejected like the 500 path: tool-call tokens are not streamed, so the cut call counts the
+    # num_predict it ran to, not the 10 lines that arrived
+    assert resp.completion_tokens == REPLY_CEILING + 30
 
 
 async def test_a_plain_500_that_is_not_json_still_counts_the_budget() -> None:
-    """A 500 with no count (plain text, no NDJSON line) counts THINK_BUDGET (AD-29)."""
-    from tether.providers.ollama import THINK_BUDGET
+    """A plain-text 500 counts the num_predict the call was given (AD-29)."""
+    from tether.providers.ollama import REPLY_CEILING
 
     calls: list[int] = []
 
@@ -484,4 +467,4 @@ async def test_a_plain_500_that_is_not_json_still_counts_the_budget() -> None:
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
     assert len(calls) == 2
-    assert resp.completion_tokens == THINK_BUDGET + 30
+    assert resp.completion_tokens == REPLY_CEILING + 30
