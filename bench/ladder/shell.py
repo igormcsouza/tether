@@ -1,4 +1,4 @@
-"""Everyday Ubuntu-terminal work: the opt-in `shell` kind (`--kinds shell`), six tiers, imported by tasks.py.
+"""Everyday Ubuntu-terminal work: the opt-in `shell` kind (`--kinds shell`), nine tiers, imported by tasks.py.
 
 A person asks for a file, a rename, a CSV summary, a search, a broken script fixed, a log report. Each task
 starts from a small folder of its own (no `shop` project, no web) and is graded deterministically:
@@ -9,10 +9,12 @@ file), so `validate.py` can prove the grader.
 """
 import csv
 import io
+import json
 import random
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 from pathlib import Path
@@ -294,4 +296,258 @@ add(Task(
             ("request ids stripped", lambda t: "req=" not in t),
             ("only the top three", lambda t: "cache miss" not in t.lower())],
     ref={"report.md": "# Top ERROR messages\n\n" + "".join(f"{i}. {m} - {n}\n" for i, (m, n) in enumerate(TOP_ERRORS, 1))},
+))
+
+
+def _lines(text):
+    return [l.strip() for l in text.splitlines() if l.strip()] if text is not None else None
+
+
+def _files_under(ws, top):
+    base = Path(ws) / top
+    return {p.relative_to(Path(ws)).as_posix() for p in base.rglob("*") if p.is_file()} if base.is_dir() else set()
+
+
+# ---------------------------------------------------------------- 7: bisect by hand over snapshots
+CHECK_PY = '''"""Check total_due() in the module named by argv[1]: exit 0 if it is right, 1 if it is wrong.
+
+Rule: SAVE10 takes 10% off an order of 100 or more (an order of exactly 100 included).
+"""
+import importlib.util
+import sys
+
+CASES = [([50, 50], "SAVE10", 90.0), ([30, 20], None, 50.0), ([200], "SAVE10", 180.0),
+         ([99.5], "SAVE10", 99.5), ([60, 45], "SAVE10", 94.5), ([60, 40], "OTHER", 100.0)]
+
+
+def main():
+    spec = importlib.util.spec_from_file_location("candidate", sys.argv[1])
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    bad = [(p, c, want) for p, c, want in CASES if abs(mod.total_due(p, c) - want) > 1e-9]
+    for p, c, want in bad:
+        print(f"wrong: total_due({p}, {c!r}) should be {want}")
+    sys.exit(1 if bad else 0)
+
+
+if __name__ == "__main__":
+    main()
+'''
+_V_HEAD = '''def total_due(prices, coupon=None):
+    """Amount to charge for a list of prices."""
+    subtotal = sum(prices)
+    if coupon == "SAVE10" and subtotal >= 100:
+        return round(subtotal * 0.9, 2)
+    return round(subtotal, 2)
+'''
+V_BODY = {
+    1: _V_HEAD.replace('    """Amount to charge for a list of prices."""\n', ""),
+    2: _V_HEAD,
+    3: _V_HEAD,
+    4: _V_HEAD.replace("subtotal >= 100", "subtotal > 100"),  # the bug: an order of exactly 100 gets no discount
+    5: _V_HEAD.replace("subtotal >= 100", "subtotal > 100").replace(
+        "    subtotal = sum(prices)\n", "    # prices are in dollars\n    subtotal = sum(prices)\n"),
+    6: _V_HEAD.replace("subtotal >= 100", "subtotal > 100").replace("Amount to charge", "Amount to charge (dollars)"),
+}
+T7_CALC_FIXED = V_BODY[4].replace("subtotal > 100", "subtotal >= 100")
+T7_FILES = {"check.py": CHECK_PY, **{f"versions/calc_v{n}.py": body for n, body in V_BODY.items()}}
+
+
+def _fixed_passes(ws):
+    """The model's calc_fixed.py through the grader's own copy of check.py, in a fresh folder."""
+    src = _text(ws, "calc_fixed.py")
+    if src is None:
+        return False
+    with tempfile.TemporaryDirectory(prefix="fix_") as tmp:
+        (Path(tmp) / "check.py").write_text(CHECK_PY)
+        (Path(tmp) / "calc_fixed.py").write_text(src)
+        try:
+            r = subprocess.run([sys.executable, "check.py", "calc_fixed.py"], cwd=tmp, capture_output=True, timeout=60)
+        except subprocess.TimeoutExpired:
+            return False
+    return r.returncode == 0
+
+
+add(Task(
+    "shell-7", "shell", 7,
+    "versions/ holds six snapshots of one function, calc_v1.py to calc_v6.py, made one after another. Somewhere "
+    "along the way a bug crept into total_due(). check.py in this folder takes a module path as its argument and "
+    "exits 1 when total_due() is wrong. Find the first version in versions/ where check.py fails and write its "
+    "file name (for example calc_v2.py) to answer.txt. Then write a fixed copy of that version as calc_fixed.py "
+    "in this folder, so that `python3 check.py calc_fixed.py` exits 0.",
+    files=T7_FILES,
+    deliverable="answer.txt",
+    checks=[("the first failing version, by file name", lambda t: t.strip() == "calc_v4.py")],
+    ws_checks=[("calc_fixed.py passes check.py in a fresh copy", _fixed_passes)],
+    ref={"answer.txt": "calc_v4.py\n", "calc_fixed.py": T7_CALC_FIXED},
+))
+
+# ---------------------------------------------------------------- 8: dedupe by content
+DL_FILES = {
+    "downloads/notes.txt": "Meeting notes: ship on Friday.\n",
+    "downloads/old/notes (1).txt": "Meeting notes: ship on Friday.\n",
+    "downloads/old/backup/notes.txt": "Meeting notes: ship on Friday.\n",
+    "downloads/invoice.csv": "item,cost\nrent,1200\n",
+    "downloads/archive/2025/invoice-copy.csv": "item,cost\nrent,1200\n",
+    "downloads/invoice_v2.csv": "item,cost\nrent,1250\n",
+    "downloads/a/config.ini": "[db]\nhost = localhost\nport = 5432\n",
+    "downloads/b/config.ini": "[db]\nhost = localhost\nport = 5432\n",
+    "downloads/readme.md": "# Readme\n\nSee docs.\n",
+    "downloads/misc/readme (2).md": "# Readme\n\nSee docs.\n",
+    "downloads/misc/deep/readme.md": "# Readme\n\nSee docs.\n",
+    "downloads/todo.txt": "buy milk\n",
+}
+# every copy that goes: in each group the shortest path (ties alphabetically) is the one kept
+DL_REMOVED = [
+    "downloads/archive/2025/invoice-copy.csv",
+    "downloads/b/config.ini",
+    "downloads/misc/deep/readme.md",
+    "downloads/misc/readme (2).md",
+    "downloads/old/backup/notes.txt",
+    "downloads/old/notes (1).txt",
+]
+DL_KEEP = {p: body for p, body in DL_FILES.items() if p not in DL_REMOVED}
+
+add(Task(
+    "shell-8", "shell", 8,
+    "downloads/ holds twelve files from several folders. Some are byte-for-byte copies of others, under other "
+    "names or in other folders. For each group of identical files, keep the one with the shortest path (fewest "
+    "characters, counted from this folder); if two tie, keep the one whose path comes first alphabetically, and "
+    "delete the other copies. Files that only look alike (invoice_v2.csv has one figure different) stay. Then "
+    "write dupes.txt in this folder: the paths you deleted, one per line, sorted.",
+    files=DL_FILES,
+    ws_checks=[
+        ("every file that stays is there, unchanged", lambda ws: all(_text(ws, p) == c for p, c in DL_KEEP.items())),
+        ("no copy left behind in downloads/", lambda ws: _files_under(ws, "downloads") == set(DL_KEEP)),
+        ("dupes.txt lists exactly the deleted paths, sorted", lambda ws: _lines(_text(ws, "dupes.txt")) == DL_REMOVED),
+    ],
+    ref={**{p: None for p in DL_REMOVED}, "dupes.txt": "".join(f"{p}\n" for p in DL_REMOVED)},
+))
+
+# ---------------------------------------------------------------- 9: a log report script, checked on unseen logs
+JUNK_LOGS = [  # lines that are not valid records: skipped by the report
+    '{"ts": "2026-11-20T10:59:00Z", "level": "WARN", "service": "auth"',
+    "not json at all",
+    '{"ts": "2026-11-20T10:58:00Z", "level": "INFO", "service": "billing", "ms": "250"}',
+    '{"ts": "2026-11-20T10:57:00Z", "level": "ERROR", "service": "search"}',
+]
+HIDDEN_JUNK = [
+    '{"level": "INFO", "service": "mail", "ms": 12.5}',
+    '{"ts": "2026-11-20T11:00:00Z", "level": "INFO", "ms": 40}',
+    "[1, 2, 3]",
+]
+
+
+def _log_files(seed, plan, junk, names):
+    """Deterministic JSON-lines files: plan is (service, records) pairs, junk lines are mixed in."""
+    rng = random.Random(seed)
+    recs = []
+    for service, n in plan:
+        recs += [(service, rng.randint(20, 900)) for _ in range(n)]
+    rng.shuffle(recs)
+    lines = []
+    for i, (svc, ms) in enumerate(recs):
+        level = rng.choice(["INFO", "INFO", "WARN", "ERROR"])
+        lines.append(f'{{"ts": "2026-11-20T10:{i % 60:02d}:{i * 7 % 60:02d}Z", "level": "{level}", '
+                     f'"service": "{svc}", "ms": {ms}}}')
+    lines += junk
+    rng.shuffle(lines)
+    out = {name: [] for name in names}
+    for i, line in enumerate(lines):
+        out[names[i % len(names)]].append(line)
+    return {name: "\n".join(body) + "\n" for name, body in out.items()}
+
+
+def _report_csv(files):
+    """Reference rule: valid = JSON object, text service, whole-number ms; p95 = nearest rank ceil(0.95 n)."""
+    per = {}
+    for text in files.values():
+        for line in text.splitlines():
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            svc, ms = rec.get("service"), rec.get("ms")
+            if isinstance(svc, str) and svc and isinstance(ms, int) and not isinstance(ms, bool):
+                per.setdefault(svc, []).append(ms)
+    rows = ["service,count,p95_ms"]
+    for svc in sorted(per):
+        vals = sorted(per[svc])
+        rank = (95 * len(vals) + 99) // 100
+        rows.append(f"{svc},{len(vals)},{vals[rank - 1]}")
+    return "\n".join(rows) + "\n"
+
+
+LOG_FILES = _log_files(23, [("api", 24), ("auth", 9), ("billing", 6), ("search", 4)], JUNK_LOGS,
+                       ["logs/app-1.log", "logs/app-2.log", "logs/app-3.log"])
+REPORT_CSV = _report_csv(LOG_FILES)
+HIDDEN_LOG_FILES = _log_files(99, [("cart", 17), ("api", 5), ("mail", 22)], HIDDEN_JUNK,
+                              ["node-1.log", "node-2.log", "node-3.log"])
+HIDDEN_CSV = _report_csv(HIDDEN_LOG_FILES)
+REPORT_SH = """#!/bin/bash
+# Usage: bash report.sh <log dir>. Prints service,count,p95_ms for the valid records of every file in the folder.
+set -euo pipefail
+python3 - "$1" <<'PY'
+import json
+import os
+import sys
+
+folder = sys.argv[1]
+per = {}
+for name in sorted(os.listdir(folder)):
+    path = os.path.join(folder, name)
+    if not os.path.isfile(path):
+        continue
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            try:
+                rec = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(rec, dict):
+                continue
+            svc, ms = rec.get("service"), rec.get("ms")
+            if isinstance(svc, str) and svc and isinstance(ms, int) and not isinstance(ms, bool):
+                per.setdefault(svc, []).append(ms)
+print("service,count,p95_ms")
+for svc in sorted(per):
+    vals = sorted(per[svc])
+    rank = (95 * len(vals) + 99) // 100
+    print(f"{svc},{len(vals)},{vals[rank - 1]}")
+PY
+"""
+
+
+def _hidden_report_ok(ws):
+    """Run the model's report.sh in a fresh copy of the workspace, on logs it has never seen."""
+    with tempfile.TemporaryDirectory(prefix="rep_") as tmp, tempfile.TemporaryDirectory(prefix="hid_") as hid:
+        dst = Path(tmp) / "w"
+        shutil.copytree(ws, dst, ignore=shutil.ignore_patterns(".tether", "__pycache__"))
+        for name, text in HIDDEN_LOG_FILES.items():
+            (Path(hid) / name).write_text(text)
+        try:
+            r = subprocess.run(["bash", "report.sh", hid], cwd=dst, capture_output=True, text=True, timeout=20)
+        except subprocess.TimeoutExpired:
+            return False
+    return r.returncode == 0 and _lines(r.stdout) == _lines(HIDDEN_CSV)
+
+
+add(Task(
+    "shell-9", "shell", 9,
+    "logs/ holds three files of JSON lines from a service mesh. A valid line is a complete JSON object with a "
+    "text service and a whole-number ms (milliseconds); the rest are broken or incomplete and must be skipped. "
+    "Write report.sh in this folder: an executable script that takes a log directory as its only argument, reads "
+    "every file in it, and prints CSV to stdout: the header `service,count,p95_ms`, then one row per service "
+    "sorted by name. count is the number of valid records for the service, any level. p95_ms is the nearest-rank "
+    "95th percentile of its ms values: sort them ascending and take the value at position ceil(0.95 x count), "
+    "counting from 1. Then run it on logs/ and save its output as report.csv in this folder.",
+    files=LOG_FILES,
+    ws_checks=[
+        ("report.csv has the right rows", lambda ws: _lines(_text(ws, "report.csv")) == _lines(REPORT_CSV)),
+        ("report.sh gives the right CSV on a log folder it has not seen", _hidden_report_ok),
+        ("logs/ left as it was", lambda ws: all(_text(ws, p) == c for p, c in LOG_FILES.items())),
+    ],
+    ref={"report.sh": REPORT_SH, "report.csv": REPORT_CSV},
 ))

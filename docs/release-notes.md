@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Coding Ladder: three harder `shell` tiers (bisect by hand over version snapshots, dedupe by content, a log report script checked on unseen logs).
+
 ### Fixed
 
 - Token counts include a thinking turn cut by its budget (Ollama reports none for it), so `tether stats` no longer hides the most expensive turns.
