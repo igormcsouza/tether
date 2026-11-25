@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- A restart after the same tests keep failing now puts your files back to the best version so far, not to how they started, and a test run before any change no longer counts as a failed attempt (AD-21).
+
 ### Fixed
 
 - Every Ollama turn now has the 8,192-token reply ceiling, including turns with thinking off and the retry after a thinking cut, so a reply that repeats itself stops after a few minutes instead of filling the context window.
