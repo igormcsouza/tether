@@ -41,7 +41,7 @@ Most people use AI for more than code. Four more kinds measure that, with 3 or 4
 
 ## Everyday terminal work: shell
 
-Some requests are the kind a person would hand to a terminal: count something in a log, rename a folder of files, total a CSV, find a leaked key, fix a backup script, report on several log files. The **shell** kind has six tasks, one per tier, on a small folder each (coreutils, grep, sed, awk, find, python3 and tar only, no network). It is opt-in: name it with `--kinds shell`.
+Some requests are the kind a person would hand to a terminal: count something in a log, rename a folder of files, total a CSV, find a leaked key, fix a backup script, report on several log files, find the version where a bug crept in, remove duplicate downloads, write a script that reports on logs it has not seen. The **shell** kind has nine tasks, one per tier, on a small folder each (coreutils, grep, sed, awk, find, python3 and tar only, no network). It is opt-in: name it with `--kinds shell`.
 
 | Tier | Task | What the model delivers | How it is graded |
 |---|---|---|---|
@@ -51,6 +51,9 @@ Some requests are the kind a person would hand to a terminal: count something in
 | 4 | Files that contain a leaked `sk-` key, in nested folders | `answer.txt` with the paths | Exactly the leaking files (a decoy has a key one character short) |
 | 5 | A broken `backup.sh` | The fixed script | Run in a fresh copy: exit 0, a gzip archive holding `data/` (including a name with a space), and an error when `data/` is missing |
 | 6 | Top 3 errors across three daily logs | `report.md` with counts | The three messages in order with their counts, no healthcheck noise, request ids stripped |
+| 7 | Find the first bad version among six snapshots of a function, and fix it | `answer.txt` with its file name, and `calc_fixed.py` | The file name, and the fixed copy passes `check.py` in a fresh folder |
+| 8 | Remove duplicate files under `downloads/`, keeping the copy with the shortest path | The files that stay, and `dupes.txt` listing the deleted paths | Every kept file unchanged, no copy left behind, `dupes.txt` exact |
+| 9 | A `report.sh` that prints count and p95 latency per service from JSON-lines logs | `report.sh` and `report.csv` | `report.csv` is right, and `report.sh` is right on a log folder the grader generates (so a hard-coded answer fails) |
 
 The grade is the share of checks that pass; a task passes when all of them do. `validate.py` proves the graders: the starting folder fails and a reference solution passes.
 
@@ -72,7 +75,7 @@ The context window is the largest that stays entirely in GPU memory (`bench/ladd
 ## Run it
 
 ```bash
-uv run python bench/ladder/validate.py          # prove the graders (no model needed, all 39 tasks)
+uv run python bench/ladder/validate.py          # prove the graders (no model needed, all 48 tasks)
 
 uv run python bench/ladder/run.py --out /tmp/ladder \
     --models qwen3.5:9b --ctx qwen3.5:9b=40960 --tether-bin .venv/bin/tether

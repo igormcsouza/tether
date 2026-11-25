@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Added
+
+- Coding Ladder: three harder `shell` tiers (bisect by hand over version snapshots, dedupe by content, a log report script checked on unseen logs).
+
 ## v0.3.6 (2026-11-24)
 
 ### Changed
