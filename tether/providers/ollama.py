@@ -33,9 +33,10 @@ THINK_HEADROOM = 3072
 # Healthy thinking is <= ~1.2k tokens at p95. A thinking turn that thinks past this with no
 # reply yet is runaway thinking (#173); the stream is cut there (AD-29).
 THINK_BUDGET = 2048
-# num_predict of every turn unless the caller sets one: a safety ceiling against a reply that
-# repeats itself (AD-29).
-REPLY_CEILING = 8192
+# num_predict of every turn unless the caller sets one: THINK_BUDGET 2,048 for thinking plus
+# 3,072 for the reply. Above every healthy turn measured (p99 2.2k, max ~2.6k), so it is only a
+# safety ceiling against a reply that repeats itself (AD-29).
+REPLY_CEILING = 5120
 
 
 async def _stream(client: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
@@ -277,9 +278,10 @@ class OllamaProvider:
             first = _response(data)
             cut = budgeted and data.get("done_reason") == "length" and first.action is None
             empty = first.empty and data.get("done_reason") != "length"
-        else:  # budget cut a call mid-way: Ollama cannot parse it (500) and returns no counts,
-            # so the cut call counts the budget it was given
-            first = ModelResponse(content="", completion_tokens=THINK_BUDGET)
+        else:  # the ceiling cut a tool call mid-way: Ollama cannot parse it (500) and sends no
+            # count (tool-call tokens are not streamed either), so the call counts its num_predict
+            spent = int(payload["options"].get("num_predict") or REPLY_CEILING)
+            first = ModelResponse(content="", completion_tokens=spent)
             cut = True
         if cut:
             # cut by the budget without a command: ask the same turn once more, thinking off

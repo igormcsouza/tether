@@ -50,7 +50,9 @@ def test_rejected_tool_call_reaches_the_model_instead_of_ending_the_session(
     assert (r["rc"], r["status"]) == (0, "COMPLETED"), r
     assert len(chaos.requests) == 3, "one think-off re-ask, then the hint turn"
     assert chaos.requests[1]["think"] is False
-    assert chaos.requests[1]["options"]["num_predict"] == 8192  # the retry keeps the ceiling
+    from tether.providers.ollama import REPLY_CEILING
+
+    assert chaos.requests[1]["options"]["num_predict"] == REPLY_CEILING  # the retry keeps it
     assert "cut off" in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
 
 
@@ -66,7 +68,9 @@ def test_a_thought_cut_at_the_thinking_budget_is_asked_again(tether: Tether, cha
     assert (r["rc"], r["status"]) == (0, "COMPLETED"), r
     assert len(chaos.requests) == 2
     first, retry = chaos.requests
-    assert first["stream"] is True and first["options"]["num_predict"] == 8192
+    from tether.providers.ollama import REPLY_CEILING
+
+    assert first["stream"] is True and first["options"]["num_predict"] == REPLY_CEILING
     assert retry["think"] is False and retry["stream"] is False
     assert "cut off" not in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
     from tether.providers.ollama import THINK_BUDGET
