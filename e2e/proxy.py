@@ -222,6 +222,11 @@ def _handler(chaos: Chaos) -> type[BaseHTTPRequestHandler]:
             if fault and fault["kind"] == "status":
                 hdrs = {"retry-after": str(fault["retry_after"])} if "retry_after" in fault else {}
                 return self._send(fault["code"], {"error": fault.get("error", "fault")}, hdrs)
+            if fault and fault["kind"] == "think":  # a thought with no reply, cut by the client
+                lines = [{"message": {"role": "assistant", "content": "", "thinking": "t"}}] * 2100
+                return self._send(
+                    200, "".join(json.dumps(c) + "\n" for c in lines), ctype="application/x-ndjson"
+                )
             if (
                 fault and fault["kind"] == "trickle"
             ):  # bytes keep coming: httpx read timeout never fires
@@ -241,6 +246,14 @@ def _handler(chaos: Chaos) -> type[BaseHTTPRequestHandler]:
             fmt = _FORMATS.get(self.path)
             if action is not None and fmt:
                 resp = fmt(action, len(json.dumps(body.get("messages", []))) // 4)
+            elif self.path == "/api/chat" and body.get(
+                "stream"
+            ):  # relay the NDJSON bytes as they are
+                body.setdefault("options", {}).update({"temperature": 0, "seed": 1})
+                up = httpx.post(chaos.upstream + self.path, json=body, timeout=600)
+                last = json.loads(up.text.strip().splitlines()[-1])
+                chaos.responses.append(last)
+                return self._send(up.status_code, up.text, ctype="application/x-ndjson")
             elif self.path == "/api/chat":
                 body.setdefault("options", {}).update({"temperature": 0, "seed": 1})
                 resp = httpx.post(chaos.upstream + self.path, json=body, timeout=600).json()

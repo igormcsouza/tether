@@ -87,7 +87,7 @@ Each entry has the same shape: the **decision**, the **why**, and what it **cost
 
 **AD-28. Sampling is left to the model.** No forced temperature or top-p; a caller's `params` win. A forced `temperature 0.2` doubled runaway-thinking turns on `qwen3.5:9b`.
 
-**AD-29. Thinking is bounded.** `think=false` when under 3,072 tokens of the window are free; a thinking turn gets `num_predict` 2,560 and, when cut with no command or a half tool call, is asked once more with thinking off. Thinking is stored (`tether read --thinking`) and never sent back to the model. Anthropic marks the static system prompt and the `act` schema with `cache_control: ephemeral`.
+**AD-29. Thinking is bounded.** `think=false` when under 3,072 tokens of the window are free; a thinking turn is streamed and may think at most 2,048 tokens before it starts its reply (`num_predict` 8,192 caps thinking + reply, as a safety ceiling). Thinking past that with no reply yet, or a cut half tool call, is asked once more with thinking off; a cut call counts the tokens it used. Thinking is stored (`tether read --thinking`) and never sent back to the model. Why: the old cap of 2,560 on thinking + reply together threw away whole-file writes that came after normal thinking (about 1 to 1.5k tokens). Cost: a streaming parse in the Ollama provider (`tether/providers/ollama.py`). Anthropic marks the static system prompt and the `act` schema with `cache_control: ephemeral`.
 
 ### F. The action layer
 
@@ -149,7 +149,6 @@ Each is a question the product owner has not decided. Until one is decided, code
 |---|---|---|
 | OQ-1 | **How do we get a weak model to revise a wrong first design?** | The dominant `qwen3.5:9b` failure is a misread spec at about step 4, never revised; repairs are whole-file rewrites (354 rewrites, 0 targeted edits in the analysed runs). Loop and nudge changes were flat. A rollback/best-version gate (Huang et al.) is only partly in place (the near-pass restore, AD-21). |
 | OQ-2 | **Should the Ollama context be probed per host and model?** | Today 32,768 is a fixed default (AD-17). An idea: probe 32k/64k/128k once, capped at the model's `context_length`, and keep the largest that stays 100% on GPU. Not built; explicit values would still win. |
-| OQ-3 | **Should thinking tokens be capped separately from the reply?** | Total `num_predict` is capped at 2,560 (AD-29). Streaming and capping only the thinking part (about 1,500) would save time on runaway turns; not done. |
 | OQ-4 | **What window is right for paid models?** | Billed per token, so small is cheaper, but folding rewrites old messages and may break prompt caching. Haiku at 8k vs 32k, billed tokens including cache reads, has not been measured. |
 | OQ-5 | **How should repeated reads (63% of steps are reads, 24% repeats) be cut?** | `live_read` pointers and the pre-change nudge exist; the share of repeat reads after them has not been measured with paired seeds. |
 | OQ-6 | **What about the "unsaid cases" tier of the Coding Ladder (#200)?** | Every local model fails it; no lever found. |

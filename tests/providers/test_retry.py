@@ -261,3 +261,32 @@ async def test_post_with_retry_acquires_limiter() -> None:
             c, "http://x/y", provider="p", model="m", timeout=5, limiter=lim
         )
     assert resp.status_code == 200 and lim._claim() > 0
+
+
+async def test_post_with_retry_retries_a_transient_error_from_send() -> None:
+    """A custom `send` (the Ollama stream reader) gets the same bounded retry as client.post."""
+    calls: list[str] = []
+
+    async def send(url: str, **kwargs: object) -> httpx.Response:
+        calls.append(url)
+        if len(calls) == 1:
+            raise httpx.ReadError("connection dropped")
+        return httpx.Response(200, json={"ok": True})
+
+    sleeps: list[float] = []
+
+    async def fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+
+    client = _client(lambda request: httpx.Response(500))
+    resp = await post_with_retry(
+        client,
+        "http://x/y",
+        provider="p",
+        model="m",
+        timeout=5.0,
+        sleep=fake_sleep,
+        send=send,
+        json={},
+    )
+    assert resp.status_code == 200 and len(calls) == 2 and sleeps == [1.0]

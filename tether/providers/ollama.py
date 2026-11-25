@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+from functools import partial
 from typing import Any
 
 import httpx
@@ -28,8 +30,65 @@ _TOP_LEVEL = frozenset({"think", "keep_alive", "format", "stream"})
 # A thinking reply needs room: below this many free tokens the window fills up mid-thought,
 # Ollama cuts the reply and the turn comes back empty (#183).
 THINK_HEADROOM = 3072
-# Healthy command turns use < 2.2k output tokens; a turn past this is runaway thinking (#173).
-THINK_BUDGET = 2560
+# Healthy thinking is <= ~1.2k tokens at p95. A thinking turn that thinks past this with no
+# reply yet is runaway thinking (#173); the stream is cut there (AD-29).
+THINK_BUDGET = 2048
+# num_predict of a budgeted turn: thinking + reply together, a safety ceiling only (AD-29).
+REPLY_CEILING = 8192
+
+
+async def _stream(client: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
+    """Read a budgeted turn as NDJSON and cut its thinking at THINK_BUDGET (AD-29).
+
+    Returns the turn as one JSON body, the shape `generate` reads. Leaving the `async with`
+    closes the connection, so a runaway thought is not generated any further.
+    """
+    async with client.stream("POST", url, **kwargs) as r:
+        if r.status_code != 200:
+            await r.aread()
+            return httpx.Response(
+                r.status_code, content=r.content, headers=r.headers, request=r.request
+            )
+        thinking: list[str] = []
+        content: list[str] = []
+        tool_calls: list[Any] = []
+        last: dict[str, Any] = {}
+        cut = False
+        async for line in r.aiter_lines():
+            if not line.strip():
+                continue
+            last = json.loads(line)
+            msg = last.get("message") or {}
+            if msg.get("thinking"):
+                thinking.append(str(msg["thinking"]))
+            if msg.get("content"):
+                content.append(str(msg["content"]))
+            tool_calls = msg.get("tool_calls") or tool_calls
+            if last.get("done"):
+                break
+            if len(thinking) >= THINK_BUDGET and not content and not tool_calls:
+                cut = True
+                break
+        if cut:  # no prompt count and the thinking chunks as the completion count
+            data: dict[str, Any] = {
+                "message": {"role": "assistant", "content": "", "thinking": "".join(thinking)},
+                "done_reason": "length",
+                "prompt_eval_count": 0,
+                "eval_count": len(thinking),
+            }
+        else:
+            data = {
+                "message": {
+                    "role": "assistant",
+                    "content": "".join(content),
+                    "thinking": "".join(thinking),
+                    "tool_calls": tool_calls,
+                },
+                "done_reason": last.get("done_reason"),
+                "prompt_eval_count": last.get("prompt_eval_count", 0),
+                "eval_count": last.get("eval_count", 0),
+            }
+        return httpx.Response(200, json=data, request=r.request)
 
 
 def _response(data: dict[str, Any]) -> ModelResponse:
@@ -123,7 +182,9 @@ class OllamaProvider:
                 return m
         return models[0]
 
-    async def _chat(self, client: httpx.AsyncClient, payload: dict[str, Any]) -> httpx.Response:
+    async def _chat(
+        self, client: httpx.AsyncClient, payload: dict[str, Any], *, stream: bool = False
+    ) -> httpx.Response:
         return await post_with_retry(
             client,
             f"{self.host}/api/chat",
@@ -131,6 +192,7 @@ class OllamaProvider:
             model=self.model_name,
             timeout=self.timeout,
             limiter=self._limiter,
+            send=partial(_stream, client) if stream else None,
             json=payload,
         )
 
@@ -168,10 +230,11 @@ class OllamaProvider:
             else:
                 payload["options"][key] = value
         budgeted = payload.get("think") is not False and "num_predict" not in self.params
-        if budgeted:
-            payload["options"]["num_predict"] = THINK_BUDGET
+        if budgeted:  # streamed, so thinking is cut at THINK_BUDGET (AD-29)
+            payload["options"]["num_predict"] = REPLY_CEILING
+            payload["stream"] = True
         client = self._get_client()
-        resp = await self._chat(client, payload)
+        resp = await self._chat(client, payload, stream=budgeted)
         if resp.status_code == 404:
             if not self.fallback:
                 raise RuntimeError(
@@ -188,7 +251,7 @@ class OllamaProvider:
                 )
                 self.model_name = fallback
                 payload["model"] = fallback
-                resp = await self._chat(client, payload)
+                resp = await self._chat(client, payload, stream=budgeted)
         rejected = rejected_call(resp)
         if rejected is not None and not budgeted:
             return rejected
@@ -197,13 +260,13 @@ class OllamaProvider:
             if self.num_ctx < self._base_ctx * 4:
                 self.num_ctx = min(self.num_ctx * 2, self._base_ctx * 4)
                 payload["options"]["num_ctx"] = self.num_ctx
-                resp = await self._chat(client, payload)
+                resp = await self._chat(client, payload, stream=budgeted)
             if context_overflow(resp):
                 raise ProviderError(
                     f"ollama model `{self.model_name}`: the prompt does not fit num_ctx "
                     f"{self.num_ctx}; lower --context-tokens or raise the model's context window"
                 )
-        empty = uncounted = False
+        empty = False
         if rejected is None:
             resp.raise_for_status()
             data = resp.json()
@@ -211,14 +274,15 @@ class OllamaProvider:
             cut = budgeted and data.get("done_reason") == "length" and first.action is None
             empty = first.empty and data.get("done_reason") != "length"
         else:  # budget cut a call mid-way: Ollama cannot parse it (500) and returns no counts,
-            # so the cut call counts the budget it was given (and the prompt the retry re-sends)
+            # so the cut call counts the budget it was given
             first = ModelResponse(content="", completion_tokens=THINK_BUDGET)
-            cut = uncounted = True
+            cut = True
         if cut:
             # cut by the budget without a command: ask the same turn once more, thinking off
             retry = {
                 **payload,
                 "think": False,
+                "stream": False,
                 "options": {k: v for k, v in payload["options"].items() if k != "num_predict"},
             }
             resp = await self._chat(client, retry)
@@ -226,10 +290,11 @@ class OllamaProvider:
                 return rejected
             resp.raise_for_status()
             second = _response(resp.json())
+            # a cut call with no prompt count (Ollama sent none) counts the re-sent prompt twice
             prompt = (
-                2 * second.prompt_tokens
-                if uncounted
-                else first.prompt_tokens + second.prompt_tokens
+                first.prompt_tokens + second.prompt_tokens
+                if first.prompt_tokens
+                else 2 * second.prompt_tokens
             )
             return ModelResponse(
                 content=second.content,
@@ -239,7 +304,7 @@ class OllamaProvider:
             )
         if empty:
             # no text and no tool call: the identical payload once more, never after a budget cut
-            resp = await self._chat(client, payload)
+            resp = await self._chat(client, payload, stream=budgeted)
             resp.raise_for_status()
             second = _response(resp.json())
             prompt_total = first.prompt_tokens + second.prompt_tokens

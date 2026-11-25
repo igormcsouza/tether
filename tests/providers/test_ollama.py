@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import AsyncIterator
+
 import httpx
 import pytest
 
@@ -173,16 +176,18 @@ _CMD = {
 
 async def test_a_thinking_turn_has_an_output_budget() -> None:
     """#173: runaway thinking filled the window and lost the turn; healthy turns use < 2.2k."""
-    from tether.providers.ollama import THINK_BUDGET
+    from tether.providers.ollama import REPLY_CEILING, THINK_BUDGET
 
     assert 2048 <= THINK_BUDGET <= 4096
     sent = await _sent_payload({"num_ctx": 8192}, "x" * 400)
-    assert sent["options"]["num_predict"] == THINK_BUDGET
+    # thinking is capped by the stream; num_predict is only the thinking + reply ceiling (AD-29)
+    assert sent["options"]["num_predict"] == REPLY_CEILING and sent["stream"] is True
     # no budget when thinking is off (little room left, or the caller turned it off)
     full = await _sent_payload({"num_ctx": 8192}, "x" * 4 * 5200)
     assert "num_predict" not in full["options"]
+    assert full["stream"] is False
     off = await _sent_payload({"params": {"think": False}}, "x")
-    assert "num_predict" not in off["options"]
+    assert "num_predict" not in off["options"] and off["stream"] is False
     # an explicit num_predict always wins
     own = await _sent_payload({"params": {"num_predict": -1}}, "x")
     assert own["options"]["num_predict"] == -1
@@ -294,3 +299,120 @@ async def test_the_second_ask_is_asked_once() -> None:
     client, seen = _scripted([_CUT, _CUT, _CMD])
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
     assert len(seen) == 2 and resp.action is None
+
+
+def _line(chunk: dict) -> bytes:
+    return json.dumps(chunk).encode() + b"\n"
+
+
+def _think() -> dict:
+    return {"message": {"role": "assistant", "content": "", "thinking": "t"}, "done": False}
+
+
+def _text(text: str) -> dict:
+    return {"message": {"role": "assistant", "content": text}, "done": False}
+
+
+_LS_CALL = {
+    "message": {
+        "content": "",
+        "tool_calls": [{"function": {"name": "act", "arguments": {"cmd": "ls"}}}],
+    },
+    "done": False,
+}
+
+
+def _done(done_reason: str, prompt: int, completion: int) -> dict:
+    return {
+        "message": {"role": "assistant", "content": ""},
+        "done": True,
+        "done_reason": done_reason,
+        "prompt_eval_count": prompt,
+        "eval_count": completion,
+    }
+
+
+class _Counted(httpx.AsyncByteStream):
+    """A body that counts the lines a client actually pulled from it."""
+
+    def __init__(self, lines: list[bytes]) -> None:
+        self.lines = lines
+        self.consumed = 0
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        for line in self.lines:
+            self.consumed += 1
+            yield line
+
+
+async def test_a_streamed_turn_parses_like_the_single_body() -> None:
+    """Thinking chunks, a reply, a tool call and the done line form the same turn as one body."""
+    thinking = "t" * 300
+    body = {
+        "message": {
+            "role": "assistant",
+            "content": "ok",
+            "thinking": thinking,
+            "tool_calls": _LS_CALL["message"]["tool_calls"],
+        },
+        "done_reason": "stop",
+        "prompt_eval_count": 900,
+        "eval_count": 310,
+    }
+    chunks = [_line(_think()) for _ in range(300)] + [_line(_text("ok")), _line(_LS_CALL)]
+    stream = b"".join(chunks) + b"\n" + _line(_done("stop", 900, 310))  # a blank line is skipped
+    streamed = _client_for(httpx.Response(200, stream=httpx.ByteStream(stream)))
+    single = _client_for(httpx.Response(200, json=body))
+    a = await OllamaProvider("m", client=streamed[0]).generate(
+        [{"role": "user", "content": "x"}], []
+    )
+    b = await OllamaProvider("m", client=single[0], params={"think": False}).generate(
+        [{"role": "user", "content": "x"}], []
+    )
+    assert a == b
+    assert a.thinking == thinking and a.content == "ok" and a.action is not None
+    assert (a.prompt_tokens, a.completion_tokens) == (900, 310)
+
+
+def _client_for(response: httpx.Response) -> tuple[httpx.AsyncClient, list[dict]]:
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return response
+
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler)), seen
+
+
+async def test_a_runaway_thought_is_cut_at_the_budget_and_asked_again() -> None:
+    """A thought that reaches THINK_BUDGET with no reply stops the stream there (AD-29)."""
+    from tether.providers.ollama import THINK_BUDGET
+
+    body = _Counted([_line(_think()) for _ in range(5000)])
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return (
+            httpx.Response(200, stream=body) if len(seen) == 1 else httpx.Response(200, json=_CMD)
+        )
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert body.consumed < THINK_BUDGET + 50, body.consumed
+    assert resp.action is not None and resp.action.cmd == "ls"
+    assert len(seen) == 2
+    assert seen[0]["stream"] is True and seen[1]["think"] is False and seen[1]["stream"] is False
+    # the cut call counts its thinking chunks; Ollama sent no prompt count, so the prompt twice
+    assert resp.completion_tokens == THINK_BUDGET + 30
+    assert resp.prompt_tokens == 2 * 900
+
+
+async def test_long_thinking_then_a_long_reply_is_not_cut() -> None:
+    """2,000 thinking chunks end before the budget; the reply that follows is never cut."""
+    lines = [_line(_think()) for _ in range(2000)] + [_line(_text("x")) for _ in range(3000)]
+    lines.append(_line(_done("stop", 900, 5000)))
+    client, seen = _client_for(httpx.Response(200, stream=httpx.ByteStream(b"".join(lines))))
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert len(seen) == 1 and resp.content == "x" * 3000
+    assert resp.completion_tokens == 5000 and resp.action is None
