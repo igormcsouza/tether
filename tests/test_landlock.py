@@ -402,3 +402,65 @@ def test_main_execs_the_program_after_restricting(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(landlock.os, "execvp", lambda prog, argv: ran.append(argv))
     assert landlock.main(["--dev", "--", "true", "-x"]) == 0
     assert ran == [["true", "-x"]]
+
+
+async def _bash_with_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, jail: str, output: str, cmd: str
+) -> str:
+    """The text a jailed command shows, with the kernel run faked (the jail is picked by `jail`)."""
+    monkeypatch.setattr(sb_mod, "_jail", lambda: jail)
+    policy = SandboxPolicy(workspace_root=tmp_path)
+
+    async def fake_run(self, argv: list[str], stdin: str | None, *, env: dict, cwd: str) -> tuple:
+        return 1, output
+
+    monkeypatch.setattr(SandboxPolicy, "_run_argv", fake_run)
+    return (await policy.execute_bash(cmd)).rstrip()
+
+
+HINT = "[sandbox] /tmp is not writable here: write scratch files to $TMPDIR"
+
+
+async def test_landlock_tmp_write_gets_one_hint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    shell = "bash: /tmp/x.py: Permission denied\n/tmp/y: Permission denied\n[exit 1]"
+    text = await _bash_with_output(monkeypatch, tmp_path, "landlock", shell, "cat > /tmp/x.py")
+    assert text.count(HINT) == 1 and text.splitlines()[-1].startswith(HINT)
+    assert len(text.splitlines()[-1]) <= 120
+
+
+async def test_landlock_python_form_gets_the_hint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    py = "PermissionError: [Errno 13] Permission denied: '/tmp/x'\n[exit 1]"
+    text = await _bash_with_output(monkeypatch, tmp_path, "landlock", py, "python3 x.py")
+    assert text.count(HINT) == 1 and text.splitlines()[-1].startswith(HINT)
+
+
+async def test_bwrap_mode_gets_no_hint(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    out = "bash: /tmp/x: Permission denied"
+    assert HINT not in await _bash_with_output(monkeypatch, tmp_path, "bwrap", out, "echo > /tmp/x")
+
+
+@pytest.mark.parametrize(
+    "out",
+    [
+        "cat: /etc/shadow: Permission denied",
+        "bash: /tmpfoo/x: Permission denied",
+        "bash: /home/u/tmp/x: Permission denied",
+        "bash: ./tmp/x: Permission denied",
+        "ok, nothing denied",
+    ],
+)
+async def test_other_permission_errors_get_no_hint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, out: str
+) -> None:
+    assert HINT not in await _bash_with_output(monkeypatch, tmp_path, "landlock", out, "true")
+
+
+@needs_landlock
+async def test_real_landlock_write_to_tmp_gets_the_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("TETHER_SANDBOX", raising=False)
+    monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: False)
+    policy = SandboxPolicy(workspace_root=tmp_path)
+    text = await policy.execute_bash(f"echo x > /tmp/tether_probe_{os.getpid()}; echo rc=$?")
+    assert "rc=1" in text and text.count(HINT) == 1

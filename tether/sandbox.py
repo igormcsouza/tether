@@ -496,6 +496,24 @@ _MASK_MAX_DEPTH = 8
 
 # Host directories holding other users' data / service sockets, hidden behind empty tmpfs.
 _HIDDEN_HOST_DIRS = ("/home", "/media", "/mnt", "/srv", "/var/tmp")
+
+# Landlock hides the host /tmp (AD-35): a write there is refused, and a model that retries it
+# never learns why. One hint line names the fix; the command itself is never rewritten.
+_TMP_DENIED_RE = re.compile(
+    r"(?:(?<![\w./-])(/tmp(?:/[^\s:'\"]*)?): Permission denied"
+    r"|Permission denied: '(/tmp(?:/[^']*)?)')"
+)
+_TMP_HINT = (
+    "[sandbox] /tmp is not writable here: write scratch files to $TMPDIR "
+    "(a private temp dir) or into the workspace."
+)
+
+
+def _with_tmp_hint(output: str) -> str:
+    """`output` plus the one-line /tmp hint when it shows a refused write to /tmp."""
+    return f"{output}\n{_TMP_HINT}" if _TMP_DENIED_RE.search(output) else output
+
+
 # Never re-exposed even when a PATH entry points into them (credentials and config).
 _PRIVATE_DIR_NAMES = frozenset({".ssh", ".gnupg", ".aws", ".kube", ".docker", ".config", ".netrc"})
 _MAX_PATH_MOUNTS = 16
@@ -1258,7 +1276,10 @@ class SandboxPolicy:
         env = self.scrub_env()
         if self._tmp_dir is not None:  # Landlock: the host /tmp is read-only
             env.update(TMPDIR=self._tmp_dir, TEMP=self._tmp_dir, TMP=self._tmp_dir)
-        return await self._run_argv(argv, stdin, env=env, cwd=str(self.workspace_root))
+        code, out = await self._run_argv(argv, stdin, env=env, cwd=str(self.workspace_root))
+        if self.use_kernel_sandbox and _jail() == "landlock":
+            out = _with_tmp_hint(out)
+        return code, out
 
     def _outside_match(self, cmd: str) -> str | None:
         """The `allow_outside` entry whose whole tokens start the command, else None.
