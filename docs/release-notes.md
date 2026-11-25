@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- Every Ollama turn now has the 8,192-token reply ceiling, including turns with thinking off and the retry after a thinking cut, so a reply that repeats itself stops after a few minutes instead of filling the context window.
+
 ## v0.3.7 (2026-11-24)
 
 ### Added

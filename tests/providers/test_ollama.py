@@ -182,23 +182,29 @@ async def test_a_thinking_turn_has_an_output_budget() -> None:
     sent = await _sent_payload({"num_ctx": 8192}, "x" * 400)
     # thinking is capped by the stream; num_predict is only the thinking + reply ceiling (AD-29)
     assert sent["options"]["num_predict"] == REPLY_CEILING and sent["stream"] is True
-    # no budget when thinking is off (little room left, or the caller turned it off)
+    # a turn with thinking off (little room left, or the caller turned it off) is not streamed,
+    # but still has the reply ceiling: a reply that repeats itself must stop (AD-29)
     full = await _sent_payload({"num_ctx": 8192}, "x" * 4 * 5200)
-    assert "num_predict" not in full["options"]
+    assert full["options"]["num_predict"] == REPLY_CEILING
     assert full["stream"] is False
     off = await _sent_payload({"params": {"think": False}}, "x")
-    assert "num_predict" not in off["options"] and off["stream"] is False
-    # an explicit num_predict always wins
+    assert off["options"]["num_predict"] == REPLY_CEILING and off["stream"] is False
+    # an explicit num_predict always wins, on a thinking turn and a think-off turn
     own = await _sent_payload({"params": {"num_predict": -1}}, "x")
     assert own["options"]["num_predict"] == -1
+    own_off = await _sent_payload({"params": {"think": False, "num_predict": 300}}, "x")
+    assert own_off["options"]["num_predict"] == 300
 
 
 async def test_a_turn_cut_while_thinking_is_asked_again_without_thinking() -> None:
+    from tether.providers.ollama import REPLY_CEILING
+
     client, seen = _scripted([_CUT, _CMD])
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
     assert resp.action is not None and resp.action.cmd == "ls"
     assert len(seen) == 2
-    assert seen[1]["think"] is False and "num_predict" not in seen[1]["options"]
+    assert seen[1]["think"] is False and seen[1]["stream"] is False
+    assert seen[1]["options"]["num_predict"] == REPLY_CEILING  # the retry is capped too (AD-29)
     assert seen[1]["messages"] == seen[0]["messages"]  # same turn, nothing added
     assert resp.completion_tokens == 2560 + 30 and resp.prompt_tokens == 900 + 900
 
@@ -257,11 +263,14 @@ async def test_a_call_cut_by_the_budget_is_asked_again_without_thinking() -> Non
     answered 500; the model lost the turn and wrote the file again. Thinking off, the same
     turn fits.
     """
+    from tether.providers.ollama import REPLY_CEILING
+
     client, seen = _replies((500, _REJECTED), (200, _CMD))
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
     assert resp.action is not None and resp.action.cmd == "ls" and not resp.hint
     assert len(seen) == 2
-    assert seen[1]["think"] is False and "num_predict" not in seen[1]["options"]
+    assert seen[1]["think"] is False and seen[1]["stream"] is False
+    assert seen[1]["options"]["num_predict"] == REPLY_CEILING
     assert seen[1]["messages"] == seen[0]["messages"]
 
 
