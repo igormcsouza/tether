@@ -45,6 +45,8 @@ def test_three_failing_checks_go_back_to_the_best_version(tether: Tether, chaos:
     body = restarts[0]["content"]
     assert body.startswith("[RESTART at step 4 from your best version.")
     assert "(it failed 4 tests)" in body and "test_10" in body
+    assert "Start from this version: read it, then fix only the tests it still fails." in body
+    assert "different approach" not in body
     viewed = tether.tool_outputs(d["id"])[-2]  # the view after the restart, before `done`
     assert "v9 = 1" in viewed and "v10 = 0" in viewed, "the best version, not the last try"
     assert (tether.ws / "a.py").read_text() == best

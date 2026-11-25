@@ -298,7 +298,9 @@ async def test_a_restart_goes_back_to_the_best_version_so_far(tmp_path: Path) ->
         "(it failed 4 tests).]"
     )
     assert "test_10" in body and "test_13" in body  # the best version's failing tests
-    assert "Last result of" not in body and "different approach" in body
+    assert "Last result of" not in body
+    assert "Start from this version: read it, then fix only the tests it still fails." in body
+    assert "different approach" not in body and "do not rebuild" not in body
 
 
 async def test_a_restart_without_a_best_version_starts_fresh(tmp_path: Path) -> None:

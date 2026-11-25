@@ -22,7 +22,7 @@ Stages, each deterministic and none costing a model call:
 4. **Restart.** If still stuck, or the same check command has failed three times with edits between (a run on files the model has not changed does not count), the session *restarts*: the history is replaced by one short message with the files as the model left them, the last failing output and what was tried. The model continues from there with a clean head. When the cause was a repeatedly failing check, the files the model changed go back to the best version so far (the run that failed fewest tests while passing most), or to how they started when there is none, and the message names that version's failing tests, not the failed code.
 5. **Hand back.** After two restarts, being stuck again ends the session `WAITING_INPUT` with a summary, so you can refine the task and `send` it.
 
-An exception protects good work: if a version fails at most three tests and passes more than twice that many, tether keeps it. If three later attempts do not beat it, its files are put back in place with one `[RESTORED]` line, and the history stays.
+An exception protects good work: if a version fails at most three tests and more tests pass than fail, tether keeps it. If three later attempts do not beat it, its files are put back in place with one `[RESTORED]` line, and the history stays.
 
 ## What we got
 

@@ -206,7 +206,9 @@ def restart_message(
         lines += ["", f"Tests that kept failing: {failed}"] if failed else []
         lines += [
             "",
-            "Write a new implementation with a different approach; do not rebuild the "
+            "Start from this version: read it, then fix only the tests it still fails."
+            if best_failed is not None
+            else "Write a new implementation with a different approach; do not rebuild the "
             "one that failed. Read the tests first.",
             *([WRONG_GATE_ASK] if check_cmd else []),
         ]
