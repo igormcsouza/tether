@@ -33,7 +33,8 @@ THINK_HEADROOM = 3072
 # Healthy thinking is <= ~1.2k tokens at p95. A thinking turn that thinks past this with no
 # reply yet is runaway thinking (#173); the stream is cut there (AD-29).
 THINK_BUDGET = 2048
-# num_predict of a budgeted turn: thinking + reply together, a safety ceiling only (AD-29).
+# num_predict of every turn unless the caller sets one: a safety ceiling against a reply that
+# repeats itself (AD-29).
 REPLY_CEILING = 8192
 
 
@@ -231,9 +232,10 @@ class OllamaProvider:
                 payload[key] = value
             else:
                 payload["options"][key] = value
+        if "num_predict" not in self.params:
+            payload["options"]["num_predict"] = REPLY_CEILING
         budgeted = payload.get("think") is not False and "num_predict" not in self.params
         if budgeted:  # streamed, so thinking is cut at THINK_BUDGET (AD-29)
-            payload["options"]["num_predict"] = REPLY_CEILING
             payload["stream"] = True
         client = self._get_client()
         resp = await self._chat(client, payload, stream=budgeted)
@@ -281,12 +283,7 @@ class OllamaProvider:
             cut = True
         if cut:
             # cut by the budget without a command: ask the same turn once more, thinking off
-            retry = {
-                **payload,
-                "think": False,
-                "stream": False,
-                "options": {k: v for k, v in payload["options"].items() if k != "num_predict"},
-            }
+            retry = {**payload, "think": False, "stream": False}  # keeps num_predict (AD-29)
             resp = await self._chat(client, retry)
             if rejected := rejected_call(resp):
                 return rejected
