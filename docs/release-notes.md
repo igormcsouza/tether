@@ -1,10 +1,11 @@
 # Release Notes
 
-## Unreleased
+## v0.3.7 (2026-11-24)
 
 ### Added
 
 - Coding Ladder: three harder `shell` tiers (bisect by hand over version snapshots, dedupe by content, a log report script checked on unseen logs).
+  `bench/ladder/run.py --max-tier` now defaults to the highest tier any task has, so tiers 7-9 run by default. qwen3.5:9b passes 7 and 8 and misses 9 (it accepts a fractional `ms`).
 
 ### Changed
 

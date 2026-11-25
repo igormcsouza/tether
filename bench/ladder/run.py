@@ -216,7 +216,7 @@ def main():
     ap.add_argument("--ctx", default="", help="model=tokens,... context window per model")
     ap.add_argument("--kinds", default=",".join(T.KINDS), help=f"default the coding kinds; also {','.join(T.GENERAL_KINDS)}, and the opt-in {','.join(T.SHELL_KINDS)}")
     ap.add_argument("--tasks", default="", help="only these task ids, e.g. plan-5,bugfix-5")
-    ap.add_argument("--max-tier", type=int, default=6)
+    ap.add_argument("--max-tier", type=int, default=max(t.tier for t in T.TASKS.values()))
     ap.add_argument("--wall", type=int, default=1200, help="seconds per attempt")
     ap.add_argument("--tether-bin", default="tether")
     ap.add_argument("--provider", default="ollama", help="where the model is served: ollama, nvidia, openrouter, opencode, or any provider name declared in providers.yaml (used as the model prefix)")
