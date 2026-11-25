@@ -50,7 +50,7 @@ def test_rejected_tool_call_reaches_the_model_instead_of_ending_the_session(
     assert (r["rc"], r["status"]) == (0, "COMPLETED"), r
     assert len(chaos.requests) == 3, "one think-off re-ask, then the hint turn"
     assert chaos.requests[1]["think"] is False
-    assert "num_predict" not in chaos.requests[1].get("options", {})
+    assert chaos.requests[1]["options"]["num_predict"] == 8192  # the retry keeps the ceiling
     assert "cut off" in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
 
 
