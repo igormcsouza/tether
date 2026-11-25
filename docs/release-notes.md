@@ -6,6 +6,10 @@
 
 - Coding Ladder: three harder `shell` tiers (bisect by hand over version snapshots, dedupe by content, a log report script checked on unseen logs).
 
+### Changed
+
+- Ollama thinking is capped on its own (2,048 tokens before the reply starts) instead of thinking + reply together (2,560), so a whole-file write after normal thinking is no longer thrown away and redone (AD-29).
+
 ### Fixed
 
 - Token counts include a thinking turn cut by its budget (Ollama reports none for it), so `tether stats` no longer hides the most expensive turns.

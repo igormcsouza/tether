@@ -54,16 +54,21 @@ def test_rejected_tool_call_reaches_the_model_instead_of_ending_the_session(
     assert "cut off" in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
 
 
-def test_a_call_cut_by_the_thinking_budget_is_asked_again(tether: Tether, chaos) -> None:
-    """#173: one rejection of a budgeted turn is re-asked with thinking off, no hint turn."""
-    chaos.fault("status", code=500, error='invalid tool call arguments for "act": unexpected end')
+def test_a_thought_cut_at_the_thinking_budget_is_asked_again(tether: Tether, chaos) -> None:
+    """#173, AD-29: a thought that reaches THINK_BUDGET with no reply is cut and re-asked once.
+
+    The turn is streamed, the client stops reading at the budget, and the re-ask has thinking
+    off with no hint turn. The cut call is counted with the thinking tokens it produced.
+    """
+    chaos.fault("think")
     chaos.script(("done", "ok"))
     r = tether.run("go", "--max-steps", "6")
     assert (r["rc"], r["status"]) == (0, "COMPLETED"), r
     assert len(chaos.requests) == 2
-    assert chaos.requests[0]["options"].get("num_predict") and chaos.requests[1]["think"] is False
+    first, retry = chaos.requests
+    assert first["stream"] is True and first["options"]["num_predict"] == 8192
+    assert retry["think"] is False and retry["stream"] is False
     assert "cut off" not in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
-    # the cut call generated its whole budget and Ollama sent no count for it: it is counted
     from tether.providers.ollama import THINK_BUDGET
 
     assert r["tokens"]["completion"] >= THINK_BUDGET

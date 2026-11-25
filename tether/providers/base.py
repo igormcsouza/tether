@@ -168,6 +168,7 @@ async def post_with_retry(
     backoff: float = 1.0,
     sleep: Callable[[float], Awaitable[None]] | None = None,
     limiter: RateLimiter | None = None,
+    send: Callable[..., Awaitable[httpx.Response]] | None = None,
     **kwargs: Any,
 ) -> httpx.Response:
     """POST with bounded retry on timeouts, network errors and 429/5xx.
@@ -188,7 +189,8 @@ async def post_with_retry(
         if limiter:
             await limiter.acquire()
         try:
-            resp = await asyncio.wait_for(client.post(url, **kwargs), timeout)
+            call = send(url, **kwargs) if send else client.post(url, **kwargs)
+            resp = await asyncio.wait_for(call, timeout)
         except _TRANSIENT as exc:
             last, delay = type(exc).__name__, backoff * 2**attempt
             continue

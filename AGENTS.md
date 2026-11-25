@@ -217,7 +217,7 @@ tether/
 ---
 - **Timeout/retry (#70):** `providers.yaml` `timeout` applies to every kind; HTTP providers retry timeouts/network errors/429/5xx twice (`post_with_retry` in `providers/base.py`) then raise `ProviderError` naming provider, model and timeout; each attempt is also bounded by a total `asyncio.wait_for(timeout)` deadline (#88).
 - **Context config (#54):** `max_context_tokens` / `fold_observations_after` resolve as explicit argument (`--context-tokens` / `--fold-after`, MCP `context_tokens` / `fold_after`) > `providers.yaml` entry keys `context_tokens` / `fold_after` > defaults 32768 / auto (K=2, #205); any explicit value = fixed rule (32k keeps `qwen3.5:9b` fully on an 8 GB GPU and passed 7 of 18 wall-capped Polyglot runs vs 2 at 8k, #173).
-- **Ollama thinking (#183, #173):** `think=false` when under 3072 tokens of `num_ctx` are free; a thinking turn gets `num_predict` 2560 and, if cut there with no command or with a half tool call Ollama rejects (HTTP 500), is asked once more with `think=false` (tokens summed, a cut call counts its budget; a second rejection is the resend hint). A caller's `think`/`num_predict` param wins.
+- **Ollama thinking (#183, #173):** `think=false` when under 3072 tokens of `num_ctx` are free; a thinking turn is streamed and may think at most 2048 tokens before its reply starts (`num_predict` 8192 caps thinking + reply); thinking past that with no reply, or a cut half tool call Ollama rejects (HTTP 500), is asked once more with `think=false` (tokens summed, a cut call counts the tokens it used; a second rejection is the resend hint) (AD-29). A caller's `think`/`num_predict` param wins.
 
 ## 4. Development Workflow & Commands
 

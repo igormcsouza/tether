@@ -19,7 +19,7 @@ Thinking models write their reasoning before the answer, and the reasoning count
 ## What tether does
 
 - **Leave sampling to the model.** Tether sets no temperature or top-p. A forced `0.2` doubled the runaway-thinking rate on `qwen3.5:9b`, whose own defaults are tuned for its thinking mode. You can still set any parameter yourself (`--param temperature=0`, or in `providers.yaml`).
-- **Give a thinking turn a budget.** On Ollama, a turn may use up to 2,560 tokens in total. If it is cut with no command, or with a half-written tool call that Ollama rejects, tether asks once more with thinking turned off, and counts the cut call as having used its whole budget (Ollama sends no count for it). If fewer than about 3,000 tokens of the window are free, thinking is off from the start.
+- **Give a thinking turn a budget.** On Ollama, a turn is streamed and may think for up to 2,048 tokens before its reply starts; the reply itself is limited only by a safety ceiling of 8,192 tokens for thinking and reply together. If it thinks past the budget with no reply, or is cut with a half-written tool call that Ollama rejects, tether asks once more with thinking turned off. The cut call counts the tokens it used. If fewer than about 3,000 tokens of the window are free, thinking is off from the start.
 - **Keep the thinking for you.** It is stored, visible with `tether read <id> --thinking`, and never sent back to the model.
 
 ## What we got
@@ -30,7 +30,7 @@ On 16 runs of the same eight exercises, the arm with bounded thinking (plus the 
 
 A thinking cap can cut a genuinely long reasoning step short. The one re-ask without thinking is the safety net; if you know a task needs long reasoning, set the budget yourself (`--param num_predict=-1`).
 
-An open question remains whether to cap only the thinking part (about 1,500 tokens) rather than the total ([OQ-3](../architecture/decisions.md#open-questions)).
+The budget caps only the thinking part, so a whole-file write after normal thinking (about 1 to 1.5k tokens) is no longer thrown away and redone ([AD-29](../architecture/decisions.md)). The cost is a streaming parse in the Ollama provider.
 
 ## References
 
