@@ -240,7 +240,125 @@ async def test_a_check_that_still_fails_after_every_restart_is_handed_back(tmp_p
     session = await harness.run("make the test pass")
     assert session.status == "WAITING_INPUT"
     # The final-answer turn may put its answer first, so the stuck summary is contained, not leading
-    assert "[STUCK at step 13 after 2 restarts" in (session.result or "")
-    assert "X = 16" in (session.result or "") and "AssertionError" in (session.result or "")
+    # a run with no edit since the last restart does not count (AD-21): each cycle is 3 edits
+    assert "[STUCK at step 17 after 2 restarts" in (session.result or "")
+    assert "X = 18" in (session.result or "") and "AssertionError" in (session.result or "")
     turns = harness.store.get_turns(session.id)
     assert [t.event_type for t in turns].count("restart") == 2
+
+
+# AD-21: a restart after the same tests keep failing goes back to the best version so far, and a
+# red run before any change of a code file does not count as a failed attempt.
+_FOURTEEN = "import unittest\nimport a\n\n\nclass T(unittest.TestCase):\n" + "".join(
+    f"    def test_{n}(self):\n        self.assertEqual(a.v{n}, 1)\n" for n in range(14)
+)
+
+
+def _module(passing: set[int]) -> str:
+    # the comment's length differs per version: same-size rewrites in one second would leave
+    # Python's .pyc cache stale
+    lines = [f"v{n} = {1 if n in passing else 0}\n" for n in range(14)]
+    return "".join(lines) + f"# {'x' * (14 - len(passing))}\n"
+
+
+def _run_scripted(tmp_path: Path, ws: Path, cmds: list[tuple[str, str | None]]) -> tuple:
+    harness = Harness(
+        db_path=tmp_path / "tether.db",
+        tools=["edit", "bash"],
+        sandbox=SandboxPolicy(workspace_root=ws, use_kernel_sandbox=False),
+        provider=FakeScriptedProvider(_script(cmds)),
+        max_steps=20,
+    )
+    return harness, harness.run("make the tests pass")
+
+
+async def test_a_restart_goes_back_to_the_best_version_so_far(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "a.py").write_text(_module(set()), encoding="utf-8")
+    (ws / "test_t.py").write_text(_FOURTEEN, encoding="utf-8")
+    run = ("bash -c 'python3 -m unittest test_t 2>&1'", None)
+    best = _module(set(range(10)))  # 4 of 14 fail: a best version (more than 3 fail)
+    cmds = [
+        run,
+        ("edit write a.py", best),
+        ("edit write a.py", _module(set(range(6)))),  # worse: 8 fail
+        # 11 fail: the third failing check (a content the file had before is a quiet step, AD-50)
+        ("edit write a.py", _module({0, 1, 2})),
+        ("done", "ok"),
+    ]
+    harness, coro = _run_scripted(tmp_path, ws, cmds)
+    session = await coro
+    assert session.status == "COMPLETED"
+    assert (ws / "a.py").read_text(encoding="utf-8") == best
+    body = next(t for t in harness.store.get_turns(session.id) if t.event_type == "restart").content
+    assert body.startswith(
+        "[RESTART at step 4 from your best version. Your last approach kept failing the same "
+        "tests, so it was set aside: a.py are back to your best version so far "
+        "(it failed 4 tests).]"
+    )
+    assert "test_10" in body and "test_13" in body  # the best version's failing tests
+    assert "Last result of" not in body and "different approach" in body
+
+
+async def test_a_restart_without_a_best_version_starts_fresh(tmp_path: Path) -> None:
+    """No run passes more than it fails, so there is no best version: the fresh start is kept."""
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "a.py").write_text("X = 0  # STUB\n", encoding="utf-8")
+    (ws / "test_t.py").write_text(
+        "import unittest\nimport a\n\n\nclass T(unittest.TestCase):\n"
+        "    def test_x(self):\n        self.assertEqual(a.X, 2)\n",
+        encoding="utf-8",
+    )
+    run = ("bash -c 'python3 -m unittest test_t 2>&1'", None)
+    cmds = [run, ("edit write a.py", "X = 3\n"), ("edit write a.py", "X = 4\n")]
+    cmds += [("edit write a.py", "X = 5\n"), ("done", "ok")]
+    harness, coro = _run_scripted(tmp_path, ws, cmds)
+    session = await coro
+    assert (ws / "a.py").read_text(encoding="utf-8") == "X = 0  # STUB\n"
+    body = next(t for t in harness.store.get_turns(session.id) if t.event_type == "restart").content
+    assert body.startswith("[RESTART at step 4 with a fresh start. Your last approach")
+    assert "a.py are back to how they started." in body and "test_x" in body
+
+
+async def test_a_red_run_before_any_change_does_not_count(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "a.py").write_text("X = 0  # STUB\n", encoding="utf-8")
+    (ws / "test_t.py").write_text(
+        "import unittest\nimport a\n\n\nclass T(unittest.TestCase):\n"
+        "    def test_x(self):\n        self.assertEqual(a.X, 2)\n",
+        encoding="utf-8",
+    )
+    run = ("bash -c 'python3 -m unittest test_t 2>&1'", None)
+    # the stub run is red but untouched: with the two failing edits after it there is no restart
+    cmds = [run, ("edit write a.py", "X = 3\n"), ("edit write a.py", "X = 4\n")]
+    cmds += [("edit write a.py", "X = 5\n"), ("done", "ok")]
+    harness, coro = _run_scripted(tmp_path, ws, cmds)
+    session = await coro
+    restarts = [t for t in harness.store.get_turns(session.id) if t.event_type == "restart"]
+    assert len(restarts) == 1
+    assert restarts[0].content.startswith("[RESTART at step 4 ")  # the third failing edit
+
+
+async def test_a_best_version_recorded_before_any_edit_resets_to_the_start(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    starting = _module(set(range(10)))  # the starting files already pass 10 of 14
+    (ws / "a.py").write_text(starting, encoding="utf-8")
+    (ws / "test_t.py").write_text(_FOURTEEN, encoding="utf-8")
+    run = ("bash -c 'python3 -m unittest test_t 2>&1'", None)
+    cmds = [
+        run,
+        ("edit write a.py", _module(set())),
+        ("edit write a.py", _module({0})),
+        ("edit write a.py", _module({1})),  # new content each time: a revisit is a quiet step
+        ("done", "ok"),
+    ]
+    harness, coro = _run_scripted(tmp_path, ws, cmds)
+    session = await coro
+    assert (ws / "a.py").read_text(encoding="utf-8") == starting
+    body = next(t for t in harness.store.get_turns(session.id) if t.event_type == "restart").content
+    assert body.startswith("[RESTART at step 4 from your best version.")
+    assert "(it failed 4 tests)" in body

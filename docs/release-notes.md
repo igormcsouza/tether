@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Changed
+
+- A restart after the same tests keep failing now puts your files back to the best version so far, not to how they started, and a test run before any change no longer counts as a failed attempt (AD-21).
+
 ## v0.3.7 (2026-11-24)
 
 ### Added

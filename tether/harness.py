@@ -1364,6 +1364,9 @@ class Harness:
         tracker.scan()
         # the run that failed fewest tests while passing most, and those files as they were then
         best: tuple[int, frozenset[str], dict[str, bytes]] | None = None
+        # AD-21: a red check run counts only once the model has changed a non-test file since
+        # the session started or the last restart (a run on the untouched starting files does not)
+        attempted = False
         quiet_run = 0
         # A session with neither bash nor edit can only look things up: its nudges say so
         can_edit = "bash" in mux.tool_names or "edit" in mux.tool_names
@@ -1445,7 +1448,7 @@ class Harness:
             """Stuck, however it showed (the same check failing after edits, or stalls the
             wrap-up did not end): restart from a described state, and once restarts are used
             up hand the task back to the caller (WAITING_INPUT) instead of burning steps."""
-            nonlocal restarts, last_action_sig, read_file, read_run, loop_run, stalls
+            nonlocal restarts, last_action_sig, read_file, read_run, loop_run, stalls, attempted
             handback = restarts if restarts >= MAX_RESTARTS else 0
             tried = describe_attempts(
                 list(modified_files(sandbox.workspace_root, rec.created_at)),
@@ -1454,11 +1457,13 @@ class Harness:
                 check,
                 fail_runs.get(check or "", 0),
             )
-            # #173: the same check kept failing: set the attempt aside and start fresh from the
-            # files as they were (Olausson et al., ICLR 2024: for weaker models a new sample beats
-            # repairing a wrong one). Files the model created are left as they are. (A near pass
-            # never gets here: it goes back to its best version in place.)
-            fresh = sorted(reset_originals(originals)) if check and not handback else []
+            # #173: the same check kept failing: set the attempt aside and go back to the best
+            # version so far (AD-21), or to the files as they were when there is none. A fresh
+            # start (Olausson et al., ICLR 2024) beats repairing a wrong one on weak models; a
+            # best version beats a fresh start more often. Files the model created stay as they
+            # are. (A near pass never gets here: it goes back to its best version in place.)
+            target = {**originals, **best[2]} if best else originals
+            fresh = sorted(reset_originals(target)) if check and not handback else []
             text = restart_message(
                 step=step,
                 check_cmd=check,
@@ -1467,7 +1472,10 @@ class Harness:
                 tried=tried,
                 handback=handback,
                 fresh=fresh,
-                failing=sorted(last_run[1])[:5] if last_run else None,
+                failing=(
+                    sorted(best[1])[:5] if best else sorted(last_run[1])[:5] if last_run else None
+                ),
+                best_failed=best[0] if best and fresh else None,
             )
             if handback:
                 answer = await final_answer(step)
@@ -1483,6 +1491,7 @@ class Harness:
                 session_id=session_id, step=step, role="user", content=text, event_type="restart"
             )
             restarts += 1
+            attempted = False
             fail_runs.clear()
             stale.clear()
             read_counts.clear()
@@ -1995,6 +2004,8 @@ class Harness:
                     made = bool(delta.deleted) or any(
                         p not in delta.revisited for p in (*delta.created, *delta.modified)
                     )
+                if any(not _is_test_file(rel) for rel in (*delta.created, *delta.modified)):
+                    attempted = True  # AD-21: code changed, so a red run after it is an attempt
                 if was_refused and not is_quiet(cmd):
                     pass  # refused: nothing ran, so neither a quiet step nor a change (#318)
                 elif not made:
@@ -2132,12 +2143,12 @@ class Harness:
                 red = bool(
                     is_test_cmd(tcmd) and _TESTS_RED.search(tout) and not tests_green(tcmd, tout)
                 )
-                if red and (check not in fail_runs or check in stale):
+                if red and attempted and (check not in fail_runs or check in stale):
                     fail_runs[check] = fail_runs.get(check, 0) + 1
                     stale.discard(check)
                 if (
                     red
-                    and fail_runs[check] >= RESTART_AFTER_FAILS
+                    and fail_runs.get(check, 0) >= RESTART_AFTER_FAILS
                     and best
                     and best[0] <= NEAR_PASS
                 ):
