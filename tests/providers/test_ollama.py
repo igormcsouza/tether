@@ -260,6 +260,17 @@ async def test_a_call_cut_by_the_budget_is_asked_again_without_thinking() -> Non
     assert seen[1]["messages"] == seen[0]["messages"]
 
 
+async def test_a_rejected_cut_call_counts_the_budget_it_was_given() -> None:
+    """Ollama returns no counts on the 500, so the cut call counts its num_predict budget."""
+    from tether.providers.ollama import THINK_BUDGET
+
+    client, seen = _replies((500, _REJECTED), (200, _CMD))
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert resp.action is not None and len(seen) == 2
+    assert resp.completion_tokens == THINK_BUDGET + 30
+    assert resp.prompt_tokens == 2 * 900  # the same prompt, evaluated by the cut call and the retry
+
+
 async def test_a_rejected_call_without_the_budget_is_a_hint_at_once() -> None:
     """No budget, no cut: the call itself was malformed, the model is told to resend it."""
     from tether.providers.base import REJECTED_CALL_HINT

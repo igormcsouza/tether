@@ -63,6 +63,10 @@ def test_a_call_cut_by_the_thinking_budget_is_asked_again(tether: Tether, chaos)
     assert len(chaos.requests) == 2
     assert chaos.requests[0]["options"].get("num_predict") and chaos.requests[1]["think"] is False
     assert "cut off" not in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
+    # the cut call generated its whole budget and Ollama sent no count for it: it is counted
+    from tether.providers.ollama import THINK_BUDGET
+
+    assert r["tokens"]["completion"] >= THINK_BUDGET
 
 
 def test_trickling_response_hits_the_per_attempt_deadline(tmp_path: Path, chaos) -> None:

@@ -19,7 +19,7 @@ Thinking models write their reasoning before the answer, and the reasoning count
 ## What tether does
 
 - **Leave sampling to the model.** Tether sets no temperature or top-p. A forced `0.2` doubled the runaway-thinking rate on `qwen3.5:9b`, whose own defaults are tuned for its thinking mode. You can still set any parameter yourself (`--param temperature=0`, or in `providers.yaml`).
-- **Give a thinking turn a budget.** On Ollama, a turn may use up to 2,560 tokens in total. If it is cut with no command, or with a half-written tool call that Ollama rejects, tether asks once more with thinking turned off. If fewer than about 3,000 tokens of the window are free, thinking is off from the start.
+- **Give a thinking turn a budget.** On Ollama, a turn may use up to 2,560 tokens in total. If it is cut with no command, or with a half-written tool call that Ollama rejects, tether asks once more with thinking turned off, and counts the cut call as having used its whole budget (Ollama sends no count for it). If fewer than about 3,000 tokens of the window are free, thinking is off from the start.
 - **Keep the thinking for you.** It is stored, visible with `tether read <id> --thinking`, and never sent back to the model.
 
 ## What we got
