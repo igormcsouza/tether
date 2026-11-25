@@ -179,6 +179,7 @@ async def test_a_thinking_turn_has_an_output_budget() -> None:
     from tether.providers.ollama import REPLY_CEILING, THINK_BUDGET
 
     assert 2048 <= THINK_BUDGET <= 4096
+    assert REPLY_CEILING == 5120 == THINK_BUDGET + 3072  # AD-29: above every healthy turn
     sent = await _sent_payload({"num_ctx": 8192}, "x" * 400)
     # thinking is capped by the stream; num_predict is only the thinking + reply ceiling (AD-29)
     assert sent["options"]["num_predict"] == REPLY_CEILING and sent["stream"] is True
@@ -446,5 +447,41 @@ async def test_an_error_line_mid_stream_takes_the_rejected_call_path() -> None:
     assert resp.action is not None and resp.action.cmd == "ls" and not resp.hint
     assert len(calls) == 2
     assert calls[1]["think"] is False and calls[1]["stream"] is False
-    # rejected like the 500 path: the cut call counts its budget, as there
+    # rejected like the 500 path: the cut call counts the 10 lines streamed before the error
+    assert resp.completion_tokens == 10 + 30
+    assert THINK_BUDGET > 10  # so the count is the streamed lines, not the budget
+
+
+async def test_a_mid_stream_error_before_any_line_counts_zero_tokens() -> None:
+    """Ollama fails before the first token: nothing was generated, so the cut call counts 0."""
+    error = {"error": "error parsing tool call: raw='<tool_call>'"}
+    calls: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(json.loads(request.content))
+        if len(calls) == 1:
+            return httpx.Response(200, stream=httpx.ByteStream(_line(error)))
+        return httpx.Response(200, json=_CMD)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert resp.action is not None and len(calls) == 2
+    assert resp.completion_tokens == 0 + 30
+
+
+async def test_a_plain_500_that_is_not_json_still_counts_the_budget() -> None:
+    """A 500 with no count (plain text, no NDJSON line) counts THINK_BUDGET (AD-29)."""
+    from tether.providers.ollama import THINK_BUDGET
+
+    calls: list[int] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(500, text="error parsing tool call")
+        return httpx.Response(200, json=_CMD)
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
+    assert len(calls) == 2
     assert resp.completion_tokens == THINK_BUDGET + 30

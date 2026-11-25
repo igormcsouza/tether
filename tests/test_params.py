@@ -51,10 +51,12 @@ async def test_ollama_params_split_request_keys_and_options() -> None:
     )
     await prov.generate([{"role": "user", "content": "x"}], [])
     assert seen[0]["think"] is False
+    from tether.providers.ollama import REPLY_CEILING
+
     # num_predict is the reply ceiling every turn has (AD-29), not a sampling parameter
     assert seen[0]["options"] == {
         "num_ctx": 32768,
-        "num_predict": 8192,
+        "num_predict": REPLY_CEILING,
         "temperature": 0,
         "top_p": 0.5,
     }
