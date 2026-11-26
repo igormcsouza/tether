@@ -37,6 +37,19 @@ THINK_BUDGET = 2048
 # 3,072 for the reply. Above every healthy turn measured (p99 2.2k, max ~2.6k), so it is only a
 # safety ceiling against a reply that repeats itself (AD-29).
 REPLY_CEILING = 5120
+# Chars of a cut thought handed back to the think-off retry (~1.7k tokens; a 2,048-token thought
+# is ~7k chars). Without it the retry wrote its reasoning out as text, up to ~10k chars (AD-29).
+HANDBACK_CHARS = 6000
+
+
+def _handback(thinking: str) -> dict[str, str]:
+    """The cut thought as one user message, so the retry acts on it instead of thinking again."""
+    return {
+        "role": "user",
+        "content": "[Your reasoning so far, cut at the thinking budget]\n"
+        + thinking[-HANDBACK_CHARS:]
+        + "\n[Stop reasoning. Reply now with one act call only.]",
+    }
 
 
 async def _stream(client: httpx.AsyncClient, url: str, **kwargs: Any) -> httpx.Response:
@@ -286,6 +299,8 @@ class OllamaProvider:
         if cut:
             # cut by the budget without a command: ask the same turn once more, thinking off
             retry = {**payload, "think": False, "stream": False}  # keeps num_predict (AD-29)
+            if first.thinking:  # hand the cut thought back: think-off, it is re-derived as prose
+                retry["messages"] = [*payload["messages"], _handback(first.thinking)]
             resp = await self._chat(client, retry)
             if rejected := rejected_call(resp):
                 return rejected

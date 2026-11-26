@@ -413,6 +413,11 @@ async def test_a_runaway_thought_is_cut_at_the_budget_and_asked_again() -> None:
     assert resp.action is not None and resp.action.cmd == "ls"
     assert len(seen) == 2
     assert seen[0]["stream"] is True and seen[1]["think"] is False and seen[1]["stream"] is False
+    # the cut thought is handed back, not re-derived as prose in the reply (AD-29)
+    assert seen[1]["messages"][:-1] == seen[0]["messages"]
+    handback = seen[1]["messages"][-1]
+    assert handback["role"] == "user" and "Reply now with one act call" in handback["content"]
+    assert handback["content"].count(_think()["message"]["thinking"]) > 100
     # the cut call counts its thinking chunks; Ollama sent no prompt count, so the prompt twice
     assert resp.completion_tokens == THINK_BUDGET + 30
     assert resp.prompt_tokens == 2 * 900
@@ -468,3 +473,10 @@ async def test_a_plain_500_that_is_not_json_still_counts_the_budget() -> None:
     resp = await OllamaProvider("m", client=client).generate([{"role": "user", "content": "x"}], [])
     assert len(calls) == 2
     assert resp.completion_tokens == REPLY_CEILING + 30
+
+
+def test_a_long_cut_thought_is_handed_back_as_its_last_part() -> None:
+    from tether.providers.ollama import HANDBACK_CHARS, _handback
+
+    msg = _handback("z" * HANDBACK_CHARS + "END")
+    assert msg["content"].count("z") == HANDBACK_CHARS - 3 and "END" in msg["content"]

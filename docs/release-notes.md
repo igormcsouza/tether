@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Changed
+
+- When thinking runs past its 2,048-token budget, the retry with thinking off now gets the cut thought back, so it replies with a command instead of writing its reasoning out as text (up to ~10k chars before; 10 of 10 cut turns replied cleanly in a 5-exercise run, about 20 s faster each) (AD-29).
+
 ## v0.3.9 (2026-11-25)
 
 ### Changed

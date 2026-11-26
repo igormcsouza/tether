@@ -72,6 +72,10 @@ def test_a_thought_cut_at_the_thinking_budget_is_asked_again(tether: Tether, cha
 
     assert first["stream"] is True and first["options"]["num_predict"] == REPLY_CEILING
     assert retry["think"] is False and retry["stream"] is False
+    # AD-29: the cut thought goes back with the retry, after the same turn's messages
+    assert retry["messages"][:-1] == first["messages"]
+    assert retry["messages"][-1]["role"] == "user"
+    assert "Reply now with one act call" in retry["messages"][-1]["content"]
     assert "cut off" not in "\n".join(t["content"] or "" for t in tether.turns(r["id"]))
     from tether.providers.ollama import THINK_BUDGET
 
