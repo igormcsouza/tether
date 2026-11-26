@@ -263,6 +263,56 @@ def failing_test_source(out: str, root: Path) -> str:
     return "\n[failing test source]\n" + "\n".join(parts)
 
 
+_MISSING_NAME = re.compile(
+    r"cannot import name '(?P<n1>\w+)' from '(?P<m1>[\w.]+)'"
+    r"|module '(?P<m2>[\w.]+)' has no attribute '(?P<n2>\w+)'"
+)
+
+
+def import_hint(out: str, root: Path) -> str:
+    """Where a name an import cannot find is really defined in a workspace module (AD-52).
+
+    qwen put constants inside a class, the tests imported them from the module, and it spent
+    25 steps unable to see why (go-counting, full run b3f7d9d).
+    """
+    hit = _MISSING_NAME.search(out)
+    if not hit:
+        return ""
+    name = hit["n1"] or hit["n2"]
+    module = hit["m1"] or hit["m2"]
+    path = (root / (module.replace(".", "/") + ".py")).resolve()
+    if not path.is_relative_to(root.resolve()):
+        return ""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return ""
+    rel = path.relative_to(root.resolve()).as_posix()
+    if any(_defines(node, name) for node in tree.body):
+        return ""  # defined at the top: a stale cache or a circular import, not this note's job
+    for scope in ast.walk(tree):
+        if isinstance(scope, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+            if any(_defines(node, name) for node in scope.body):
+                kind = "class" if isinstance(scope, ast.ClassDef) else "def"
+                return (
+                    f"\n[hint] `{name}` is defined inside `{kind} {scope.name}` in {rel}, not at "
+                    f"module level, so importing it from `{module}` fails. Define it at the top "
+                    "level of the file."
+                )
+    return f"\n[hint] {rel} defines no top-level `{name}`; the importing code needs one."
+
+
+def _defines(node: ast.stmt, name: str) -> bool:
+    if isinstance(node, ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+        return node.name == name
+    if isinstance(node, ast.Assign | ast.AnnAssign | ast.AugAssign):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        return any(isinstance(n, ast.Name) and n.id == name for t in targets for n in ast.walk(t))
+    if isinstance(node, ast.Import | ast.ImportFrom):
+        return any((a.asname or a.name.split(".")[0]) == name for a in node.names)
+    return False
+
+
 _UNITTEST_RAN = re.compile(r"Ran (\d+) tests?")
 _UNITTEST_FAIL = re.compile(r"^(?:FAIL|ERROR): (\w+) \(", re.M)
 _PYTEST_COUNT = re.compile(r"(\d+) (?:passed|failed|errors?)\b")
@@ -2077,6 +2127,7 @@ class Harness:
                     out += f"\n[auto-test] `{last_test}` after your edit:\n{tout}"
                 if is_test_cmd(tcmd) and _TESTS_RED.search(tout) and not tests_green(tcmd, tout):
                     out += failing_test_source(tout, Path(sandbox.workspace_root))
+                out += import_hint(tout, Path(sandbox.workspace_root))  # AD-52
                 if is_test_cmd(tcmd) and (outcome := run_outcome(tout)):
                     if last_run:
                         out += regression_note(last_run, outcome)

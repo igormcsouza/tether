@@ -29,6 +29,12 @@ All of it is the harness's time, not the model's. No model call, no addition to 
         self.assertEqual(total(basket), 10240)
 ```
 
+**Where a missing name really is (`[hint]`).** When any command fails with `cannot import name 'X' from 'm'` or `module 'm' has no attribute 'X'` and `m.py` is a workspace file, tether looks `X` up in it. If `X` sits inside a class or a function, one line says so; if it is nowhere, one line says the file has no top-level `X`:
+
+```text
+[hint] `WHITE` is defined inside `class Board` in go_counting.py, not at module level, so importing it from `go_counting` fails. Define it at the top level of the file.
+```
+
 **A named regression (`[regression]`).** Tether remembers which tests failed on the last run of the same suite. If tests that passed then fail now, one line says which:
 
 ```text
