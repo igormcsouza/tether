@@ -41,7 +41,7 @@
 - [A prefix that never changes](https://igormcsouza.github.io/tether/concepts/kv-cache-and-static-prefix/): protecting the model's cache.
 - [The deterministic envelope](https://igormcsouza.github.io/tether/concepts/deterministic-envelope/): how a task is decided finished (Maia et al.).
 - [Loops, stalls and fresh starts](https://igormcsouza.github.io/tether/concepts/stalls-and-restarts/): detecting loops, restarting, handing back.
-- [The repair loop around tests](https://igormcsouza.github.io/tether/concepts/repair-loop/): auto-test, failing test source, regressions, traces.
+- [The repair loop around tests](https://igormcsouza.github.io/tether/concepts/repair-loop/): auto-test, failing test source, import hints, regressions, traces.
 - [Thinking and sampling](https://igormcsouza.github.io/tether/concepts/thinking-and-sampling/): bounded thinking and no forced temperature.
 
 ## Architecture
