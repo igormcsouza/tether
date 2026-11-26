@@ -57,7 +57,11 @@ test_f(self=<m_checks.T testMethod=test_f>)
 [NUDGE] hangman.py: only comments or spacing changed, the code is the same. The tests will fail the same way; change the logic.
 ```
 
-A whole-file rewrite of 20 or more lines that changed a fifth of them or less is pointed to `edit replace` once per file. A `bash` command that leaves a Python file unparsable is undone, with one `[REVERTED]` line.
+A whole-file rewrite of 20 or more lines that changed a fifth of them or less is pointed to `edit replace` once per file. A `bash` command that leaves a Python file unparsable is undone, with one `[REVERTED]` line that quotes the line the parser stopped at:
+
+```text
+[REVERTED] `forth.py` no longer parsed after this command (expected expression after 'else', but statement is given, line 17: `'/': lambda a, b: a // b if b != 0 else (raise ZeroDivisionError("divide by zero")),`); it is back as it was before the command. Fix that line and write the file again.
+```
 
 ## What we measured
 
