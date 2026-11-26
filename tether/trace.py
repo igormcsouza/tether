@@ -67,7 +67,7 @@ def ours(code):
     path = os.path.abspath(code.co_filename)
     return path.startswith(root) and not (name.startswith("test") or "_test" in name)
 NOISE = {sorted(_NOISE)!r}
-lines, depth, skipped = [], [0], [0]
+lines, depth, skipped, last_self = [], [0], [0], [None]
 def tracer(frame, event, arg):
     code = frame.f_code
     if not ours(code):
@@ -77,7 +77,15 @@ def tracer(frame, event, arg):
             skipped[0] += 1
             return None
         names = code.co_varnames[: code.co_argcount + code.co_kwonlyargcount]
-        args = ", ".join(f"{{n}}={{show(frame.f_locals[n])}}" for n in names if n in frame.f_locals)
+        # the same `self` again is not repeated: its repr filled most of the char budget
+        me = frame.f_locals.get("self", None) if names[:1] == ("self",) else None
+        same = me is not None and me is last_self[0]
+        last_self[0] = me if me is not None else last_self[0]
+        args = ", ".join(
+            f"{{n}}={{show(frame.f_locals[n])}}"
+            for n in names
+            if n in frame.f_locals and not (same and n == "self")
+        )
         lines.append("  " * depth[0] + f"{{code.co_name}}({{args}})")
         depth[0] += 1
     elif event == "exception" and len(lines) < {TRACE_LINES}:

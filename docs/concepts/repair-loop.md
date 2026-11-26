@@ -41,7 +41,7 @@ All of it is the harness's time, not the model's. No model call, no addition to 
 [regression] Your last change broke 1 test(s) that passed before: test_o_wins; now passing: test_x_wins. Keep what worked.
 ```
 
-**A runtime trace.** When the same tests fail again after a change, or only a few still fail, tether runs the smallest failing test under a tracer and appends the calls into your code with arguments and results (two levels deep, at most 30 lines):
+**A runtime trace.** When the same tests fail again after a change, or only a few still fail, tether runs the smallest failing test under a tracer and appends the calls into your code with arguments and results (two levels deep, at most 30 lines; a method called again on the same object omits `self`):
 
 ```text
 [runtime trace of test_f: calls into your code, arguments and results]

@@ -5,6 +5,7 @@
 ### Changed
 
 - When tether undoes a command that left a Python file unparsable, the `[REVERTED]` line now quotes the line the parser stopped at, so the model sees the mistake instead of retyping it (AD-24).
+- The runtime trace of a failing test shows the same `self` object once instead of on every method call, so more of the calls fit (a 16-line trace that hit the 1,500-char cap became a complete 24-line one of 960 chars) (AD-24).
 
 ## v0.3.10 (2026-11-26)
 
