@@ -1,5 +1,11 @@
 # Release Notes
 
+## Unreleased
+
+### Changed
+
+- When tether undoes a command that left a Python file unparsable, the `[REVERTED]` line now quotes the line the parser stopped at, so the model sees the mistake instead of retyping it (AD-24).
+
 ## v0.3.10 (2026-11-26)
 
 ### Fixed

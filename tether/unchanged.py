@@ -69,7 +69,8 @@ def unchanged_note(before: dict[str, bytes], root: Path) -> str:
 
 REVERT_FILES = 3  # files named in the revert notes of one command
 REVERT_MSG = 80  # chars of the SyntaxError message in a revert note
-REVERT_LINE = 300  # max chars of one revert line
+REVERT_CODE = 120  # chars of the offending source line quoted in a revert note (AD-24)
+REVERT_LINE = 420  # max chars of one revert line
 
 
 def _syntax_error(data: bytes) -> SyntaxError | None:
@@ -101,14 +102,18 @@ def broken_by_command(
     return found
 
 
+def _code(err: SyntaxError) -> str:
+    """The offending line as the parser saw it: the message alone did not show qwen its bug."""
+    code = (err.text or "").strip()
+    return f": `{code[:REVERT_CODE]}`" if code else ""
+
+
 def revert_notes(found: list[tuple[str, bytes, SyntaxError]]) -> str:
     """One [REVERTED] line per file (at most REVERT_FILES), each at most REVERT_LINE chars."""
     lines = [
         f"\n[REVERTED] `{rel}` no longer parsed after this command "
-        f"({err.msg[:REVERT_MSG]}, line {err.lineno}); it is back as it was before the command. "
-        f"Make the change again in smaller steps, e.g. `edit replace {rel} --lines a:b`."[
-            :REVERT_LINE
-        ]
+        f"({err.msg[:REVERT_MSG]}, line {err.lineno}{_code(err)}); it is back as it was before "
+        "the command. Fix that line and write the file again."[:REVERT_LINE]
         for rel, _, err in found[:REVERT_FILES]
     ]
     if len(found) > REVERT_FILES:

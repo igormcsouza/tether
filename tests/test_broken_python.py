@@ -68,11 +68,24 @@ def test_revert_notes_name_at_most_three_files() -> None:
     assert unchanged.revert_notes([]) == ""
 
 
-def test_each_revert_line_is_at_most_300_chars() -> None:
-    long = SyntaxError("x" * 500, ("m.py", 2, 1, "x"))
+def test_each_revert_line_is_bounded() -> None:
+    long = SyntaxError("x" * 500, ("m.py", 2, 1, "y" * 500))
     text = unchanged.revert_notes([("m.py", GOOD.encode(), long)])
     assert text.startswith("\n[REVERTED] `m.py` no longer parsed")
-    assert all(len(line) <= 300 for line in text.splitlines())
+    assert all(len(line) <= unchanged.REVERT_LINE for line in text.splitlines())
+
+
+def test_the_revert_note_quotes_the_offending_line() -> None:
+    """forth: the message alone did not show qwen that `raise` cannot sit in a lambda (AD-24)."""
+    code = "    '/': lambda a, b: a // b if b else (raise ZeroDivisionError('x')),\n"
+    err = SyntaxError("expected expression after 'else'", ("m.py", 15, 40, code))
+    text = unchanged.revert_notes([("m.py", GOOD.encode(), err)])
+    assert "line 15: `'/': lambda a, b: a // b if b else (raise ZeroDivisionError('x')),`)" in text
+    assert "Fix that line" in text
+    bare = unchanged.revert_notes(
+        [("m.py", GOOD.encode(), SyntaxError("bad", ("m.py", 3, 1, None)))]
+    )
+    assert "(bad, line 3); it is back" in bare
 
 
 def _policy(root: Path) -> SandboxPolicy:
