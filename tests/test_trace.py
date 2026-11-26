@@ -140,3 +140,20 @@ async def test_the_trace_is_added_when_the_same_tests_fail_after_a_change(tmp_pa
     assert "[runtime trace" not in seen(1)  # a first failure: the usual output is enough
     assert seen(3).count("[runtime trace of test_depth") == 1  # same failure after a change
     assert seen(4).count("[runtime trace of test_depth") == 1  # once per failing set
+
+
+async def test_the_same_self_is_shown_once(tmp_path: Path) -> None:
+    """connect: the board repr on every method call filled the 1,500 chars after 16 lines."""
+    (tmp_path / "g.py").write_text(
+        "class G:\n    def __init__(self):\n        self.board = [[1, 2], [3, 4]]\n"
+        "    def win(self):\n        return self.near(0) + self.near(1)\n"
+        "    def near(self, r):\n        return r\n"
+    )
+    (tmp_path / "g_test.py").write_text(
+        "import unittest\nfrom g import G\n\n\nclass T(unittest.TestCase):\n"
+        "    def test_it(self):\n        self.assertEqual(G().win() + G().win(), 3)\n"
+    )
+    trace = await runtime_trace(_sandbox(tmp_path), "g_test.T.test_it")
+    assert trace.count("win(self=G(board=") == 2  # a new G is shown again
+    assert "  near(r=0)" in trace and "  near(r=1)" in trace
+    assert "near(self=" not in trace
