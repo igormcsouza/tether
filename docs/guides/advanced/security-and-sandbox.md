@@ -28,6 +28,9 @@ Even within `workspace_root`, Tether deterministically blocks access to sensitiv
 ### 3. Environment Allowlist
 `bash` subprocesses receive only a small allowlist of variables (`PATH`, `LANG`, `LC_*`, `TERM`, `TZ`, `USER`, `LOGNAME`, `SHELL`, `TMPDIR`, `VIRTUAL_ENV`, `CI`, `PYTHONPATH`, ...) plus `HOME`/`PWD` set to the workspace. Everything else (`DATABASE_URL`, `STRIPE_*`, `*_WEBHOOK`, cloud and API keys, session variables) is dropped, so a secret with an unexpected name cannot leak. To pass something through deliberately, set `TETHER_ENV_PASSTHROUGH=NAME1,NAME2`.
 
+### Your files survive a stray delete
+If a command deletes files that were in the workspace before the session started, tether writes them back right after that command and adds a `[KEPT]` line telling the model. The command itself still sees them gone, so testing a "folder is missing" branch works. This is skipped when your goal asks to delete, remove, move, rename or clean up files. Files over 256 kB are not kept.
+
 ### 4. Linux Bubblewrap (`bwrap`) Kernel Isolation
 On Linux, when `bwrap` is available and functional, `bash` subprocesses automatically execute inside an unprivileged user/mount/IPC/PID namespace:
 

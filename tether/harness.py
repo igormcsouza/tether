@@ -73,7 +73,13 @@ from tether.tools import (
     make_web_tool,
 )
 from tether.trace import NEAR_PASS, failing_test_id, runtime_trace, smallest_failing
-from tether.unchanged import broken_by_command, revert_notes, unchanged_note
+from tether.unchanged import (
+    ASKS_DELETE_RE,
+    broken_by_command,
+    restored_note,
+    revert_notes,
+    unchanged_note,
+)
 from tether.workspace import Tracker
 from tether.worktree import commit_all, create_worktree, repo_root, run_setup
 
@@ -2048,6 +2054,15 @@ class Harness:
                 # the write-back is the harness's, not the model's: the next step must not count it
                 tracker.refresh([rel for rel, _, _ in broken])
                 out += revert_notes(broken)
+                # #350: files that were here before the session and that this command deleted
+                # come back, unless the goal asks to delete, move or clean things up
+                lost = [r for r in delta.deleted if r in originals and r not in created_here]
+                if lost and not ASKS_DELETE_RE.search(rec.goal or ""):
+                    for rel in lost:
+                        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                        (root / rel).write_bytes(originals[rel])
+                    tracker.refresh(lost)
+                    out += restored_note(lost)
                 tcmd, tout = cmd, dispatch.output  # the test run this step, if any
                 if is_test_cmd(cmd) and is_quiet(cmd):
                     last_test = cmd.strip()
