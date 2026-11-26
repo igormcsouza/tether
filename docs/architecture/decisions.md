@@ -111,6 +111,8 @@ Each entry has the same shape: the **decision**, the **why**, and what it **cost
 
 **AD-38. Every refusal says the rule, an alternative and the flag.** A refused command is not a change; sandbox refusals are recorded as `sandbox_violation` events with the rule name and shown in `tether stats`. Resource limits (`--limit cpu mem procs fsize`) are off by default, Linux only, and a hit appends a labelled line.
 
+**AD-51. The user's files survive a stray delete.** A command that deletes files that were in the workspace before the session (not files the session created) gets them back right after it, from the bytes the tracker kept (256 kB each), with one `[KEPT]` line naming them; the command itself still saw them gone, so a model can test a "folder is missing" branch. Skipped when the goal asks to delete, remove, move, rename or clean up (a word list in `tether/unchanged.py`). *Why:* on Coding Ladder shell-5 qwen3.5:9b ran `rm -rf data && bash backup.sh` after a correct fix and the user's `data/` was gone (#350); in 3 lab runs it did so twice, and both times the files came back and the task still passed. *Cost:* a goal that needs a file deleted without one of those words gets it back (the model is told; it can say so in `done`); a file over 256 kB is not restored. *Status:* added 2026-11-25 under the product owner's standing go-ahead; in effect.
+
 **AD-39. The model never gets git.** `tether run --worktree` creates the branch and commits the result; only harness code runs git.
 
 ### H. Multi-agent and interfaces

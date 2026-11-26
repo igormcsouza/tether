@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- A command that deletes files you had before the session (for example `rm -rf data` to test an error path) no longer loses them: tether puts them back right after the command and says so, unless your goal asks to delete, move or clean up files (#350, AD-51).
+
 ### Changed
 
 - When thinking runs past its 2,048-token budget, the retry with thinking off now gets the cut thought back, so it replies with a command instead of writing its reasoning out as text (up to ~10k chars before; 10 of 10 cut turns replied cleanly in a 5-exercise run, about 20 s faster each) (AD-29).

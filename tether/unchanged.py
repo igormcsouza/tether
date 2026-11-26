@@ -114,3 +114,22 @@ def revert_notes(found: list[tuple[str, bytes, SyntaxError]]) -> str:
     if len(found) > REVERT_FILES:
         lines.append(f"\n[REVERTED] {len(found) - REVERT_FILES} more file(s) reverted too.")
     return "".join(lines)
+
+
+# #350, AD-51: a goal that asks to delete, move or tidy files lets the model remove the user's files
+ASKS_DELETE_RE = re.compile(
+    r"\b(?:delet|remov|rm\b|clean|prun|purg|wip|eras|mov|renam|mv\b|drop|tidy|unused|dedup|"
+    r"get rid|reset)",
+    re.IGNORECASE,
+)
+
+
+def restored_note(lost: list[str]) -> str:
+    """One [RESTORED] line naming the user's files the harness put back (#350)."""
+    names = ", ".join(f"`{r}`" for r in lost[:3]) + (
+        f" and {len(lost) - 3} more" if len(lost) > 3 else ""
+    )
+    return (
+        f"\n[KEPT] {names} existed before this session and the task does not ask to delete "
+        "them, so they are back as they were. Do not delete the user's files; test on a copy."
+    )[:REVERT_LINE]
