@@ -740,6 +740,7 @@ class Harness:
                         parent_sandbox=sandbox,
                         skill_loader=self.skill_loader,
                         worker_spawner=self._spawner_for_store(),
+                        parent_tools=names_to_load,
                     )
                 )
         return mux

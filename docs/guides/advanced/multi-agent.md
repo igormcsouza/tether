@@ -39,6 +39,8 @@ act(cmd='agent spawn --skill researcher --tools web,mem "Investigate Redis 8 vec
 !!! note "Strict Sandbox Inheritance"
     A child session spawned via `agent spawn` inherits (or narrows) its parent session's `SandboxPolicy`. A `read-only` parent can never escalate a child to `workspace-write`.
 
+    Tools work the same way. A child gets the tools `--tools` names that its parent has, or all of the parent's tools when it names none of them. A tool the parent does not have (`--tools bash,web` under a parent with only `web,agent`) is left out, and the spawn output says so: `ses_1a2b3c4d` followed by `[note] started with web, not bash: a child gets only tools this session has.` A skill's own `tools.py` tools still come with the skill.
+
 ### 2. Wait for Compact Digests (`agent wait`)
 
 Polls SQLite asynchronously until all specified child sessions finish, returning a **~50-token digest** per child so the parent's L1 context stays lean:
@@ -115,6 +117,6 @@ tether pipeline pipeline.yaml --headless "Add HMAC signature verification"
 
 - **`agent wait` is slow.** It polls until the child finishes; a stuck child hands back as `WAITING_INPUT`, and `agent send <id> "..."` continues it.
 - **Two children edit the same file.** Tether does not lock files. Give each child its own folder or its own branch ([own branch](own-branch.md)).
-- **A child cannot reach a tool.** Children enable their own tools: pass `--tools` to `agent spawn`.
+- **A child cannot reach a tool.** A child has its parent's tools, or the subset `--tools` names. It never gets a tool the parent lacks: start the parent with that tool (`tether run --tools bash,agent ...`).
 
 See also [Troubleshooting](../../troubleshooting.md).

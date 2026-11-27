@@ -19,9 +19,13 @@ def make_agent_tool(
     skill_loader: SkillLoader,
     worker_spawner: Callable[[str], int | None],
     wait_timeout: float = 120.0,
+    parent_tools: list[str] | None = None,
 ) -> ToolSpec:
+    """`parent_tools`: the parent's enabled tools (AD-57). A child gets the ones it names that the
+    parent has, or all of them when it names none of them; None (direct SDK use) leaves tools
+    as asked."""
     help_str = (
-        "Usage: agent spawn [--skill s] [--model m] [--tools t] <goal> | "
+        "Usage: agent spawn [--skill s] [--model m] [--tools a,b] <goal> | "
         "wait <id...> | query <id|--all> <q> [--top 3] | read <id> [--full] | send <id> <msg>\n"
         "Desc : Spawn async sub-agents or query results via BM25 RAG."
     )
@@ -57,6 +61,7 @@ def make_agent_tool(
                 return f"Error: missing `<goal>` for `agent spawn`.\n{help_str}"
 
             skill_verify: list[str] = []
+            skill_own: list[str] = []  # a skill's own `tools.py` tools, not the parent's to give
             if skill_name:
                 sk = skill_loader.load(skill_name)
                 if not sk:
@@ -67,6 +72,18 @@ def make_agent_tool(
                     tools_list = list(sk.tools)
                 if sk.verify:
                     skill_verify = list(sk.verify)
+                from tether.tools import ALL_BUILTIN_TOOLS  # lazy: tools/__init__ imports this
+
+                skill_own = [t for t in sk.tools if t not in ALL_BUILTIN_TOOLS]
+
+            dropped: list[str] = []
+            if parent_tools is not None:
+                allowed = [*parent_tools, *skill_own]
+                expanded = [b for t in tools_list for b in (parent_tools if t == "all" else [t])]
+                dropped = list(dict.fromkeys(t for t in expanded if t not in allowed))
+                kept = list(dict.fromkeys(t for t in expanded if t in allowed))
+                # `--tools t` copied from the usage line got qwen3.5:9b a child with no tools
+                tools_list = kept or list(parent_tools)
 
             child_sandbox = parent_sandbox.attenuate()
             for sv in skill_verify:
@@ -81,6 +98,11 @@ def make_agent_tool(
                 parent_id=parent_session_id,
             )
             worker_spawner(child.id)
+            if dropped:
+                return (
+                    f"{child.id}\n[note] started with {', '.join(tools_list) or 'no tools'}, "
+                    f"not {', '.join(dropped)}: a child gets only tools this session has."
+                )
             return child.id
 
         if sub == "status":
