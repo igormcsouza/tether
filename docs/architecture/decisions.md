@@ -187,3 +187,5 @@ Tried or considered, measured, and rejected. Revisit only with new evidence.
 | Folding repeated unittest failures in the observation | Experiment with no measured gain, not for merge | Not adopted |
 | Treating read pipelines (`cat f \| head`) as reads for live-read tracking | Parked, no measured gain | Not adopted |
 | Resetting files to the start on repeated test failures | 10 resets in 7 Polyglot runs: the fresh attempt beat the best version 2 times, matched 2, worse 6 | Replaced by reset to the best version (AD-21) |
+| Trace shows a repeated `self` as the fields that changed (`self.status='lose'`) | hangman, replayed from the step where the 10th miss must lose: next write passed 0 of 6 with it vs 1 of 6 without; the model saw the state and still put the lose check at 0 | Rejected; the same `self` is shown once (AD-24) |
+| A near pass restored once, then restarted from the best version | hangman (best version restored 3 times, the same 2 failures typed 9 times): 1 of 3 vs 2 of 3 on main; transpose 0 of 3; one run ended below its best version (0.286 vs 0.714) | Rejected; restored in place each time (AD-21) |
