@@ -764,6 +764,22 @@ class SandboxPolicy:
     limits: dict[str, int] = field(default_factory=dict)
     # Landlock's private temp dir, made on first use (never copied by attenuate).
     _tmp_dir: str | None = field(default=None, init=False, repr=False, compare=False)
+    # The session store when it sits in the workspace outside `.tether/` (AD-55), set by the
+    # harness per session: masked under bwrap, refused by name under every jail.
+    _store: tuple[Path, ...] = field(default=(), init=False, repr=False, compare=False)
+
+    def protect_store(self, db_path: str | Path) -> None:
+        """Hide the session store and its WAL/SHM/journal files from `bash` and `edit` (AD-55).
+
+        A `TETHER_DB` in the workspace let qwen3.5:9b read the session's own turns and inbox with
+        `python3 -c "import sqlite3 ..."` (gap hunt, ask task); only `.tether/` was protected.
+        """
+        db = Path(db_path).resolve()
+        if not db.is_relative_to(self.workspace_root):
+            return
+        if ".tether" in db.relative_to(self.workspace_root).parts:
+            return
+        self._store = tuple(db.with_name(db.name + s) for s in ("", "-wal", "-shm", "-journal"))
 
     def __post_init__(self) -> None:
         self.workspace_root = Path(self.workspace_root).resolve()
@@ -957,6 +973,11 @@ class SandboxPolicy:
 
         p = Path(raw_path)
         candidate = (self.workspace_root / p).resolve() if not p.is_absolute() else p.resolve()
+        if candidate in self._store:
+            raise _refusal(
+                f"access to the session store `{_clip(str(p))}` is denied",
+                "keep files outside the session store",
+            )
 
         if not candidate.is_relative_to(self.workspace_root):
             raise _refusal(
@@ -1014,6 +1035,13 @@ class SandboxPolicy:
         ):
             if pattern.search(stripped):
                 raise _refusal(reason, instead)
+
+        name = self._store[0].name if self._store else ""
+        if name and re.search(rf"(?<![\w.-]){re.escape(name)}", stripped):
+            raise _refusal(  # cheap under any jail; bwrap also masks the files (AD-55)
+                f"access to the session store `{name}` is denied",
+                "keep files outside the session store",
+            )
 
         # Block explicit parent directory traversal (`..`) or absolute paths outside workspace
         try:
@@ -1096,6 +1124,7 @@ class SandboxPolicy:
         git_config = ws / ".git" / "config"
         if git_config.is_file():
             files_to_mask.append(str(git_config))
+        files_to_mask += [str(f) for f in self._store if f.is_file()]
         if files_to_mask:
             # Requested only when there is something to mask, so an idle workspace never
             # touches the temp directory.

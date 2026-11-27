@@ -46,7 +46,7 @@ Ubuntu 24.04 and later block the unprivileged user namespaces `bwrap` needs. Tet
 
 Paths work as under `bwrap`: the host reads (`ls /usr/bin`), writes outside the workspace fail with `Permission denied`. Landlock is weaker than `bwrap` in three ways, and the secret-file command-text rules stay on to cover the first:
 
-- Secret files inside the workspace (`.env`, `*.pem`, `.git/config`) cannot be hidden. Commands that name them are refused, but a program can still read them.
+- Secret files inside the workspace (`.env`, `*.pem`, `.git/config`, and the session store when `TETHER_DB` points into the workspace outside `.tether/`) cannot be hidden. Commands that name them are refused, but a program can still read them. Keep the store in `.tether/` (the default) or outside the workspace.
 - It cannot block the network or unix-socket connects. `--no-network` therefore still needs `bwrap`, and a user in the `docker` group can reach `/var/run/docker.sock`; prefer `bwrap` there. On kernels older than 6.12 a jailed command can also signal other processes of your user (for example the tether worker).
 - The host `/tmp` is hidden (writes go to a private temp dir, `$TMPDIR`), a write to `/tmp` is refused with a one-line hint to use `$TMPDIR` or the workspace, DNS keeps working, and `/dev` is the host's, with its device files keeping their usual permissions.
 
