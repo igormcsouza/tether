@@ -24,7 +24,7 @@ The prompt lists one short line per enabled tool, at most about twelve tokens:
 Full usage appears only when the model asks for it (`web --help`) or gets something wrong, and it is capped at about sixty tokens. This is the real answer to a bare `web`:
 
 ```text
-Usage: web search <query> [--max 5] | web fetch <url>[#anchor] [--from <text>]
+Usage: web search <query> [--max 5] | web fetch <url>[#anchor|#/json/key] [--from <t>]
 Desc : Search the web or fetch clean markdown text from a URL.
 ```
 

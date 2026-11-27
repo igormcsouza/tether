@@ -70,6 +70,21 @@ act(cmd="web fetch https://www.sqlite.org/wal.html --from 'checkpoint'")
 
 `#anchor` starts the text at that element, `--from <text>` at the first match; a cut page prints the `--from` words to continue with.
 
+A JSON reply (an API) is read by path instead: `#/info/version` is a [JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901) (`-1` is a list's last item). A value that fits is printed; a reply too big for one page prints an outline of its keys with their sizes and the command to open one, so a 6 MB PyPI reply takes two small fetches:
+
+```text
+act(cmd="web fetch https://pypi.org/pypi/ruff/json")
+[JSON at #/: {6 keys}, 7,283,605 chars; outline]
+"info": {30 keys}
+"releases": {433 keys}
+...
+Open one: web fetch https://pypi.org/pypi/ruff/json#/<key>
+
+act(cmd="web fetch https://pypi.org/pypi/ruff/json#/releases/0.17.6/0/upload_time")
+[#/releases/0.17.6/0/upload_time]
+"2026-11-19T15:55:52"
+```
+
 ## `mem` — Pinned Scratchpad & BM25 Observation Recall
 
 When raw tool outputs age past $K=2$ turns and the history fills more than half of the context budget, Tether folds them into 1-line tombstones (`[obs_3 folded: ...]`). The `mem` tool lets the agent pin key facts into active context or search/recall folded observations from SQLite FTS5:

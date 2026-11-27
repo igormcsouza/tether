@@ -149,9 +149,9 @@ If `Sandbox unavailable` says Landlock is unavailable too, the kernel has no Lan
 
 ## Tools and skills
 
-### `Error: bash is disabled` or `unknown command`
+### `Error: bash is disabled`, `unknown command` or `has no shell`
 
-**Cause.** The tool is not enabled for this session. The message lists the tools that are.
+**Cause.** The tool is not enabled for this session. The message lists the tools that are; `` `grep` is a shell command and this session has no shell`` means `bash` is off.
 
 **Fix.** Add it with `--tools bash,edit`, the SDK `tools=[...]` or the skill `tools:` list.
 
