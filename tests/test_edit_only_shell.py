@@ -100,3 +100,23 @@ async def test_tool_colon_verb_runs_as_tool_verb(tmp_path: Path) -> None:
     out = await _run(tmp_path, [("edit:view a.txt", None), ("nope:view a.txt", None)], ["edit"])
     assert "hi" in out[0]
     assert "nope:view" in out[1]  # not an enabled tool: left as typed
+
+
+async def test_shell_keywords_run_through_bash(tmp_path: Path) -> None:
+    """collect task: `for f in tether/*.py; do wc -l "$f"; done` answered `unknown command`."""
+    (tmp_path / "a.py").write_text("x = 1\n")
+    calls = [('for f in *.py; do wc -l "$f"; done', None), ("if true; then echo yes; fi", None)]
+    out = await _run(tmp_path, calls, ["bash"])
+    assert "1 a.py" in out[0] and "yes" in out[1]
+
+
+async def test_a_loop_after_a_write_names_the_file_and_asks_for_done(tmp_path: Path) -> None:
+    """collect task: told "write the file the task asked for" after writing it, qwen3.5:9b
+    re-read it until a restart; replayed, 0 of 6 next steps called `done` vs 3 of 6 with this."""
+    calls = [("edit write out.md", "| a | 1 |\n"), ("edit view out.md", None)] + [
+        ("edit view out.md", None)
+    ] * 2
+    out = await _run(tmp_path, calls, ["edit"])
+    loop = next(o for o in out if o.startswith("[LOOP DETECTED]"))
+    assert "You already wrote out.md" in loop and 'act("done"' in loop
+    assert "write the file the task asked for" not in loop

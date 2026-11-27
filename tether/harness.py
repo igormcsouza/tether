@@ -1400,6 +1400,7 @@ class Harness:
         # Quiet nudge state
         changed = False
         changes: list[str] = []
+        wrote: dict[str, None] = {}  # files the session created or changed, in order
         green_cmd: str | None = None  # last passing test run, cleared by any later change
         green_nudged = False
         empty_streak = 0  # consecutive empty model replies (#135)
@@ -1789,7 +1790,19 @@ class Harness:
                     continue
                 if is_loop_stall:
                     loop_run += 1
-                    if loop_run == 1:
+                    if wrote:
+                        # collect task: "write the file the task asked for" after it was written
+                        # sent qwen3.5:9b back to re-read it (0 of 6 replays called `done`, 3 of 6
+                        # with the files named)
+                        files = ", ".join(list(wrote)[-3:])
+                        stall_msg = (
+                            f"[LOOP DETECTED] You just ran `{cmd.strip()}` again and its output is "
+                            f"the same. You already wrote {files}. If that is what the task asked "
+                            'for, finish now: act("done", stdin="<one-line summary>"). If '
+                            "something is missing, change the file; reading it again changes "
+                            "nothing."
+                        )
+                    elif loop_run == 1:
                         stall_msg = (
                             f"[LOOP DETECTED] You just ran `{cmd.strip()}` with identical input "
                             "in the previous step. Do not repeat it: use the output above, then "
@@ -2069,6 +2082,7 @@ class Harness:
                 else:
                     changed = True
                     changes.append(cmd)
+                    wrote.update(dict.fromkeys((*delta.created, *delta.modified)))
                     quiet_run = 0
                     stalls = 0
                     green_cmd = None
