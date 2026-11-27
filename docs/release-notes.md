@@ -1,6 +1,6 @@
 # Release Notes
 
-## Unreleased
+## v0.3.13 (2026-11-27)
 
 ### Security
 
