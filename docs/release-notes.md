@@ -1,6 +1,6 @@
 # Release Notes
 
-## Unreleased
+## v0.3.12 (2026-11-27)
 
 ### Security
 
@@ -13,7 +13,6 @@
 ### Fixed
 
 - Under Landlock, a read outside the workspace (`ls /usr/bin`) is no longer refused by the command-text rules: the kernel keeps writes in the workspace as under `bwrap`, and the secret-file rules stay on (AD-35).
-
 - A shell loop or conditional (`for f in *.py; do ...; done`, `while`, `if`) runs through `bash` instead of answering "unknown command" for `for`.
 - A repeated command after the session wrote files no longer tells the model to "write the file the task asked for": it names the files written and asks for `done` or a change to them (AD-21). `qwen3.5:9b` kept re-reading a finished file until a restart threw its work away.
 
