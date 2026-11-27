@@ -50,6 +50,25 @@ Landlock is weaker than `bwrap` in three ways, and the command-text rules stay o
 - It cannot block the network or unix-socket connects. `--no-network` therefore still needs `bwrap`, and a user in the `docker` group can reach `/var/run/docker.sock`; prefer `bwrap` there. On kernels older than 6.12 a jailed command can also signal other processes of your user (for example the tether worker).
 - The host `/tmp` is hidden (writes go to a private temp dir, `$TMPDIR`), a write to `/tmp` is refused with a one-line hint to use `$TMPDIR` or the workspace, DNS keeps working, and `/dev` is the host's, with its device files keeping their usual permissions.
 
+#### Turning bwrap back on
+For `--no-network`, or to hide workspace secrets and `docker.sock` again, let `bwrap` use user namespaces. This needs root once, and is the host admin's choice: tether never asks for it. The narrow fix is an AppArmor profile for `bwrap` alone (the same kind Ubuntu ships for browsers), so the protection stays on for every other program:
+
+```bash
+sudo tee /etc/apparmor.d/bwrap > /dev/null <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile bwrap /usr/bin/bwrap flags=(unconfined) {
+  userns,
+  include if exists <local/bwrap>
+}
+EOF
+sudo apparmor_parser -r /etc/apparmor.d/bwrap
+tether doctor   # now: ok bwrap
+```
+
+The broad fix, `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` (persisted in `/etc/sysctl.d/`), lifts the restriction for every program on the host; prefer the profile. To undo the profile: `sudo apparmor_parser -R /etc/apparmor.d/bwrap && sudo rm /etc/apparmor.d/bwrap`.
+
 ### Without a jail (fail closed)
 Without `bwrap` and without Landlock (macOS, Windows, or an old kernel) only the command-text checks remain, and those are easy to get around (`python -c ...`). So a `workspace-write` session with the kernel sandbox on is refused before the first model call (exit `1`). The message names the ways out:
 
