@@ -300,6 +300,8 @@ async def test_done_stdin_tail_inside_cmd_is_the_answer(tmp_path: Path) -> None:
     assert (await mux.execute('done, stdin="13"')).final_result == "13"
     assert (await mux.execute("done, stdin='a\\nb'")).final_result == "a\nb"
     assert (await mux.execute('done, stdin="13"', stdin="real")).final_result == "real"
+    # the command quoted as an act() argument, as qwen3.5:9b writes it with tools off (AD-56)
+    assert (await mux.execute('"done", stdin="wrote a.md"')).final_result == "wrote a.md"
 
 
 def test_stdin_tail_never_matches_bash(tmp_path: Path) -> None:

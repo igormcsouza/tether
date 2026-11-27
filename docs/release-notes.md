@@ -1,5 +1,12 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- A session that finished its file and then kept re-reading it gets its `[WRAP UP]` turn without tools, so it can only answer or call `done` (AD-56). `qwen3.5:9b` thought "the task is complete" and still repeated its read through every warning and a restart (about 10 wasted steps); with no tools it wrote `done` 4 of 4 times.
+- `"done", stdin="..."` typed into `cmd` (the command quoted as an `act()` argument) delivers the answer like `done, stdin="..."`.
+
 ## v0.3.12 (2026-11-27)
 
 ### Security
