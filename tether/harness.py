@@ -8,6 +8,7 @@ import dataclasses
 import inspect
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -300,6 +301,47 @@ def import_hint(out: str, root: Path) -> str:
                     "level of the file."
                 )
     return f"\n[hint] {rel} defines no top-level `{name}`; the importing code needs one."
+
+
+_NO_MODULE = re.compile(r"No module named '(?P<m>[\w.]+)'")
+_NO_PIP = re.compile(
+    r"pip3?: command not found|No module named pip\b|externally-managed-environment"
+    r"|ensurepip is disabled"
+)
+# import name -> package name, for the common cases where they differ
+_PACKAGE_OF = {
+    "yaml": "pyyaml", "cv2": "opencv-python", "PIL": "pillow", "bs4": "beautifulsoup4",
+    "sklearn": "scikit-learn", "dateutil": "python-dateutil", "dotenv": "python-dotenv",
+}  # fmt: skip
+
+
+def install_hint(out: str, root: Path, shown: set[str]) -> str:
+    """How to install a missing package without root: a workspace venv (once per package).
+
+    pip task: the system Python had no pip and refused `ensurepip`, and qwen3.5:9b spent 13 steps
+    on `pip`, `python3 -m pip`, `apt-get` and `ensurepip` before it found `uv venv`.
+    """
+    hit = _NO_MODULE.search(out)
+    module = hit["m"].split(".")[0] if hit else ""
+    if module and ((root / module).is_dir() or (root / f"{module}.py").is_file()):
+        return ""  # a workspace module: an import path problem, not a missing package
+    if not module and not _NO_PIP.search(out):
+        return ""
+    key = module or "<pip>"
+    if key in shown:
+        return ""
+    shown.add(key)
+    pkg = _PACKAGE_OF.get(module, module) or "<package>"
+    venv = (
+        f"`uv venv && uv pip install {pkg}`"
+        if shutil.which("uv")
+        else f"`python3 -m venv .venv && .venv/bin/pip install {pkg}`"
+    )
+    what = f"`{module}` is not installed" if module else "pip is not available here"
+    return (
+        f"\n[hint] {what}. Install it in a workspace venv, no root needed: {venv}, "
+        "then run `.venv/bin/python`."
+    )
 
 
 def _defines(node: ast.stmt, name: str) -> bool:
@@ -1427,6 +1469,7 @@ class Harness:
         quiet_run = 0
         # A session with neither bash nor edit can only look things up: its nudges say so
         can_edit = "bash" in mux.tool_names or "edit" in mux.tool_names
+        install_hinted: set[str] = set()  # packages the install hint named (once each)
         last_reply = ""  # the model's last plain-text answer, never confirmed with `done`
 
         def reply_note() -> str:
@@ -2142,6 +2185,8 @@ class Harness:
                 if is_test_cmd(tcmd) and _TESTS_RED.search(tout) and not tests_green(tcmd, tout):
                     out += failing_test_source(tout, Path(sandbox.workspace_root))
                 out += import_hint(tout, Path(sandbox.workspace_root))  # AD-52
+                if "bash" in mux.tool_names:
+                    out += install_hint(tout, Path(sandbox.workspace_root), install_hinted)
                 if is_test_cmd(tcmd) and (outcome := run_outcome(tout)):
                     if last_run:
                         out += regression_note(last_run, outcome)

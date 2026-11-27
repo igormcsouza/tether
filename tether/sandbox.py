@@ -1021,10 +1021,12 @@ class SandboxPolicy:
         except ValueError:
             tokens = stripped.split()
 
+        # Paths are the kernel's job under either jail: Landlock also keeps writes in the workspace
+        # and hides the homes, so `ls /usr/bin` reads the host as under bwrap (gap hunt: refused,
+        # it cost a pip task 2 steps). The secret-file patterns above stay on for Landlock (AD-35).
+        jailed = self.use_kernel_sandbox and not text_rules and _jail() is not None
         cmd_start, cur_bin, pending, prev = True, "", False, ""
-        for tok in (
-            [] if kernel else tokens
-        ):  # the kernel jail enforces paths; text rules are fallback
+        for tok in [] if jailed else tokens:
             if tok in _CMD_SEPARATORS:
                 cmd_start = True
                 continue
