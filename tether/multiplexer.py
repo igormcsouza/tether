@@ -127,6 +127,17 @@ def _unquote(token: str) -> str:
 
 NORMALIZERS.append(_edit_flags)
 
+# `echo "done"` alone is the model calling `done` through the shell (AD-58): qwen3.5:9b typed it
+# 5 times in one session after its check passed, through every echo nudge, until out of steps
+_ECHO_DONE_RE = re.compile(r"""(?:bash\s+)?echo\s+(["']?)done[.!]?\1""", re.IGNORECASE)
+
+
+def _echo_done(s: str) -> str:
+    return "done" if _ECHO_DONE_RE.fullmatch(s) else s
+
+
+NORMALIZERS.append(_echo_done)
+
 _DONE_STDIN_RE = re.compile(rf"done(\s+--ask)?\s+--stdin\s+({_QUOTED}|\S+)\s*", re.DOTALL)
 
 

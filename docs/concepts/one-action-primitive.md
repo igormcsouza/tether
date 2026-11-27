@@ -32,6 +32,7 @@ Because the model already knows the shape of a command line from training, it ne
 
 - a leading `$` or wrapping backticks;
 - `bash -c '...'` wrappers;
+- a lone `echo done`, which becomes `done`;
 - `edit write f <<'EOF' ... EOF` (a heredoc typed into `cmd`) becomes a write with `stdin`;
 - `act("done", stdin="x")` typed as text inside `cmd`;
 - a tool call named `edit` instead of `act`;
