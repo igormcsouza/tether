@@ -1794,11 +1794,11 @@ class Harness:
                         # collect task: "write the file the task asked for" after it was written
                         # sent qwen3.5:9b back to re-read it (0 of 6 replays called `done`, 3 of 6
                         # with the files named)
-                        files = ", ".join(list(wrote)[-3:])
+                        written = ", ".join(list(wrote)[-3:])
                         stall_msg = (
                             f"[LOOP DETECTED] You just ran `{cmd.strip()}` again and its output is "
-                            f"the same. You already wrote {files}. If that is what the task asked "
-                            'for, finish now: act("done", stdin="<one-line summary>"). If '
+                            f"the same. You already wrote {written}. If that is what the task "
+                            'asked for, finish now: act("done", stdin="<one-line summary>"). If '
                             "something is missing, change the file; reading it again changes "
                             "nothing."
                         )
