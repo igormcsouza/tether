@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Security
+
+- A session store inside the workspace outside `.tether/` (`TETHER_DB`, `Harness(db_path=)`) is protected like `.tether/`: masked under `bwrap`, and commands or `edit` paths naming it are refused under every jail (AD-55). A model could read, and change, its own session's turns and inbox there.
+
 ### Added
 
 - A missing Python package (`No module named 'X'`) or a missing pip gets one `[hint]` line with a no-root install into a workspace venv (`uv venv && uv pip install X`) (AD-54). `qwen3.5:9b` spent 13 steps on `pip`, `apt-get` and `ensurepip` without it.

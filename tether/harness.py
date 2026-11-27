@@ -1319,6 +1319,7 @@ class Harness:
             return await self._execute_pipeline_session(rec)
 
         sandbox = SandboxPolicy.from_dict(rec.sandbox_config)
+        sandbox.protect_store(self.store.db_path)  # AD-55
         skill_obj = self._skill if rec.skill == self.skill_name else None
         if skill_obj is None and rec.skill:
             skill_obj = self.skill_loader.load(rec.skill)
