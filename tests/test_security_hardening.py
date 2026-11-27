@@ -122,7 +122,28 @@ def test_kernel_sandbox_leaves_path_policing_to_the_mounts(
     monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: True)
     SandboxPolicy(workspace_root=tmp_path).validate_bash_command(cmd)  # no false refusal
     monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: False)
-    with pytest.raises(SandboxViolationError):  # same commands stay refused without bwrap
+    monkeypatch.setattr(sb_mod.landlock, "abi", lambda: 0)
+    with pytest.raises(SandboxViolationError):  # same commands stay refused without a jail
+        SandboxPolicy(workspace_root=tmp_path).validate_bash_command(cmd)
+
+
+@pytest.mark.parametrize("cmd", ["ls /usr/bin", "ls ~/..", "cat /etc/hosts"])
+def test_landlock_leaves_paths_to_the_kernel(
+    cmd: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """pip task: `ls /usr/bin/` was refused under Landlock; the host reads as under bwrap."""
+    monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: False)
+    monkeypatch.setattr(sb_mod.landlock, "abi", lambda: 4)
+    SandboxPolicy(workspace_root=tmp_path).validate_bash_command(cmd)
+
+
+@pytest.mark.parametrize("cmd", ["cat .tether/x", "cat .git/config", "cat .env"])
+def test_landlock_keeps_the_secret_rules(
+    cmd: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sb_mod, "_can_use_bwrap", lambda: False)
+    monkeypatch.setattr(sb_mod.landlock, "abi", lambda: 4)
+    with pytest.raises(SandboxViolationError):  # Landlock cannot hide workspace secrets (AD-35)
         SandboxPolicy(workspace_root=tmp_path).validate_bash_command(cmd)
 
 

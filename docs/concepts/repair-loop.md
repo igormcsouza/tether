@@ -35,6 +35,12 @@ All of it is the harness's time, not the model's. No model call, no addition to 
 [hint] `WHITE` is defined inside `class Board` in go_counting.py, not at module level, so importing it from `go_counting` fails. Define it at the top level of the file.
 ```
 
+A package that is not installed gets the same kind of line, with the install that needs no root (a workspace venv), because system Pythons often ship without pip:
+
+```text
+[hint] `tabulate` is not installed. Install it in a workspace venv, no root needed: `uv venv && uv pip install tabulate`, then run `.venv/bin/python`.
+```
+
 **A named regression (`[regression]`).** Tether remembers which tests failed on the last run of the same suite. If tests that passed then fail now, one line says which:
 
 ```text

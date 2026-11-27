@@ -44,7 +44,7 @@ On Linux, when `bwrap` is available and functional, `bash` subprocesses automati
 ### Landlock, when bwrap is blocked (Ubuntu 24.04+)
 Ubuntu 24.04 and later block the unprivileged user namespaces `bwrap` needs. Tether then uses **Landlock**, a Linux kernel feature (5.13+) that needs no privileges or namespaces. The jail is the same in spirit: the host is read-only, the home directories, `/run` and the other hidden roots are not visible, the workspace and a private temp dir (`TMPDIR`) are writable, and `PR_SET_NO_NEW_PRIVS` is set. `tether doctor` reports `landlock` and the reason `bwrap` is not used, and `tether status` shows `sandbox: landlock`. Nothing to configure.
 
-Landlock is weaker than `bwrap` in three ways, and the command-text rules stay on to cover the first:
+Paths work as under `bwrap`: the host reads (`ls /usr/bin`), writes outside the workspace fail with `Permission denied`. Landlock is weaker than `bwrap` in three ways, and the secret-file command-text rules stay on to cover the first:
 
 - Secret files inside the workspace (`.env`, `*.pem`, `.git/config`) cannot be hidden. Commands that name them are refused, but a program can still read them.
 - It cannot block the network or unix-socket connects. `--no-network` therefore still needs `bwrap`, and a user in the `docker` group can reach `/var/run/docker.sock`; prefer `bwrap` there. On kernels older than 6.12 a jailed command can also signal other processes of your user (for example the tether worker).
