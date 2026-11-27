@@ -68,6 +68,27 @@ def test_child_sandbox_is_never_wider_than_the_parent(tether: Tether, chaos) -> 
     assert '"profile": "read-only"' in child["sandbox_json"], child["sandbox_json"]
 
 
+def test_child_gets_the_parents_tools_and_never_more(tether: Tether, chaos) -> None:
+    # AD-57: a child spawned with no --tools had only `done` and spent 7 steps on refused
+    # shell commands; one asking for a tool the parent lacks must not get it
+    chaos.route("CHILD-ONE", "bash wc -w a.txt", ("done", "3"))
+    chaos.route("CHILD-TWO", ("done", "ok"))
+    chaos.route(
+        "PARENT-TASK",
+        "agent spawn CHILD-ONE count",
+        lambda b: f"agent wait {session_id_in(b)}",
+        "agent spawn --tools web,edit CHILD-TWO",
+        ("done", "ok"),
+    )
+    (tether.ws / "a.txt").write_text("one two three\n")
+    r = tether.run("PARENT-TASK", "--tools", "bash,agent", "--max-steps", "6")
+    assert r["status"] == "COMPLETED", r
+    one, two = (s for s in _sessions(tether) if s["parent_id"] == r["id"])
+    assert one["tools_json"] == '["bash", "agent"]' and one["result"] == "3"
+    assert two["tools_json"] == '["bash", "agent"]'  # nothing asked is held: the parent's
+    assert "started with bash, agent, not web, edit" in tether.tool_outputs(r["id"])[2]
+
+
 def test_pipeline_runs_stages_in_order_with_an_upstream_digest(tether: Tether, chaos) -> None:
     (tether.ws / "flow.yaml").write_text(
         "name: flow\nstages:\n"
