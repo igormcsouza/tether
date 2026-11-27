@@ -138,11 +138,14 @@ A session whose last test run passed after its final change ends `COMPLETED` ins
 
 If you want the kernel `bwrap` jail back, any one of:
 
-- Lift the restriction: `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`, and persist it in `/etc/sysctl.d/`.
+- Give `bwrap` its own AppArmor profile (recommended, the restriction stays on for other programs) or lift the restriction host-wide: both in [Turning bwrap back on](guides/advanced/security-and-sandbox.md#turning-bwrap-back-on).
+
+If you cannot use `bwrap` at all:
+
 - Run inside a container and set `TETHER_SANDBOX=container`.
 - Pass `--allow-unsandboxed` (SDK/MCP: `allow_unsandboxed=True`) to run with command checks only.
 
-If `Sandbox unavailable` says Landlock is unavailable too, the kernel has no Landlock (pre-5.13, or it is not enabled in the kernel): use one of the three fixes above.
+If `Sandbox unavailable` says Landlock is unavailable too, the kernel has no Landlock (pre-5.13, or it is not enabled in the kernel): use one of the fixes above.
 
 ## Tools and skills
 
