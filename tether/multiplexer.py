@@ -163,6 +163,8 @@ NORMALIZERS.append(_unwrap_shell)
 
 _SHELL_BUILTINS = frozenset(
     "cd echo export set unset source test type read printf pwd exit true false alias wait".split()
+    # keywords and builtins with no PATH entry: `for f in *.py; do ...` was `unknown command`
+    + "for while until if case select function time eval exec trap declare local let [ [[ {".split()
 )
 
 

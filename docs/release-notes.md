@@ -1,5 +1,12 @@
 # Release Notes
 
+## Unreleased
+
+### Fixed
+
+- A shell loop or conditional (`for f in *.py; do ...; done`, `while`, `if`) runs through `bash` instead of answering "unknown command" for `for`.
+- A repeated command after the session wrote files no longer tells the model to "write the file the task asked for": it names the files written and asks for `done` or a change to them (AD-21). `qwen3.5:9b` kept re-reading a finished file until a restart threw its work away.
+
 ## v0.3.11 (2026-11-27)
 
 ### Added
