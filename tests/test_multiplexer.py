@@ -316,3 +316,12 @@ def _bash_mux(tmp_path: Path) -> Multiplexer:
     sandbox = SandboxPolicy(workspace_root=tmp_path, use_kernel_sandbox=False)
     harness = Harness(db_path=tmp_path / "t.db", tools=["bash"], sandbox=sandbox)
     return harness.build_multiplexer("ses_done", ["bash"], sandbox, "ollama/qwen3.5:9b")
+
+
+async def test_echo_done_alone_is_done(tmp_path: Path) -> None:
+    """AD-58: `echo "done"` alone is the model calling done through the shell."""
+    mux = _bash_mux(tmp_path)
+    for cmd in ('echo "done"', "echo done", "bash echo Done.", "echo 'done!'"):
+        assert (await mux.execute(cmd)).final_result == "Done.", cmd
+    for cmd in ('echo "done" > f', "echo done; ls", 'echo "not done"'):
+        assert (await mux.execute(cmd)).final_result is None, cmd

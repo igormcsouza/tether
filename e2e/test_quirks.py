@@ -179,6 +179,14 @@ def test_wrap_up_after_a_change_is_sent_without_tools(tether: Tether, chaos) -> 
     assert with_tools == [True] * 6 + [False], with_tools
 
 
+def test_echo_done_alone_completes_the_session(tether: Tether, chaos) -> None:
+    # AD-58: qwen3.5:9b ran `echo "done"` 5 times after its check passed and ran out of steps
+    chaos.script("bash echo hi > greet.txt", 'bash echo "done"')
+    r = tether.run("greet", "--tools", "bash")
+    assert r["status"] == "COMPLETED" and r["result"] == "Done.", r
+    assert len(chaos.requests) == 2
+
+
 def test_done_with_a_stdin_flag_keeps_the_answer_clean(tether: Tether, chaos) -> None:
     chaos.script("done --stdin 'final answer'")
     r = tether.run("answer")
