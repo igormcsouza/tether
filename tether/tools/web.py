@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import html
 import ipaddress
+import json
 import os
 import re
 import socket
@@ -191,6 +192,89 @@ def _clip(text: str, max_chars: int, url: str) -> str:
     return (
         f"{text[:max_chars]}\n... [cut {len(text) - max_chars:,} chars. "
         f"Continue: web fetch {url} --from '{hint}']"
+    )
+
+
+JSON_KEYS_SHOWN = 30  # keys listed in an outline of a big JSON object (the last 5 always)
+
+
+def _kind(value: Any) -> str:
+    """One-line shape of a JSON value for an outline."""
+    if isinstance(value, dict):
+        return f"{{{len(value)} keys}}"
+    if isinstance(value, list):
+        return f"[{len(value)} items]"
+    return json.dumps(value, ensure_ascii=False)[:80]
+
+
+def _open(url: str, at: str, node: Any) -> str:
+    """The command that opens a child of `node` at `at`, with a real key as the example."""
+    if not isinstance(node, (dict, list)):
+        return f"web fetch {url}{at}"
+    first = next(iter(node), "<key>") if isinstance(node, dict) else "0"
+    return f"web fetch {url}{at.rstrip('/')}/{first}"
+
+
+def json_view(text: str, pointer: str, url: str, max_chars: int) -> str | None:
+    """A JSON reply at a JSON Pointer (`#/info/version`, RFC 6901; `-1` is a list's last item).
+
+    A value that fits is shown pretty-printed; a bigger one as an outline of its keys or items
+    with the command that opens one, so a 6 MB API reply is read in two small steps. None when
+    `text` is not JSON.
+    """
+    try:
+        node = json.loads(text)
+    except ValueError:
+        return None
+    # qwen3.5:9b typed `#info`, `#info/version` and `#info#version`: the leading `/` is optional,
+    # `#` separates too, and a dotted segment that is not a key (`info.version`) is split
+    parts = [p.replace("~1", "/").replace("~0", "~") for p in re.split(r"[/#]", pointer) if p]
+    i = 0
+    while i < len(parts):
+        part = parts[i]
+        here = "#/" + "/".join(parts[:i])
+        if isinstance(node, dict) and part not in node and "." in part.strip("."):
+            parts[i : i + 1] = [p for p in part.split(".") if p]
+            continue
+        i += 1
+        if isinstance(node, dict) and part in node:
+            node = node[part]
+        elif (
+            isinstance(node, list)
+            and re.fullmatch(r"-?\d+", part)
+            and -len(node) <= int(part) < len(node)
+        ):
+            node = node[int(part)]
+        else:
+            if isinstance(node, dict):
+                shape = f"keys: {', '.join(list(node)[:JSON_KEYS_SHOWN])}"
+            elif isinstance(node, list):
+                shape = f"{len(node)} items, 0 to {len(node) - 1}" if node else "an empty list"
+            else:
+                shape = f"a value: {_kind(node)}"
+            return (
+                f"Error: `{part}` not found at {here} ({shape}). Instead: {_open(url, here, node)}"
+            )
+    at = "#/" + "/".join(parts)
+    body = json.dumps(node, indent=1, ensure_ascii=False)
+    if len(body) <= max_chars:
+        return f"[{at}]\n{body}" if parts else body
+    if isinstance(node, dict):
+        keys = list(node)
+        shown = keys if len(keys) <= JSON_KEYS_SHOWN else [*keys[: JSON_KEYS_SHOWN - 5], *keys[-5:]]
+        lines = [f'"{k}": {_kind(node[k])}' for k in shown]
+        if len(keys) > len(shown):
+            lines.insert(JSON_KEYS_SHOWN - 5, f"... {len(keys) - len(shown)} more keys ...")
+    else:
+        lines = [
+            f"{i}: {_kind(node[i])}" for i in sorted({0, 1, 2, len(node) - 1}) if i < len(node)
+        ]
+    return _clip(
+        f"[JSON at {at}: {_kind(node)}, {len(body):,} chars; outline]\n"
+        + "\n".join(lines)
+        + f"\nOpen one: {_open(url, at, node)}",
+        max_chars,
+        url,
     )
 
 
@@ -403,7 +487,7 @@ def make_web_tool(
     max_fetch_chars: int = 8000, web_allow: tuple[str, ...] | None = None
 ) -> ToolSpec:
     help_str = (
-        "Usage: web search <query> [--max 5] | web fetch <url>[#anchor] [--from <text>]\n"
+        "Usage: web search <query> [--max 5] | web fetch <url>[#anchor|#/json/key] [--from <t>]\n"
         "Desc : Search the web or fetch clean markdown text from a URL."
     )
 
@@ -496,6 +580,12 @@ def make_web_tool(
                         full = html_to_text(source)
                 else:
                     full = source.strip()
+                    # a JSON reply is navigated by path, not cut at max chars (`#/info/version`)
+                    big = len(full) > max_fetch_chars
+                    if from_text is None and (anchor or big):
+                        view = json_view(full, anchor, url, max_fetch_chars)
+                        if view is not None:
+                            return view
 
                 # Check for empty content
                 if not full:

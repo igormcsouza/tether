@@ -2,8 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `web fetch` reads a JSON reply by path: `web fetch <url>#info/version` (a JSON Pointer; the leading `/` is optional and `info.version` works too) (AD-53). A reply too big for one page prints an outline of its keys with their sizes and the command to open one, instead of the first 8,000 chars of one long line. A 6 MB PyPI reply cost `qwen3.5:9b` about 20 steps of `--from` guesses.
+
 ### Changed
 
+- With `bash` off, a shell command (`curl`, `grep`, `python3`) answers that the session has no shell and points to the enabled tool that does the job (`curl` -> `web fetch`), instead of telling the model the flags that enable `bash`, which only the caller can pass. `qwen3.5:9b` retried shell commands 8 times in one web task.
+- `web:fetch <url>` and other `<tool>:<verb>` forms run as `<tool> <verb>` when the tool is enabled (AD-30).
+- `echo -e 'a\nb' > f` run as `edit write` (no `bash`) now writes two lines, and `echo -n` no newline; the flags were written into the file.
 - When tether undoes a command that left a Python file unparsable, the `[REVERTED]` line now quotes the line the parser stopped at, so the model sees the mistake instead of retyping it (AD-24).
 - The runtime trace of a failing test shows the same `self` object once instead of on every method call, so more of the calls fit (a 16-line trace that hit the 1,500-char cap became a complete 24-line one of 960 chars) (AD-24).
 

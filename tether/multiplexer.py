@@ -218,7 +218,14 @@ def _as_edit(tokens: list[str], stdin: str | None) -> tuple[list[str], str | Non
     if verb == "cat" and not words and stdin is not None:
         return ["edit", sub, path], stdin
     if verb == "echo" and stdin is None:
-        return ["edit", sub, path], " ".join(words) + "\n"
+        # `echo -e 'a\nb' > p` wrote a literal `-e a\nb` (gap hunt, web task); -n: no newline
+        flags = ""
+        while words and re.fullmatch(r"-[neE]+", words[0]):
+            flags += words.pop(0)
+        text = " ".join(words)
+        if "e" in flags:
+            text = text.replace("\\n", "\n").replace("\\t", "\t")
+        return ["edit", sub, path], text + ("" if "n" in flags else "\n")
     if verb == "printf" and len(words) == 1 and stdin is None:
         return ["edit", sub, path], words[0].replace("\\n", "\n").replace("\\t", "\t")
     return None
@@ -294,6 +301,11 @@ class Multiplexer:
 
         name = tokens[0]
         args = tokens[1:]
+        tool, colon, verb = name.partition(":")
+        if colon and tool in self._tools and re.fullmatch(r"[a-z][a-z_-]*", verb):
+            # `web:search q` / `web:fetch u` (qwen3.5:9b, 5 steps in one web task)
+            name, args = tool, [verb, *args]
+            clean_cmd = shlex.join([name, *args])
 
         if name in ("help", "--help", "-h"):
             if args and args[0] in self._tools:
@@ -331,6 +343,13 @@ class Multiplexer:
                 else f"unknown command `{name}`"
             )
             enable = "Enable more: --tools bash,edit (CLI), tools=[...] (SDK), `tools:` (skill)."
+            if name not in ALL_BUILTIN_TOOLS and _looks_like_shell(name):
+                # gap hunt (web task): told how the caller enables bash, qwen3.5:9b typed `curl`,
+                # `grep`, `python3` and `echo` 8 times; it cannot enable a tool, so say so
+                head = f"`{name}` is a shell command and this session has no shell"
+                enable = "Use only the enabled tools."
+                if "web" in self._tools and name in ("curl", "wget"):
+                    hint = " To read a URL: `web fetch <url>` (JSON: `web fetch <url>#/key/path`)."
             return DispatchResult(
                 output=f"Error: {head}. Enabled tools: {avail}. {enable}{hint}",
                 is_error=True,
