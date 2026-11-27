@@ -1452,6 +1452,10 @@ class Harness:
         traced: set[frozenset[str]] = set()  # failing sets already shown with a runtime trace
         last_test: str | None = None  # last test command, re-run by the harness after each edit
         wrapped_up = False  # one last "finish now" turn before a stall ends the session
+        # AD-56: the turn after a wrap-up that follows a change is answer-only. qwen3.5:9b, its
+        # file written, thought "the task is complete" and still repeated its read (0-2 of 6
+        # replays called `done` for 4 message variants); with no tools it wrote `done` 4 of 4
+        answer_turn = False
         # Restart state: failing check runs per command (counted once per edit in between)
         fail_runs: dict[str, int] = {}
         stale: set[str] = set()
@@ -1661,7 +1665,11 @@ class Harness:
                 t_llm_start = time.perf_counter()
                 for outage in range(OUTAGE_RETRIES + 1):
                     try:
-                        resp = await provider.generate(messages, [ACT_TOOL_SCHEMA])
+                        resp = await provider.generate(
+                            messages,
+                            [ACT_TOOL_SCHEMA],
+                            **(_text_only(provider) if answer_turn else {}),
+                        )
                         break
                     except ProviderError as exc:
                         if outage == OUTAGE_RETRIES or not exc.retryable:
@@ -1670,6 +1678,7 @@ class Harness:
                             float(os.environ.get("TETHER_OUTAGE_BACKOFF", "10")) * 2**outage
                         )
                 llm_duration_ms = int((time.perf_counter() - t_llm_start) * 1000)
+                answer_turn = False
 
                 assembler.calibrate(est_tokens, resp.prompt_tokens)
                 prompt_tokens = resp.prompt_tokens if resp.prompt_tokens > 0 else est_tokens
@@ -1793,6 +1802,7 @@ class Harness:
                             # Work that keeps re-reading (a review, a plan, a file it already
                             # wrote) gets one more turn to deliver instead of ending empty
                             wrapped_up, stalls = True, STALL_ABORT - 1
+                            answer_turn = bool(changed)
                             self.store.add_turn(
                                 session_id=session_id,
                                 step=step,

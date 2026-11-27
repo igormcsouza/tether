@@ -165,6 +165,20 @@ def test_stall_after_a_change_is_asked_to_call_done_once(tether: Tether, chaos) 
     assert "[WRAP UP] You keep repeating" in "\n".join(tether.tool_outputs(r["id"]))
 
 
+def test_wrap_up_after_a_change_is_sent_without_tools(tether: Tether, chaos) -> None:
+    # AD-56: qwen3.5:9b wrote emails.txt, then `cat emails.txt` through every warning; with no
+    # tools it wrote its `done` as text, quoted as an act() argument
+    chaos.script(
+        "bash echo a@x.org > emails.txt",
+        *(["bash cat emails.txt"] * 5),
+        '"done", stdin="wrote emails.txt"',
+    )
+    r = tether.run("emails", "--tools", "bash")
+    assert r["status"] == "COMPLETED" and r["result"] == "wrote emails.txt"
+    with_tools = ["tools" in req for req in chaos.requests]
+    assert with_tools == [True] * 6 + [False], with_tools
+
+
 def test_done_with_a_stdin_flag_keeps_the_answer_clean(tether: Tether, chaos) -> None:
     chaos.script("done --stdin 'final answer'")
     r = tether.run("answer")

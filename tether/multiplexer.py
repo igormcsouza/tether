@@ -186,7 +186,11 @@ _HEREDOC_RE = re.compile(r"[ \t]*<<-?[ \t]*(['\"]?)(\w+)\1[ \t]*\n(.*?)\n?\2[ \t
 
 # `edit ..., stdin="..."` or `done, stdin="..."` typed inside cmd (#317); a real stdin argument
 # still wins. Never bash: `python -c "f(x, stdin=1)"` is legitimate.
-_STDIN_TAIL_RE = re.compile(rf"((?:edit|done)\b.*?),\s*stdin\s*=\s*({_QUOTED})\s*", re.DOTALL)
+# The command may be quoted as an act() argument: `"done", stdin="..."` (qwen3.5:9b, no tools)
+_STDIN_TAIL_RE = re.compile(
+    rf"""(?P<q>["']?)(?P<c>(?:edit|done)\b.*?)(?P=q)\s*,\s*stdin\s*=\s*(?P<s>{_QUOTED})\s*""",
+    re.DOTALL,
+)
 
 
 def split_heredoc(cmd: str) -> tuple[str, str | None]:
@@ -281,8 +285,8 @@ class Multiplexer:
             )
 
         if tail := _STDIN_TAIL_RE.fullmatch(clean_cmd):  # models type stdin into cmd (#317)
-            clean_cmd = tail[1].strip()
-            stdin = _unquote(tail[2]) if stdin is None else stdin
+            clean_cmd = tail["c"].strip()
+            stdin = _unquote(tail["s"]) if stdin is None else stdin
         call = _ACT_CALL_RE.fullmatch(clean_cmd)
         if call:  # the model typed the act() call as text (#169)
             clean_cmd = call["cmd"].strip()

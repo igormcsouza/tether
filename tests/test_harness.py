@@ -483,8 +483,12 @@ class _InboxOnCall(FakeScriptedProvider):
     def __init__(self, responses: list[ModelResponse], store: SQLiteStore, at: int) -> None:
         super().__init__(responses)
         self.store, self.at, self.session_id = store, at, ""
+        self.answer_only: list[bool] = []
 
-    async def generate(self, messages: Any, tools: Any) -> ModelResponse:
+    async def generate(
+        self, messages: Any, tools: Any, *, answer_only: bool = False
+    ) -> ModelResponse:
+        self.answer_only.append(answer_only)
         if len(self.recorded_calls) + 1 == self.at:
             self.store.enqueue_inbox(self.session_id, "keep going")
         return await super().generate(messages, tools)
@@ -1062,6 +1066,20 @@ async def test_changed_session_stall_gets_a_wrap_up_that_can_finish(tmp_path: Pa
     assert run.session.status == "COMPLETED" and run.session.result == "ok"
     sent = "\n".join(m["content"] for m in run.provider.recorded_calls[6])
     assert "[WRAP UP]" in sent and "what is done and what is left" in sent
+
+
+async def test_wrap_up_after_a_change_is_an_answer_only_turn(tmp_path: Path) -> None:
+    """AD-56: the model's reply to the wrap-up after a change comes from a call with no tools,
+    so it cannot copy its last command; every other call keeps the tools."""
+    run = await _run_commands(tmp_path, ["ping a.com", *["ls"] * 5])
+    assert run.session.status == "COMPLETED"
+    assert run.provider.answer_only == [False] * 6 + [True]
+
+
+async def test_read_only_wrap_up_keeps_the_tools(tmp_path: Path) -> None:
+    """A read-only session is asked to write its file: its wrap-up turn needs the tools."""
+    run = await _run_commands(tmp_path, ["ls"] * 5)
+    assert True not in run.provider.answer_only
 
 
 async def test_ignoring_the_wrap_up_after_a_change_hands_back_what_was_tried(
